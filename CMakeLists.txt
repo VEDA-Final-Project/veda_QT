@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 project(rtsp_test LANGUAGES CXX)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent)
 
 qt_standard_project_setup()
 
@@ -15,6 +15,8 @@ qt_add_executable(rtsp_test
     videothread.h
     metadatathread.cpp
     metadatathread.h
+    ocrmanager.cpp
+    ocrmanager.h
 )
 
 target_link_libraries(rtsp_test
@@ -22,6 +24,7 @@ target_link_libraries(rtsp_test
         Qt::Core
         Qt::Widgets
         Qt::Network
+        Qt::Concurrent
 )
 
 include(GNUInstallDirs)
@@ -47,4 +50,14 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 # 실행 파일에 OpenCV 라이브러리 연결feature/video-receiver
+# 실행 파일에 OpenCV 라이브러리 연결feature/video-receiver
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
+
+# Tesseract & Leptonica 찾기 (vcpkg)
+# vcpkg 경로 추가 (사용자 환경에 맞게)
+list(APPEND CMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows")
+
+find_package(Tesseract REQUIRED)
+find_package(Leptonica REQUIRED)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Tesseract::libtesseract leptonica)

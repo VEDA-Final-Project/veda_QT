@@ -5,7 +5,6 @@
 #include <QEventLoop>
 #include <QRegularExpression>
 
-
 MetadataThread::MetadataThread(QObject *parent)
     : QThread(parent), m_process(nullptr) {}
 
