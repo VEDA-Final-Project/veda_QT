@@ -23,6 +23,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(veda_final
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
+        metadatathread.h metadatathread.cpp
+        videothread.h videothread.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET veda_final APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
