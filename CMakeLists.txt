@@ -1,0 +1,111 @@
+cmake_minimum_required(VERSION 3.19)
+project(rtsp_test LANGUAGES CXX)
+
+# Qt6 필수 구성 요소 찾기
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent)
+
+qt_standard_project_setup()
+
+# 실행 파일 생성 및 소스 파일 정의
+qt_add_executable(rtsp_test
+    WIN32 MACOSX_BUNDLE
+    # Main
+    src/main.cpp
+    # UI
+    src/ui/mainwindow.cpp
+    src/ui/mainwindow.h
+    src/ui/videowidget.cpp
+    src/ui/videowidget.h
+    # Video
+    src/video/videothread.cpp
+    src/video/videothread.h
+    # Metadata
+    src/metadata/metadatathread.cpp
+    src/metadata/metadatathread.h
+    # OCR
+    src/ocr/ocrmanager.cpp
+    src/ocr/ocrmanager.h
+    # Core
+    src/core/config.cpp
+    src/core/config.h
+    src/core/cameramanager.cpp
+    src/core/cameramanager.h
+)
+
+# 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)
+target_include_directories(rtsp_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src/ui
+    ${CMAKE_SOURCE_DIR}/src/video
+    ${CMAKE_SOURCE_DIR}/src/metadata
+    ${CMAKE_SOURCE_DIR}/src/ocr
+)
+
+target_compile_definitions(rtsp_test PRIVATE
+    PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+# 설정 폴더를 빌드 디렉토리로 복사
+# 빌드 후 실행 파일 경로 옆으로 config 폴더를 복사합니다 (멀티 컨피그 대응).
+add_custom_command(TARGET rtsp_test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/config
+            $<TARGET_FILE_DIR:rtsp_test>/config
+)
+
+# Qt 라이브러리 링크
+target_link_libraries(rtsp_test
+    PRIVATE
+        Qt::Core
+        Qt::Widgets
+        Qt::Network
+        Qt::Concurrent
+)
+
+# 설치 설정
+include(GNUInstallDirs)
+
+install(TARGETS rtsp_test
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/config
+    DESTINATION ${CMAKE_INSTALL_BINDIR}/config
+)
+
+# 배포 스크립트 생성
+qt_generate_deploy_app_script(
+    TARGET rtsp_test
+    OUTPUT_SCRIPT deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${deploy_script})
+
+# ============================================================
+# 의존성 설정 (vcpkg 툴체인 또는 환경 변수 사용)
+# ============================================================
+# 빌드 시 다음 명령어로 vcpkg 툴체인을 지정하세요:
+#   cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
+#
+# 또는 환경 변수로 개별 경로 지정 가능:
+#   - OPENCV_DIR: OpenCV 설치 경로
+#   - TESSERACT_DIR: Tesseract 설치 경로
+# ============================================================
+
+# OpenCV 패키지 찾기 (vcpkg 또는 환경 변수에서 자동 검사)
+if(DEFINED ENV{OPENCV_DIR})
+    set(OpenCV_DIR $ENV{OPENCV_DIR})
+endif()
+
+find_package(OpenCV REQUIRED)
+target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
+
+# Tesseract & Leptonica 찾기 (vcpkg에서 자동 검사)
+find_package(Tesseract REQUIRED)
+find_package(Leptonica REQUIRED)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Tesseract::libtesseract leptonica)

@@ -1,0 +1,21 @@
+{
+  "camera": {
+    "ip": "192.168.0.23",
+    "username": "admin",
+    "password": "5hanwha%21",
+    "profile": "profile2/media.smp"
+  },
+  "video": {
+    "sourceWidth": 3840,
+    "sourceHeight": 2160,
+    "effectiveWidth": 2880,
+    "cropOffsetX": 480
+  },
+  "ocr": {
+    "language": "kor",
+    "tessdataPath": "C:/vcpkg/installed/x64-windows/share/tessdata/"
+  },
+  "sync": {
+    "defaultDelayMs": 0
+  }
+}
