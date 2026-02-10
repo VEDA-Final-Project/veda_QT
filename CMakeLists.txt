@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 project(rtsp_test LANGUAGES CXX)
 
 # Qt6 필수 구성 요소 찾기
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql)
 
 qt_standard_project_setup()
 
@@ -12,14 +12,14 @@ qt_add_executable(rtsp_test
     # Main
     src/main.cpp
     # UI
-    src/ui/mainwindow.cpp
-    src/ui/mainwindow.h
-    src/ui/videowidget.cpp
-    src/ui/videowidget.h
-    src/ui/roiinteractionstate.cpp
-    src/ui/roiinteractionstate.h
-    src/ui/videoframerenderer.cpp
-    src/ui/videoframerenderer.h
+    src/ui/windows/mainwindow.cpp
+    src/ui/windows/mainwindow.h
+    src/ui/video/videowidget.cpp
+    src/ui/video/videowidget.h
+    src/ui/roi/roiinteractionstate.cpp
+    src/ui/roi/roiinteractionstate.h
+    src/ui/video/videoframerenderer.cpp
+    src/ui/video/videoframerenderer.h
     # Video
     src/video/videothread.cpp
     src/video/videothread.h
@@ -38,16 +38,13 @@ qt_add_executable(rtsp_test
     src/core/cameramanager.h
     src/core/metadatasynchronizer.cpp
     src/core/metadatasynchronizer.h
+    src/core/roirepository.cpp
+    src/core/roirepository.h
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)
 target_include_directories(rtsp_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/core
-    ${CMAKE_SOURCE_DIR}/src/ui
-    ${CMAKE_SOURCE_DIR}/src/video
-    ${CMAKE_SOURCE_DIR}/src/metadata
-    ${CMAKE_SOURCE_DIR}/src/ocr
 )
 
 target_compile_definitions(rtsp_test PRIVATE
@@ -69,6 +66,7 @@ target_link_libraries(rtsp_test
         Qt::Widgets
         Qt::Network
         Qt::Concurrent
+        Qt::Sql
 )
 
 # 설치 설정

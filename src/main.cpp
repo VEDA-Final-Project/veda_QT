@@ -1,5 +1,5 @@
-#include "mainwindow.h"
-#include "config.h"
+#include "core/config.h"
+#include "ui/windows/mainwindow.h"
 
 #include <QApplication>
 

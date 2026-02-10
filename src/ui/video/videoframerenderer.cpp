@@ -1,5 +1,5 @@
 #include "videoframerenderer.h"
-#include "config.h"
+#include "core/config.h"
 #include <QPainter>
 #include <QRegion>
 #include <QVector>

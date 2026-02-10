@@ -1,5 +1,6 @@
 #include "videowidget.h"
 #include <QDebug>
+#include <QtGlobal>
 
 VideoWidget::VideoWidget(QWidget *parent) : QLabel(parent)
 {
@@ -25,6 +26,36 @@ void VideoWidget::addUserRoiPolygon(const QPolygon &polygon)
     update();
 }
 
+void VideoWidget::queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons)
+{
+    m_pendingNormalizedRoiPolygons = normalizedPolygons;
+}
+
+bool VideoWidget::removeRoiAt(int index)
+{
+    if (!m_pendingNormalizedRoiPolygons.isEmpty())
+    {
+        if (index < 0 || index >= m_pendingNormalizedRoiPolygons.size())
+        {
+            return false;
+        }
+        m_pendingNormalizedRoiPolygons.removeAt(index);
+        return true;
+    }
+
+    const bool removed = m_roiState.removeRoiAt(index);
+    if (removed)
+    {
+        update();
+    }
+    return removed;
+}
+
+int VideoWidget::roiCount() const
+{
+    return m_roiState.roiCount();
+}
+
 void VideoWidget::startRoiDrawing()
 {
     m_roiState.startDrawing();
@@ -40,7 +71,7 @@ bool VideoWidget::completeRoiDrawing()
     if (result.completed)
     {
         emit roiChanged(result.boundingRect);
-        emit roiPolygonChanged(result.polygon);
+        emit roiPolygonChanged(result.polygon, m_lastFrameSize);
         qDebug() << "[ROI][VideoWidget] polygon drawn: points=" << result.polygon.size()
                  << "bounds=" << result.boundingRect;
     }
@@ -67,6 +98,26 @@ void VideoWidget::updateFrame(const QImage &frame)
 void VideoWidget::renderFrame(const QImage &frame)
 {
     m_lastFrameSize = frame.size();
+    if (!m_pendingNormalizedRoiPolygons.isEmpty() && !m_lastFrameSize.isEmpty())
+    {
+        for (const QPolygonF &normalizedPolygon : m_pendingNormalizedRoiPolygons)
+        {
+            QPolygon framePolygon;
+            framePolygon.reserve(normalizedPolygon.size());
+            for (const QPointF &normPoint : normalizedPolygon)
+            {
+                const int frameX = qBound(0,
+                                          static_cast<int>(normPoint.x() * m_lastFrameSize.width()),
+                                          m_lastFrameSize.width() - 1);
+                const int frameY = qBound(0,
+                                          static_cast<int>(normPoint.y() * m_lastFrameSize.height()),
+                                          m_lastFrameSize.height() - 1);
+                framePolygon << QPoint(frameX, frameY);
+            }
+            m_roiState.addUserRoiPolygon(framePolygon);
+        }
+        m_pendingNormalizedRoiPolygons.clear();
+    }
 
     QList<OcrRequest> ocrRequests;
     const QImage composed =

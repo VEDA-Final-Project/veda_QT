@@ -1,7 +1,7 @@
 #ifndef PLATEOCRCOORDINATOR_H
 #define PLATEOCRCOORDINATOR_H
 
-#include "ocrmanager.h"
+#include "ocr/ocrmanager.h"
 #include <QFutureWatcher>
 #include <QImage>
 #include <QObject>
@@ -15,6 +15,7 @@ class PlateOcrCoordinator : public QObject
 
 public:
   explicit PlateOcrCoordinator(QObject *parent = nullptr);
+  ~PlateOcrCoordinator() override;
 
   void requestOcr(int objectId, const QImage &crop);
 
@@ -38,6 +39,7 @@ private:
   QQueue<PendingOcr> m_pending;
   QSet<int> m_inflightObjectIds;
   int m_runningObjectId = -1;
+  bool m_shuttingDown = false;
 };
 
 #endif // PLATEOCRCOORDINATOR_H

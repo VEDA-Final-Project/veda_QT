@@ -1,5 +1,5 @@
-#include "plateocrcoordinator.h"
-#include "config.h"
+#include "ocr/plateocrcoordinator.h"
+#include "core/config.h"
 #include <QDebug>
 
 PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent)
@@ -14,8 +14,25 @@ PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent)
           &PlateOcrCoordinator::onOcrFinished);
 }
 
+PlateOcrCoordinator::~PlateOcrCoordinator()
+{
+  m_shuttingDown = true;
+  m_pending.clear();
+  m_inflightObjectIds.clear();
+  if (m_watcher.isRunning())
+  {
+    m_watcher.cancel();
+    m_watcher.waitForFinished();
+  }
+}
+
 void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop)
 {
+  if (m_shuttingDown)
+  {
+    return;
+  }
+
   if (objectId < 0 || crop.isNull())
   {
     return;
@@ -33,6 +50,11 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop)
 
 void PlateOcrCoordinator::onOcrFinished()
 {
+  if (m_shuttingDown)
+  {
+    return;
+  }
+
   const QString result = m_watcher.result();
   const int objectId = m_runningObjectId;
 
@@ -49,6 +71,11 @@ void PlateOcrCoordinator::onOcrFinished()
 
 void PlateOcrCoordinator::startNext()
 {
+  if (m_shuttingDown)
+  {
+    return;
+  }
+
   if (m_watcher.isRunning() || m_pending.isEmpty())
   {
     return;

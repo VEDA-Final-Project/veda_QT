@@ -1,7 +1,7 @@
 #ifndef VIDEOFRAMERENDERER_H
 #define VIDEOFRAMERENDERER_H
 
-#include "metadatathread.h"
+#include "metadata/metadatathread.h"
 #include <QImage>
 #include <QList>
 #include <QPolygon>

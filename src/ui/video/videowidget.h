@@ -1,13 +1,14 @@
 #ifndef VIDEOWIDGET_H
 #define VIDEOWIDGET_H
 
-#include "metadatathread.h"
-#include "roiinteractionstate.h"
-#include "videoframerenderer.h"
+#include "metadata/metadatathread.h"
+#include "ui/roi/roiinteractionstate.h"
+#include "ui/video/videoframerenderer.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPaintEvent>
+#include <QPolygonF>
 #include <QSize>
 #include <QWidget>
 
@@ -29,6 +30,9 @@ public:
   void setUserRoi(const QRect &roi);
   void addUserRoi(const QRect &roi);
   void addUserRoiPolygon(const QPolygon &polygon);
+  void queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons);
+  bool removeRoiAt(int index);
+  int roiCount() const;
   void startRoiDrawing();
   bool completeRoiDrawing();
 
@@ -39,7 +43,7 @@ public slots:
 signals:
   void ocrRequested(int objectId, const QImage &crop);
   void roiChanged(const QRect &roi);
-  void roiPolygonChanged(const QPolygon &polygon);
+  void roiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
 
 private:
   void paintEvent(QPaintEvent *event) override;
@@ -53,6 +57,7 @@ private:
   QSize m_lastFrameSize;
   RoiInteractionState m_roiState;
   VideoFrameRenderer m_frameRenderer;
+  QList<QPolygonF> m_pendingNormalizedRoiPolygons;
 };
 
 #endif // VIDEOWIDGET_H

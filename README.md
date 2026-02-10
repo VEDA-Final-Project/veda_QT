@@ -20,20 +20,27 @@ veda_QT/
 ├── CMakeLists.txt          # Qt6(CMake) 빌드 설정, OpenCV/Tesseract/Leptonica 링크
 ├── config/
 │   └── settings.json       # 런타임 설정 (빌드 시 실행 파일 옆 config/ 로 복사됨)
-└── src/
-    ├── main.cpp            # 앱 진입점: Config 로드 후 MainWindow 실행
-    ├── core/
-    │   ├── config.h/.cpp           # settings.json 로드 및 기본값 관리 (싱글톤)
-    │   └── cameramanager.h/.cpp    # 카메라/스트림 관련 핵심 관리
-    ├── ui/
-    │   ├── mainwindow.h/.cpp       # 메인 윈도우 및 UI 컨트롤
-    │   └── videowidget.h/.cpp      # 영상 표시 위젯 (오버레이 등)
-    ├── video/
-    │   └── videothread.h/.cpp      # RTSP 영상 스트리밍 스레드
-    ├── metadata/
-    │   └── metadatathread.h/.cpp   # 카메라 AI 메타데이터 수신 스레드
-    └── ocr/
-        └── ocrmanager.h/.cpp       # Tesseract 기반 OCR 비동기 처리
+	└── src/
+	    ├── main.cpp            # 앱 진입점: Config 로드 후 MainWindow 실행
+	    ├── core/
+	    │   ├── config.h/.cpp                 # settings.json 로드 및 기본값 관리 (싱글톤)
+	    │   ├── cameramanager.h/.cpp          # 카메라/스트림 관련 핵심 관리
+	    │   └── metadatasynchronizer.h/.cpp   # 영상/메타데이터 싱크 보정
+	    ├── ui/
+	    │   ├── windows/
+	    │   │   └── mainwindow.h/.cpp         # 메인 윈도우 및 ROI 관리 UI
+	    │   ├── video/
+	    │   │   ├── videowidget.h/.cpp        # 영상 표시 위젯
+	    │   │   └── videoframerenderer.h/.cpp # 프레임 오버레이/렌더링
+	    │   └── roi/
+	    │       └── roiinteractionstate.h/.cpp # ROI 입력 상태 관리
+	    ├── video/
+	    │   └── videothread.h/.cpp      # RTSP 영상 스트리밍 스레드
+	    ├── metadata/
+	    │   └── metadatathread.h/.cpp   # 카메라 AI 메타데이터 수신 스레드
+	    └── ocr/
+	        ├── ocrmanager.h/.cpp             # Tesseract OCR 엔진 래퍼
+	        └── plateocrcoordinator.h/.cpp    # OCR 요청 직렬화/조율
 ```
 
 > **참고**: Tesseract 언어 데이터(`tessdata/`, `kor.traineddata` 등)는 `settings.json`의 `tessdataPath`에 지정한 경로에 두면 됩니다.

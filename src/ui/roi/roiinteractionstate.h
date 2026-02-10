@@ -23,6 +23,8 @@ public:
   void setUserRoi(const QRect &roi);
   void addUserRoi(const QRect &roi);
   void addUserRoiPolygon(const QPolygon &polygon);
+  bool removeRoiAt(int index);
+  int roiCount() const;
   void startDrawing();
   RoiFinishResult finishDrawing();
 

@@ -41,6 +41,22 @@ void RoiInteractionState::addUserRoiPolygon(const QPolygon &polygon)
            << "bounds=" << bounds << "count=" << m_userRoiPolygons.size();
 }
 
+bool RoiInteractionState::removeRoiAt(int index)
+{
+  if (index < 0 || index >= m_userRoiPolygons.size())
+  {
+    return false;
+  }
+  m_userRoiPolygons.removeAt(index);
+  m_roiEnabled = !m_userRoiPolygons.isEmpty();
+  return true;
+}
+
+int RoiInteractionState::roiCount() const
+{
+  return m_userRoiPolygons.size();
+}
+
 void RoiInteractionState::startDrawing()
 {
   m_drawingMode = true;

@@ -270,10 +270,9 @@ void MetadataThread::parseFrame(const QString &frameXml) {
         objects.append(info);
     }
 
-    // === 파싱된 객체가 있으면 외부로 전달 ===
-    if (!objects.isEmpty()) {
-        emit metadataReceived(objects);
-    }
+    // Always propagate the frame state, including empty-object frames.
+    // Otherwise the last non-empty metadata may stay on screen as a ghost box.
+    emit metadataReceived(objects);
 }
 
 /**
