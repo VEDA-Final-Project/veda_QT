@@ -16,6 +16,10 @@ qt_add_executable(rtsp_test
     src/ui/mainwindow.h
     src/ui/videowidget.cpp
     src/ui/videowidget.h
+    src/ui/roiinteractionstate.cpp
+    src/ui/roiinteractionstate.h
+    src/ui/videoframerenderer.cpp
+    src/ui/videoframerenderer.h
     # Video
     src/video/videothread.cpp
     src/video/videothread.h
@@ -25,11 +29,15 @@ qt_add_executable(rtsp_test
     # OCR
     src/ocr/ocrmanager.cpp
     src/ocr/ocrmanager.h
+    src/ocr/plateocrcoordinator.cpp
+    src/ocr/plateocrcoordinator.h
     # Core
     src/core/config.cpp
     src/core/config.h
     src/core/cameramanager.cpp
     src/core/cameramanager.h
+    src/core/metadatasynchronizer.cpp
+    src/core/metadatasynchronizer.h
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)

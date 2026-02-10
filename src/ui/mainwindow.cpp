@@ -1,6 +1,8 @@
 #include "mainwindow.h"
+#include "config.h"
 #include <QDate>
 #include <QDebug>
+#include <QDateTime>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -28,8 +30,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
   layout->addLayout(btnLayout);
 
   m_cameraManager = new CameraManager(this);
+  m_ocrCoordinator = new PlateOcrCoordinator(this);
   m_videoWidget = new VideoWidget(this);
   layout->addWidget(m_videoWidget);
+  m_metadataSynchronizer.setDelayMs(Config::instance().defaultDelayMs());
 
   m_logView = new QTextEdit(this);
   m_logView->setReadOnly(true);
@@ -89,13 +93,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             appendRoiStructuredLog(roiData);
           });
 
-  connect(m_cameraManager, &CameraManager::frameCaptured, m_videoWidget,
-          &VideoWidget::updateFrame);
-  connect(m_cameraManager, &CameraManager::metadataReceived, m_videoWidget,
-          &VideoWidget::updateMetadata);
+  connect(m_cameraManager, &CameraManager::metadataReceived, this,
+          [this](const QList<ObjectInfo> &objects) {
+            m_metadataSynchronizer.pushMetadata(
+                objects, QDateTime::currentMSecsSinceEpoch());
+          });
+  connect(m_cameraManager, &CameraManager::frameCaptured, this,
+          [this](const QImage &frame) {
+            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            m_videoWidget->updateMetadata(m_metadataSynchronizer.consumeReady(nowMs));
+            m_videoWidget->updateFrame(frame);
+          });
   connect(m_cameraManager, &CameraManager::logMessage, this,
           &MainWindow::onLogMessage);
-  connect(m_videoWidget, &VideoWidget::ocrResult, this,
+  connect(m_videoWidget, &VideoWidget::ocrRequested, m_ocrCoordinator,
+          &PlateOcrCoordinator::requestOcr);
+  connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
           &MainWindow::onOcrResult);
 
   resize(1000, 700);
@@ -117,12 +130,31 @@ void MainWindow::playCctv()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+  flushSuppressedCameraLogs();
   m_cameraManager->stop();
   QMainWindow::closeEvent(event);
 }
 
 void MainWindow::onLogMessage(const QString &msg)
 {
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  constexpr qint64 kDuplicateWindowMs = 2000;
+
+  const bool isRapidDuplicate =
+      (msg == m_lastCameraLogMessage) && (m_lastCameraLogMs > 0) &&
+      ((nowMs - m_lastCameraLogMs) < kDuplicateWindowMs);
+
+  if (isRapidDuplicate)
+  {
+    ++m_suppressedCameraLogCount;
+    m_lastCameraLogMs = nowMs;
+    return;
+  }
+
+  flushSuppressedCameraLogs();
+  m_lastCameraLogMessage = msg;
+  m_lastCameraLogMs = nowMs;
+
   qDebug() << "[Camera]" << msg;
   m_logView->append(msg);
 }
@@ -140,4 +172,20 @@ void MainWindow::appendRoiStructuredLog(const QJsonObject &roiData)
       QString::fromUtf8(QJsonDocument(roiData).toJson(QJsonDocument::Compact));
   qDebug().noquote() << line;
   m_logView->append(line);
+}
+
+void MainWindow::flushSuppressedCameraLogs()
+{
+  if (m_suppressedCameraLogCount <= 0 || m_lastCameraLogMessage.isEmpty())
+  {
+    return;
+  }
+
+  const QString summary =
+      QString("[Camera] previous log repeated %1 times: %2")
+          .arg(m_suppressedCameraLogCount)
+          .arg(m_lastCameraLogMessage);
+  qDebug() << summary;
+  m_logView->append(summary);
+  m_suppressedCameraLogCount = 0;
 }

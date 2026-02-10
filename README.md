@@ -17,17 +17,26 @@
 
 ```
 veda_QT/
-├── config/              # 설정 파일 디렉토리
-│   └── settings.json    # 카메라, 비디오, OCR 설정
-├── src/                 # 소스 코드
-│   ├── core/            # 핵심 로직 (Config, CameraManager)
-│   ├── ui/              # 사용자 인터페이스 (MainWindow, VideoWidget)
-│   ├── video/           # 비디오 스트리밍 (VideoThread)
-│   ├── metadata/        # 메타데이터 수신 (MetadataThread)
-│   └── ocr/             # OCR 엔진 (OcrManager)
-├── tessdata/            # Tesseract 언어 데이터 (선택 사항)
-└── CMakeLists.txt       # CMake 빌드 설정
+├── CMakeLists.txt          # Qt6(CMake) 빌드 설정, OpenCV/Tesseract/Leptonica 링크
+├── config/
+│   └── settings.json       # 런타임 설정 (빌드 시 실행 파일 옆 config/ 로 복사됨)
+└── src/
+    ├── main.cpp            # 앱 진입점: Config 로드 후 MainWindow 실행
+    ├── core/
+    │   ├── config.h/.cpp           # settings.json 로드 및 기본값 관리 (싱글톤)
+    │   └── cameramanager.h/.cpp    # 카메라/스트림 관련 핵심 관리
+    ├── ui/
+    │   ├── mainwindow.h/.cpp       # 메인 윈도우 및 UI 컨트롤
+    │   └── videowidget.h/.cpp      # 영상 표시 위젯 (오버레이 등)
+    ├── video/
+    │   └── videothread.h/.cpp      # RTSP 영상 스트리밍 스레드
+    ├── metadata/
+    │   └── metadatathread.h/.cpp   # 카메라 AI 메타데이터 수신 스레드
+    └── ocr/
+        └── ocrmanager.h/.cpp       # Tesseract 기반 OCR 비동기 처리
 ```
+
+> **참고**: Tesseract 언어 데이터(`tessdata/`, `kor.traineddata` 등)는 `settings.json`의 `tessdataPath`에 지정한 경로에 두면 됩니다.
 
 ## 🛠️ 개발 환경 및 요구 사항
 
@@ -39,6 +48,19 @@ veda_QT/
   - Tesseract 5.x
   - Leptonica
   - FFmpeg (런타임 필요)
+
+## 📥 Qt 설치 방법 (Windows)
+
+1. **Qt 다운로드**: [Qt Online Installer](https://www.qt.io/download-qt-installer)에서 설치 프로그램 다운로드 후 실행.
+2. **선택할 구성 요소**:
+   - **Qt** → **Qt 6.5.x** (이상)
+     - **MSVC 2019/2022 64-bit** (Visual Studio 사용 시) 또는 **MinGW 64-bit**
+   - **Developer and Designer Tools**:
+     - **Qt Creator**
+     - **CMake**
+     - **Ninja** (권장)
+3. **MSVC 사용 시**: Visual Studio 2019/2022 설치 후 **Desktop development with C++** 워크로드 포함.
+4. 설치 완료 후 Qt Creator에서 이 프로젝트의 `CMakeLists.txt`를 열고, Kit을 위에서 선택한 컴파일러와 맞추면 됩니다.
 
 ## 📦 빌드 및 실행 방법
 
@@ -53,15 +75,14 @@ git clone https://github.com/microsoft/vcpkg.git
 
 ### 2. 의존성 라이브러리 설치
 ```powershell
-# 프로젝트 루트 또는 vcpkg 폴더에서 실행
-vcpkg install opencv tesseract leptonica --triplet x64-windows
+# [vcpkg-root]는 vcpkg를 clone한 폴더 경로입니다.
+.\vcpkg\vcpkg install opencv tesseract leptonica --triplet x64-windows
 ```
 
 ### 3. 프로젝트 빌드 (CMake)
 ```powershell
-# 빌드 디렉토리 생성 및 구성
 # [vcpkg-root]를 본인의 vcpkg 설치 경로로 변경하세요.
-# 예: C:/Users/seok/Documents/veda/vcpkg/scripts/buildsystems/vcpkg.cmake
+# 예: D:/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[vcpkg-root]/scripts/buildsystems/vcpkg.cmake"
 
@@ -69,8 +90,10 @@ cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[vcpkg-root]/scripts/buildsystems/vc
 cmake --build build --config Release
 ```
 
+**Qt Creator에서 빌드**: 프로젝트 열기 → `CMakeLists.txt` 선택 → Kit 선택 후, CMake 설정에서 `CMAKE_TOOLCHAIN_FILE`을 vcpkg의 `scripts/buildsystems/vcpkg.cmake` 경로로 지정한 뒤 Configure & Build.
+
 ### 4. 실행
-`build/Release/rtsp_test.exe`를 실행합니다.
+`build/Release/rtsp_test.exe`를 실행합니다. 빌드 시 `config/` 폴더가 실행 파일 옆으로 자동 복사됩니다.
 
 > **참고**: FFmpeg 실행 파일(`ffmpeg.exe`)이 시스템 PATH에 있거나 실행 파일과 같은 폴더에 있어야 메타데이터 수신 기능이 작동합니다.
 
@@ -83,7 +106,7 @@ cmake --build build --config Release
   "camera": {
     "ip": "192.168.0.100",       // 카메라 IP
     "username": "admin",         // RTSP 계정
-    "password": "password",      // RTSP 비밀번호
+    "password": "********",      // RTSP 비밀번호 (실제 값으로 교체)
     "profile": "profile2/media.smp" // RTSP 프로파일
   },
   "video": {

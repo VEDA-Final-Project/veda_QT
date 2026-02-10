@@ -1,4 +1,5 @@
 #include "videothread.h"
+#include <QDateTime>
 #include <QDebug>
 
 /**
@@ -52,6 +53,9 @@ void VideoThread::stop()
 void VideoThread::run()
 {
     QString url;
+    constexpr qint64 kReadErrorLogIntervalMs = 3000;
+    qint64 lastReadErrorLogMs = 0;
+    int suppressedReadErrors = 0;
 
     // === URL 복사 및 상태 초기화 ===
     {
@@ -90,7 +94,19 @@ void VideoThread::run()
 
         // === 프레임 읽기 ===
         if (!m_cap.read(frame)) {
-            qDebug() << "Error: Cannot read frame";
+            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            if (lastReadErrorLogMs == 0 || (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
+                if (suppressedReadErrors > 0) {
+                    qDebug() << "Error: Cannot read frame (repeated" << suppressedReadErrors
+                             << "times)";
+                    suppressedReadErrors = 0;
+                } else {
+                    qDebug() << "Error: Cannot read frame";
+                }
+                lastReadErrorLogMs = nowMs;
+            } else {
+                ++suppressedReadErrors;
+            }
             // 일시적 네트워크 문제 대비
             QThread::msleep(100);
             continue;
