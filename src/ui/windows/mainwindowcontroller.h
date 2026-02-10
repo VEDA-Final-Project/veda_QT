@@ -1,16 +1,15 @@
 #ifndef MAINWINDOWCONTROLLER_H
 #define MAINWINDOWCONTROLLER_H
 
-#include "core/cameramanager.h"
-#include "core/metadatasynchronizer.h"
-#include "core/roirepository.h"
+#include "core/camerasessionservice.h"
+#include "core/logdeduplicator.h"
+#include "core/roiservice.h"
 #include "ocr/plateocrcoordinator.h"
 #include <QComboBox>
 #include <QJsonObject>
 #include <QObject>
 #include <QPushButton>
 #include <QTextEdit>
-#include <QVector>
 
 class QLineEdit;
 class VideoWidget;
@@ -40,10 +39,7 @@ private:
   void connectSignals();
   void initRoiDb();
   void appendRoiStructuredLog(const QJsonObject &roiData);
-  void flushSuppressedCameraLogs();
   void refreshRoiSelector();
-  bool isValidRoiName(const QString &name, QString *errorMessage) const;
-  bool isDuplicateRoiName(const QString &name) const;
   void playCctv();
   void onLogMessage(const QString &msg);
   void onOcrResult(int objectId, const QString &result);
@@ -58,13 +54,9 @@ private:
   UiRefs m_ui;
   CameraManager *m_cameraManager = nullptr;
   PlateOcrCoordinator *m_ocrCoordinator = nullptr;
-  MetadataSynchronizer m_metadataSynchronizer;
-  RoiRepository m_roiRepository;
-  int m_roiSequence = 0;
-  QVector<QJsonObject> m_roiRecords;
-  QString m_lastCameraLogMessage;
-  qint64 m_lastCameraLogMs = 0;
-  int m_suppressedCameraLogCount = 0;
+  CameraSessionService m_cameraSession;
+  RoiService m_roiService;
+  LogDeduplicator m_logDeduplicator;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

@@ -6,29 +6,32 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QLineEdit>
-#include <QRegularExpression>
-#include <QtGlobal>
 
 MainWindowController::MainWindowController(const UiRefs &uiRefs, QObject *parent)
     : QObject(parent), m_ui(uiRefs)
 {
   m_cameraManager = new CameraManager(this);
   m_ocrCoordinator = new PlateOcrCoordinator(this);
-  m_metadataSynchronizer.setDelayMs(Config::instance().defaultDelayMs());
+  m_cameraSession.setCameraManager(m_cameraManager);
+  m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
   initRoiDb();
   connectSignals();
 }
 
 void MainWindowController::shutdown()
 {
-  flushSuppressedCameraLogs();
-  if (m_cameraManager)
+  const QString summary = m_logDeduplicator.flushPending();
+  if (!summary.isEmpty())
   {
-    m_cameraManager->stop();
+    qDebug() << summary;
+    if (m_ui.logView)
+    {
+      m_ui.logView->append(summary);
+    }
   }
+  m_cameraSession.stop();
 }
 
 void MainWindowController::connectSignals()
@@ -78,66 +81,25 @@ void MainWindowController::initRoiDb()
   {
     return;
   }
+
   const QString roiDbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/roi.sqlite");
-  QString dbError;
-  if (!m_roiRepository.init(roiDbPath, &dbError))
+  const RoiService::InitResult initResult = m_roiService.init(roiDbPath);
+  if (!initResult.ok)
   {
-    m_ui.logView->append(QString("[ROI][DB] 초기화 실패: %1").arg(dbError));
+    m_ui.logView->append(QString("[ROI][DB] 초기화 실패: %1").arg(initResult.error));
     return;
   }
 
-  m_roiRecords = m_roiRepository.loadAll(&dbError);
-  if (!dbError.isEmpty())
-  {
-    m_ui.logView->append(QString("[ROI][DB] 로드 실패: %1").arg(dbError));
-    return;
-  }
-
-  QList<QPolygonF> normalizedPolygons;
-  normalizedPolygons.reserve(m_roiRecords.size());
-  for (const QJsonObject &record : m_roiRecords)
-  {
-    const QJsonArray points = record["rod_points"].toArray();
-    if (points.size() < 3)
-    {
-      continue;
-    }
-    QPolygonF polygon;
-    for (const QJsonValue &pointValue : points)
-    {
-      const QJsonObject pointObj = pointValue.toObject();
-      polygon << QPointF(pointObj["x"].toDouble(), pointObj["y"].toDouble());
-    }
-    if (polygon.size() >= 3)
-    {
-      normalizedPolygons.append(polygon);
-    }
-  }
   if (m_ui.videoWidget)
   {
-    m_ui.videoWidget->queueNormalizedRoiPolygons(normalizedPolygons);
-  }
-
-  for (const QJsonObject &record : m_roiRecords)
-  {
-    const QString rodId = record["rod_id"].toString();
-    if (!rodId.startsWith("rod-"))
-    {
-      continue;
-    }
-    bool ok = false;
-    const int seq = rodId.mid(4).toInt(&ok);
-    if (ok)
-    {
-      m_roiSequence = qMax(m_roiSequence, seq);
-    }
+    m_ui.videoWidget->queueNormalizedRoiPolygons(initResult.normalizedPolygons);
   }
 
   refreshRoiSelector();
-  if (!m_roiRecords.isEmpty())
+  if (initResult.loadedCount > 0)
   {
-    m_ui.logView->append(QString("[ROI][DB] %1개 ROI 로드 완료").arg(m_roiRecords.size()));
+    m_ui.logView->append(QString("[ROI][DB] %1개 ROI 로드 완료").arg(initResult.loadedCount));
   }
 }
 
@@ -153,26 +115,6 @@ void MainWindowController::appendRoiStructuredLog(const QJsonObject &roiData)
   m_ui.logView->append(line);
 }
 
-void MainWindowController::flushSuppressedCameraLogs()
-{
-  if (!m_ui.logView)
-  {
-    return;
-  }
-  if (m_suppressedCameraLogCount <= 0 || m_lastCameraLogMessage.isEmpty())
-  {
-    return;
-  }
-
-  const QString summary =
-      QString("[Camera] previous log repeated %1 times: %2")
-          .arg(m_suppressedCameraLogCount)
-          .arg(m_lastCameraLogMessage);
-  qDebug() << summary;
-  m_ui.logView->append(summary);
-  m_suppressedCameraLogCount = 0;
-}
-
 void MainWindowController::refreshRoiSelector()
 {
   if (!m_ui.roiSelectorCombo)
@@ -181,77 +123,20 @@ void MainWindowController::refreshRoiSelector()
   }
   m_ui.roiSelectorCombo->clear();
   m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
-  for (int i = 0; i < m_roiRecords.size(); ++i)
+
+  const QVector<QJsonObject> &records = m_roiService.records();
+  for (int i = 0; i < records.size(); ++i)
   {
-    const QJsonObject &record = m_roiRecords[i];
+    const QJsonObject &record = records[i];
     const QString name = record["rod_name"].toString(QString("rod_%1").arg(i + 1));
     const QString purpose = record["rod_purpose"].toString();
     m_ui.roiSelectorCombo->addItem(QString("%1 | %2").arg(name, purpose), i);
   }
 }
 
-bool MainWindowController::isValidRoiName(const QString &name,
-                                          QString *errorMessage) const
-{
-  if (name.isEmpty())
-  {
-    if (errorMessage)
-    {
-      *errorMessage = QStringLiteral("ROI 이름은 필수입니다.");
-    }
-    return false;
-  }
-
-  constexpr int kMinNameLen = 1;
-  constexpr int kMaxNameLen = 30;
-  if (name.size() < kMinNameLen || name.size() > kMaxNameLen)
-  {
-    if (errorMessage)
-    {
-      *errorMessage = QStringLiteral("ROI 이름은 1~30자로 입력해주세요.");
-    }
-    return false;
-  }
-
-  static const QRegularExpression kAllowedNamePattern(
-      QStringLiteral("^[A-Za-z0-9가-힣 _-]+$"));
-  if (!kAllowedNamePattern.match(name).hasMatch())
-  {
-    if (errorMessage)
-    {
-      *errorMessage = QStringLiteral(
-          "ROI 이름은 한글/영문/숫자/공백/밑줄(_) / 하이픈(-)만 사용할 수 있습니다.");
-    }
-    return false;
-  }
-
-  return true;
-}
-
-bool MainWindowController::isDuplicateRoiName(const QString &name) const
-{
-  for (const QJsonObject &record : m_roiRecords)
-  {
-    if (record["rod_name"].toString().compare(name, Qt::CaseInsensitive) == 0)
-    {
-      return true;
-    }
-  }
-  return false;
-}
-
 void MainWindowController::playCctv()
 {
-  if (!m_cameraManager)
-  {
-    return;
-  }
-  if (m_cameraManager->isRunning())
-  {
-    m_cameraManager->restart();
-    return;
-  }
-  m_cameraManager->start();
+  m_cameraSession.playOrRestart();
 }
 
 void MainWindowController::onLogMessage(const QString &msg)
@@ -260,23 +145,20 @@ void MainWindowController::onLogMessage(const QString &msg)
   {
     return;
   }
+
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  constexpr qint64 kDuplicateWindowMs = 2000;
+  const LogDeduplicator::IngestResult ingestResult =
+      m_logDeduplicator.ingest(msg, nowMs);
 
-  const bool isRapidDuplicate =
-      (msg == m_lastCameraLogMessage) && (m_lastCameraLogMs > 0) &&
-      ((nowMs - m_lastCameraLogMs) < kDuplicateWindowMs);
-
-  if (isRapidDuplicate)
+  if (!ingestResult.flushSummary.isEmpty())
   {
-    ++m_suppressedCameraLogCount;
-    m_lastCameraLogMs = nowMs;
+    qDebug() << ingestResult.flushSummary;
+    m_ui.logView->append(ingestResult.flushSummary);
+  }
+  if (ingestResult.suppressed)
+  {
     return;
   }
-
-  flushSuppressedCameraLogs();
-  m_lastCameraLogMessage = msg;
-  m_lastCameraLogMs = nowMs;
 
   qDebug() << "[Camera]" << msg;
   m_ui.logView->append(msg);
@@ -312,12 +194,12 @@ void MainWindowController::onFinishRoiDraw()
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
   QString nameError;
-  if (!isValidRoiName(typedName, &nameError))
+  if (!m_roiService.isValidName(typedName, &nameError))
   {
     m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError));
     return;
   }
-  if (isDuplicateRoiName(typedName))
+  if (m_roiService.isDuplicateName(typedName))
   {
     m_ui.logView->append(
         QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.").arg(typedName));
@@ -336,16 +218,16 @@ void MainWindowController::onDeleteRoi()
     return;
   }
   const int recordIndex = m_ui.roiSelectorCombo->currentData().toInt();
-  if (recordIndex < 0 || recordIndex >= m_roiRecords.size())
+  if (recordIndex < 0 || recordIndex >= m_roiService.count())
   {
     m_ui.logView->append("[ROI] 삭제 실패: ROI를 선택해주세요.");
     return;
   }
-  const QString removedId = m_roiRecords[recordIndex]["rod_id"].toString();
-  QString dbError;
-  if (!m_roiRepository.removeById(removedId, &dbError))
+
+  const RoiService::DeleteResult deleteResult = m_roiService.removeAt(recordIndex);
+  if (!deleteResult.ok)
   {
-    m_ui.logView->append(QString("[ROI][DB] 삭제 실패: %1").arg(dbError));
+    m_ui.logView->append(QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
     return;
   }
   if (!m_ui.videoWidget->removeRoiAt(recordIndex))
@@ -353,18 +235,17 @@ void MainWindowController::onDeleteRoi()
     m_ui.logView->append("[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
     return;
   }
-  const QString removedName = m_roiRecords[recordIndex]["rod_name"].toString();
-  m_roiRecords.removeAt(recordIndex);
+
   refreshRoiSelector();
   int nextRecordIndex = recordIndex;
-  if (nextRecordIndex >= m_roiRecords.size())
+  if (nextRecordIndex >= m_roiService.count())
   {
-    nextRecordIndex = m_roiRecords.size() - 1;
+    nextRecordIndex = m_roiService.count() - 1;
   }
   const int comboIndex =
       (nextRecordIndex >= 0) ? m_ui.roiSelectorCombo->findData(nextRecordIndex) : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
-  m_ui.logView->append(QString("[ROI] 삭제 완료: %1").arg(removedName));
+  m_ui.logView->append(QString("[ROI] 삭제 완료: %1").arg(deleteResult.removedName));
 }
 
 void MainWindowController::onRoiChanged(const QRect &roi)
@@ -384,91 +265,45 @@ void MainWindowController::onRoiChanged(const QRect &roi)
 void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
                                                const QSize &frameSize)
 {
-  if (!m_ui.logView || frameSize.isEmpty())
+  if (!m_ui.logView)
   {
-    if (m_ui.logView && frameSize.isEmpty())
-    {
-      m_ui.logView->append("[ROI] 저장 실패: 프레임 크기가 유효하지 않습니다.");
-    }
+    return;
+  }
+  if (frameSize.isEmpty())
+  {
+    m_ui.logView->append("[ROI] 저장 실패: 프레임 크기가 유효하지 않습니다.");
     return;
   }
 
-  const double frameW = static_cast<double>(frameSize.width());
-  const double frameH = static_cast<double>(frameSize.height());
-  auto normX = [frameW](int x) {
-    return qBound(0.0, static_cast<double>(x) / frameW, 1.0);
-  };
-  auto normY = [frameH](int y) {
-    return qBound(0.0, static_cast<double>(y) / frameH, 1.0);
-  };
-
-  QJsonArray points;
-  for (const QPoint &pt : polygon)
-  {
-    points.append(QJsonObject{{"x", normX(pt.x())}, {"y", normY(pt.y())}});
-  }
-
-  const QRect bbox = polygon.boundingRect();
-  const QDateTime nowUtc = QDateTime::currentDateTimeUtc();
-  const QString ts = nowUtc.toString(Qt::ISODate);
-  ++m_roiSequence;
-  const QString rodId =
-      QString("rod-%1").arg(m_roiSequence, 3, 10, QLatin1Char('0'));
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
-  QString nameError;
-  if (!isValidRoiName(typedName, &nameError))
+  const QString purpose =
+      m_ui.roiPurposeCombo ? m_ui.roiPurposeCombo->currentText() : QString();
+
+  const RoiService::CreateResult createResult =
+      m_roiService.createFromPolygon(polygon, frameSize, typedName, purpose);
+  if (!createResult.ok)
   {
-    m_ui.logView->append(QString("[ROI] 생성 실패: %1").arg(nameError));
-    return;
-  }
-  if (isDuplicateRoiName(typedName))
-  {
-    m_ui.logView->append(
-        QString("[ROI] 생성 실패: 이름 '%1' 이(가) 이미 존재합니다.").arg(typedName));
-    return;
-  }
-  QJsonObject roiData{
-      {"rod_id", rodId},
-      {"rod_name", typedName},
-      {"rod_enable", true},
-      {"rod_purpose", m_ui.roiPurposeCombo
-                          ? m_ui.roiPurposeCombo->currentText()
-                          : QStringLiteral("일반 주차")},
-      {"rod_points", points},
-      {"bbox",
-       QJsonObject{
-           {"x", normX(bbox.x())},
-           {"y", normY(bbox.y())},
-           {"w", qBound(0.0, static_cast<double>(bbox.width()) / frameW, 1.0)},
-           {"h", qBound(0.0, static_cast<double>(bbox.height()) / frameH, 1.0)},
-       }},
-      {"created_at", ts},
-  };
-  m_roiRecords.append(roiData);
-  QString dbError;
-  if (!m_roiRepository.upsert(roiData, &dbError))
-  {
-    m_roiRecords.removeLast();
-    if (m_ui.videoWidget->roiCount() > 0)
+    if (m_ui.videoWidget && m_ui.videoWidget->roiCount() > 0)
     {
       m_ui.videoWidget->removeRoiAt(m_ui.videoWidget->roiCount() - 1);
     }
-    m_ui.logView->append(QString("[ROI][DB] 저장 실패: %1").arg(dbError));
+    m_ui.logView->append(QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
     refreshRoiSelector();
     return;
   }
+
   refreshRoiSelector();
   if (m_ui.roiSelectorCombo)
   {
     m_ui.roiSelectorCombo->setCurrentIndex(m_ui.roiSelectorCombo->count() - 1);
   }
-  appendRoiStructuredLog(roiData);
+  appendRoiStructuredLog(createResult.record);
 }
 
 void MainWindowController::onMetadataReceived(const QList<ObjectInfo> &objects)
 {
-  m_metadataSynchronizer.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
+  m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
 }
 
 void MainWindowController::onFrameCaptured(const QImage &frame)
@@ -478,6 +313,6 @@ void MainWindowController::onFrameCaptured(const QImage &frame)
     return;
   }
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  m_ui.videoWidget->updateMetadata(m_metadataSynchronizer.consumeReady(nowMs));
+  m_ui.videoWidget->updateMetadata(m_cameraSession.consumeReadyMetadata(nowMs));
   m_ui.videoWidget->updateFrame(frame);
 }
