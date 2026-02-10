@@ -24,6 +24,7 @@
  * 비디오 프레임에 메타데이터 오버레이를 그리고 OCR 처리를 수행합니다.
  * MainWindow에서 비디오 렌더링 로직을 분리합니다.
  */
+
 class VideoWidget : public QLabel
 {
   Q_OBJECT
