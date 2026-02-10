@@ -14,6 +14,8 @@ qt_add_executable(rtsp_test
     # UI
     src/ui/windows/mainwindow.cpp
     src/ui/windows/mainwindow.h
+    src/ui/windows/mainwindowcontroller.cpp
+    src/ui/windows/mainwindowcontroller.h
     src/ui/video/videowidget.cpp
     src/ui/video/videowidget.h
     src/ui/roi/roiinteractionstate.cpp

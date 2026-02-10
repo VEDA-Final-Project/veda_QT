@@ -20,6 +20,69 @@ namespace
     }
     return db.lastError().text();
   }
+
+  bool execSql(QSqlDatabase &db, const QString &sql, QString *errorMessage)
+  {
+    QSqlQuery query(db);
+    if (!query.exec(sql))
+    {
+      if (errorMessage)
+      {
+        *errorMessage = sqlError(query, db);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  bool tableHasColumn(QSqlDatabase &db, const QString &tableName,
+                      const QString &columnName, bool *hasColumn,
+                      QString *errorMessage)
+  {
+    if (!hasColumn)
+    {
+      if (errorMessage)
+      {
+        *errorMessage = QStringLiteral("컬럼 검사 결과 포인터가 null입니다.");
+      }
+      return false;
+    }
+
+    *hasColumn = false;
+    QSqlQuery query(db);
+    if (!query.exec(QStringLiteral("PRAGMA table_info(%1)").arg(tableName)))
+    {
+      if (errorMessage)
+      {
+        *errorMessage = sqlError(query, db);
+      }
+      return false;
+    }
+
+    while (query.next())
+    {
+      if (query.value(1).toString() == columnName)
+      {
+        *hasColumn = true;
+        break;
+      }
+    }
+    return true;
+  }
+
+  QString roiTableDdl()
+  {
+    return QStringLiteral(
+        "CREATE TABLE IF NOT EXISTS roi ("
+        "rod_id TEXT PRIMARY KEY,"
+        "rod_name TEXT NOT NULL UNIQUE COLLATE NOCASE,"
+        "rod_enable INTEGER NOT NULL DEFAULT 1,"
+        "rod_purpose TEXT NOT NULL,"
+        "rod_points TEXT NOT NULL,"
+        "bbox TEXT NOT NULL,"
+        "created_at TEXT NOT NULL"
+        ")");
+  }
 } // namespace
 
 RoiRepository::RoiRepository()
@@ -92,7 +155,7 @@ QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const
   QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   if (!query.exec(QStringLiteral(
-          "SELECT rod_id, rod_name, rod_enable, rod_purpose, rod_points, bbox, created_at, updated_at "
+          "SELECT rod_id, rod_name, rod_enable, rod_purpose, rod_points, bbox, created_at "
           "FROM roi ORDER BY datetime(created_at) ASC, rod_id ASC")))
   {
     if (errorMessage)
@@ -123,7 +186,6 @@ QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const
         {"rod_points", points},
         {"bbox", bbox},
         {"created_at", query.value(6).toString()},
-        {"updated_at", query.value(7).toString()},
     };
     if (isValidRoiRecord(record))
     {
@@ -155,15 +217,14 @@ bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage)
   QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "INSERT INTO roi (rod_id, rod_name, rod_enable, rod_purpose, rod_points, bbox, created_at, updated_at) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+      "INSERT INTO roi (rod_id, rod_name, rod_enable, rod_purpose, rod_points, bbox, created_at) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?) "
       "ON CONFLICT(rod_id) DO UPDATE SET "
       "rod_name = excluded.rod_name, "
       "rod_enable = excluded.rod_enable, "
       "rod_purpose = excluded.rod_purpose, "
       "rod_points = excluded.rod_points, "
-      "bbox = excluded.bbox, "
-      "updated_at = excluded.updated_at"));
+      "bbox = excluded.bbox"));
 
   query.addBindValue(roiData.value("rod_id").toString());
   query.addBindValue(roiData.value("rod_name").toString());
@@ -174,7 +235,6 @@ bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage)
   query.addBindValue(
       QJsonDocument(roiData.value("bbox").toObject()).toJson(QJsonDocument::Compact));
   query.addBindValue(roiData.value("created_at").toString());
-  query.addBindValue(roiData.value("updated_at").toString());
 
   if (!query.exec())
   {
@@ -233,23 +293,52 @@ bool RoiRepository::ensureSchema(QString *errorMessage)
   }
 
   QSqlDatabase db = QSqlDatabase::database(m_connectionName);
-  QSqlQuery query(db);
-  const QString ddl = QStringLiteral(
-      "CREATE TABLE IF NOT EXISTS roi ("
-      "rod_id TEXT PRIMARY KEY,"
-      "rod_name TEXT NOT NULL UNIQUE COLLATE NOCASE,"
-      "rod_enable INTEGER NOT NULL DEFAULT 1,"
-      "rod_purpose TEXT NOT NULL,"
-      "rod_points TEXT NOT NULL,"
-      "bbox TEXT NOT NULL,"
-      "created_at TEXT NOT NULL,"
-      "updated_at TEXT NOT NULL"
-      ")");
-  if (!query.exec(ddl))
+  if (!execSql(db, roiTableDdl(), errorMessage))
+  {
+    return false;
+  }
+
+  bool hasUpdatedAt = false;
+  if (!tableHasColumn(db, QStringLiteral("roi"), QStringLiteral("updated_at"),
+                      &hasUpdatedAt, errorMessage))
+  {
+    return false;
+  }
+  if (!hasUpdatedAt)
+  {
+    return true;
+  }
+
+  if (!db.transaction())
   {
     if (errorMessage)
     {
-      *errorMessage = sqlError(query, db);
+      *errorMessage = db.lastError().text();
+    }
+    return false;
+  }
+
+  if (!execSql(db, QStringLiteral("ALTER TABLE roi RENAME TO roi_old"),
+               errorMessage) ||
+      !execSql(db, roiTableDdl(), errorMessage) ||
+      !execSql(db,
+               QStringLiteral(
+                   "INSERT INTO roi (rod_id, rod_name, rod_enable, rod_purpose, "
+                   "rod_points, bbox, created_at) "
+                   "SELECT rod_id, rod_name, rod_enable, rod_purpose, rod_points, "
+                   "bbox, created_at FROM roi_old"),
+               errorMessage) ||
+      !execSql(db, QStringLiteral("DROP TABLE roi_old"), errorMessage))
+  {
+    db.rollback();
+    return false;
+  }
+
+  if (!db.commit())
+  {
+    if (errorMessage)
+    {
+      *errorMessage = db.lastError().text();
     }
     return false;
   }
@@ -263,6 +352,5 @@ bool RoiRepository::isValidRoiRecord(const QJsonObject &roiData)
          !roiData.value("rod_purpose").toString().isEmpty() &&
          roiData.value("rod_points").isArray() &&
          roiData.value("bbox").isObject() &&
-         !roiData.value("created_at").toString().isEmpty() &&
-         !roiData.value("updated_at").toString().isEmpty();
+         !roiData.value("created_at").toString().isEmpty();
 }
