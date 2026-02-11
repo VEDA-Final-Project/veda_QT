@@ -7,27 +7,52 @@
 
 - **RTSP 영상 스트리밍**: OpenCV 및 FFmpeg를 활용한 저지연 비디오 재생
 - **AI 메타데이터 시각화**: 카메라에서 수신한 AI 객체(차량, 번호판 등) 정보를 영상 위에 오버레이
+- **ROI(관심 구역) 관리**: 다각형 ROI 생성/저장/삭제 및 화면 라벨 표시
 - **번호판 OCR**: Tesseract OCR을 통한 번호판 텍스트 추출 (비동기 처리)
 - **설정 외부화**: `settings.json`을 통해 카메라 IP, 해상도, 싱크 조절 등을 간편하게 관리
-- **싱크 조절**: 영상과 메타데이터 간의 시간차를 UI에서 실시간으로 보정 가능
+- **싱크 조절**: 설정(`defaultDelayMs`) 기반으로 영상/메타데이터 시간차 보정
 
 ## 🏗️ 프로젝트 구조
 
-프로젝트는 기능별로 명확하게 분리된 디렉토리 구조를 가지고 있습니다.
+프로젝트는 기능별 디렉토리로 분리되어 있습니다.
 
-```
+```text
 veda_QT/
-├── config/              # 설정 파일 디렉토리
-│   └── settings.json    # 카메라, 비디오, OCR 설정
-├── src/                 # 소스 코드
-│   ├── core/            # 핵심 로직 (Config, CameraManager)
-│   ├── ui/              # 사용자 인터페이스 (MainWindow, VideoWidget)
-│   ├── video/           # 비디오 스트리밍 (VideoThread)
-│   ├── metadata/        # 메타데이터 수신 (MetadataThread)
-│   └── ocr/             # OCR 엔진 (OcrManager)
-├── tessdata/            # Tesseract 언어 데이터 (선택 사항)
-└── CMakeLists.txt       # CMake 빌드 설정
+├── CMakeLists.txt
+├── config/
+│   └── settings.json
+└── src/
+    ├── main.cpp
+    ├── camera/
+    │   ├── cameramanager.h/.cpp
+    │   └── camerasessionservice.h/.cpp
+    ├── config/
+    │   └── config.h/.cpp
+    ├── logging/
+    │   └── logdeduplicator.h/.cpp
+    ├── metadata/
+    │   ├── metadatathread.h/.cpp
+    │   └── metadatasynchronizer.h/.cpp
+    ├── ocr/
+    │   ├── ocrmanager.h/.cpp
+    │   └── plateocrcoordinator.h/.cpp
+    ├── roi/
+    │   ├── roirepository.h/.cpp
+    │   └── roiservice.h/.cpp
+    ├── ui/
+    │   ├── windows/
+    │   │   ├── mainwindow.h/.cpp
+    │   │   └── mainwindowcontroller.h/.cpp
+    │   ├── video/
+    │   │   ├── videowidget.h/.cpp
+    │   │   └── videoframerenderer.h/.cpp
+    │   └── roi/
+    │       └── roiinteractionstate.h/.cpp
+    └── video/
+        └── videothread.h/.cpp
 ```
+
+> **참고**: Tesseract 언어 데이터(`tessdata/`, `kor.traineddata` 등)는 `settings.json`의 `tessdataPath`에 지정한 경로에 두면 됩니다.
 
 ## 🛠️ 개발 환경 및 요구 사항
 
@@ -39,6 +64,19 @@ veda_QT/
   - Tesseract 5.x
   - Leptonica
   - FFmpeg (런타임 필요)
+
+## 📥 Qt 설치 방법 (Windows)
+
+1. **Qt 다운로드**: [Qt Online Installer](https://www.qt.io/download-qt-installer)에서 설치 프로그램 다운로드 후 실행.
+2. **선택할 구성 요소**:
+   - **Qt** → **Qt 6.5.x** (이상)
+     - **MSVC 2019/2022 64-bit** (Visual Studio 사용 시) 또는 **MinGW 64-bit**
+   - **Developer and Designer Tools**:
+     - **Qt Creator**
+     - **CMake**
+     - **Ninja** (권장)
+3. **MSVC 사용 시**: Visual Studio 2019/2022 설치 후 **Desktop development with C++** 워크로드 포함.
+4. 설치 완료 후 Qt Creator에서 이 프로젝트의 `CMakeLists.txt`를 열고, Kit을 위에서 선택한 컴파일러와 맞추면 됩니다.
 
 ## 📦 빌드 및 실행 방법
 
@@ -53,15 +91,14 @@ git clone https://github.com/microsoft/vcpkg.git
 
 ### 2. 의존성 라이브러리 설치
 ```powershell
-# 프로젝트 루트 또는 vcpkg 폴더에서 실행
-vcpkg install opencv tesseract leptonica --triplet x64-windows
+# [vcpkg-root]는 vcpkg를 clone한 폴더 경로입니다.
+.\vcpkg\vcpkg install opencv tesseract leptonica --triplet x64-windows
 ```
 
 ### 3. 프로젝트 빌드 (CMake)
 ```powershell
-# 빌드 디렉토리 생성 및 구성
 # [vcpkg-root]를 본인의 vcpkg 설치 경로로 변경하세요.
-# 예: C:/Users/seok/Documents/veda/vcpkg/scripts/buildsystems/vcpkg.cmake
+# 예: D:/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[vcpkg-root]/scripts/buildsystems/vcpkg.cmake"
 
@@ -69,8 +106,10 @@ cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[vcpkg-root]/scripts/buildsystems/vc
 cmake --build build --config Release
 ```
 
+**Qt Creator에서 빌드**: 프로젝트 열기 → `CMakeLists.txt` 선택 → Kit 선택 후, CMake 설정에서 `CMAKE_TOOLCHAIN_FILE`을 vcpkg의 `scripts/buildsystems/vcpkg.cmake` 경로로 지정한 뒤 Configure & Build.
+
 ### 4. 실행
-`build/Release/rtsp_test.exe`를 실행합니다.
+`build/Release/rtsp_test.exe`를 실행합니다. 빌드 시 `config/` 폴더가 실행 파일 옆으로 자동 복사됩니다.
 
 > **참고**: FFmpeg 실행 파일(`ffmpeg.exe`)이 시스템 PATH에 있거나 실행 파일과 같은 폴더에 있어야 메타데이터 수신 기능이 작동합니다.
 
@@ -83,7 +122,7 @@ cmake --build build --config Release
   "camera": {
     "ip": "192.168.0.100",       // 카메라 IP
     "username": "admin",         // RTSP 계정
-    "password": "password",      // RTSP 비밀번호
+    "password": "********",      // RTSP 비밀번호 (실제 값으로 교체)
     "profile": "profile2/media.smp" // RTSP 프로파일
   },
   "video": {

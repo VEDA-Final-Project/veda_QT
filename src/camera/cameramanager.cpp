@@ -1,4 +1,11 @@
 #include "cameramanager.h"
+#include <QElapsedTimer>
+
+namespace
+{
+constexpr unsigned long kThreadStopTimeoutMs = 2000;
+constexpr unsigned long kForceStopWaitMs = 500;
+}
 
 /**
  * @brief CameraManager 생성자
@@ -88,18 +95,36 @@ void CameraManager::restart() {
  * - 비디오/메타데이터 스레드를 안전하게 종료
  */
 void CameraManager::stop() {
+    QElapsedTimer shutdownTimer;
+    shutdownTimer.start();
 
     // === 비디오 스레드 종료 ===
     if (m_videoThread->isRunning()) {
         m_videoThread->stop(); // 종료 요청
-        m_videoThread->wait(); // 실제 종료까지 대기
+        if (!m_videoThread->wait(kThreadStopTimeoutMs)) {
+            emit logMessage(QString("Warning: video thread stop timeout (%1 ms). Forcing terminate.")
+                                .arg(kThreadStopTimeoutMs));
+            m_videoThread->terminate();
+            if (!m_videoThread->wait(kForceStopWaitMs)) {
+                emit logMessage("Error: video thread did not terminate cleanly.");
+            }
+        }
     }
 
     // === 메타데이터 스레드 종료 ===
     if (m_metadataThread->isRunning()) {
         m_metadataThread->stop();
-        m_metadataThread->wait();
+        if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
+            emit logMessage(QString("Warning: metadata thread stop timeout (%1 ms). Forcing terminate.")
+                                .arg(kThreadStopTimeoutMs));
+            m_metadataThread->terminate();
+            if (!m_metadataThread->wait(kForceStopWaitMs)) {
+                emit logMessage("Error: metadata thread did not terminate cleanly.");
+            }
+        }
     }
+
+    emit logMessage(QString("Camera stop completed in %1 ms.").arg(shutdownTimer.elapsed()));
 }
 
 /**

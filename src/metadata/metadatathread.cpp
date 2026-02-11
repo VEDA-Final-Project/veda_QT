@@ -59,8 +59,9 @@ void MetadataThread::setConnectionInfo(const QString &ip, const QString &user,
  * - 이벤트 루프 종료 → run() 정리 단계로 이동
  */
 void MetadataThread::stop() {
-    quit();   // 이벤트 루프 종료 요청
-    wait();   // 스레드 종료까지 대기
+    // 이벤트 루프 종료 요청만 수행한다.
+    // 실제 대기는 상위 호출자(CameraManager)에서 타임아웃 정책으로 처리한다.
+    quit();
 }
 
 /**
@@ -270,10 +271,9 @@ void MetadataThread::parseFrame(const QString &frameXml) {
         objects.append(info);
     }
 
-    // === 파싱된 객체가 있으면 외부로 전달 ===
-    if (!objects.isEmpty()) {
-        emit metadataReceived(objects);
-    }
+    // Always propagate the frame state, including empty-object frames.
+    // Otherwise the last non-empty metadata may stay on screen as a ghost box.
+    emit metadataReceived(objects);
 }
 
 /**
