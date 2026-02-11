@@ -1,9 +1,9 @@
 #ifndef MAINWINDOWCONTROLLER_H
 #define MAINWINDOWCONTROLLER_H
 
-#include "core/camerasessionservice.h"
-#include "core/logdeduplicator.h"
-#include "core/roiservice.h"
+#include "camera/camerasessionservice.h"
+#include "logging/logdeduplicator.h"
+#include "roi/roiservice.h"
 #include "ocr/plateocrcoordinator.h"
 #include <QComboBox>
 #include <QJsonObject>

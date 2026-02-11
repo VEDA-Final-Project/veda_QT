@@ -1,4 +1,4 @@
-#include "core/config.h"
+#include "config/config.h"
 #include "ui/windows/mainwindow.h"
 
 #include <QApplication>

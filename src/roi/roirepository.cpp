@@ -1,4 +1,4 @@
-#include "core/roirepository.h"
+#include "roi/roirepository.h"
 
 #include <QDir>
 #include <QFileInfo>

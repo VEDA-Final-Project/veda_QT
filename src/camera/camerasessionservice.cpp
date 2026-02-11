@@ -1,4 +1,4 @@
-#include "core/camerasessionservice.h"
+#include "camera/camerasessionservice.h"
 
 void CameraSessionService::setCameraManager(CameraManager *cameraManager)
 {

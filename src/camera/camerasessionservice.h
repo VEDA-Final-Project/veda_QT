@@ -1,8 +1,8 @@
 #ifndef CAMERASESSIONSERVICE_H
 #define CAMERASESSIONSERVICE_H
 
-#include "core/cameramanager.h"
-#include "core/metadatasynchronizer.h"
+#include "camera/cameramanager.h"
+#include "metadata/metadatasynchronizer.h"
 #include <QList>
 
 class CameraSessionService

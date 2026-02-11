@@ -1,6 +1,6 @@
 #include "mainwindowcontroller.h"
 
-#include "core/config.h"
+#include "config/config.h"
 #include "ui/video/videowidget.h"
 #include <QCoreApplication>
 #include <QDateTime>

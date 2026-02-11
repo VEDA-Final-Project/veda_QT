@@ -1,7 +1,7 @@
 #ifndef CAMERAMANAGER_H
 #define CAMERAMANAGER_H
 
-#include "core/config.h"
+#include "config/config.h"
 #include "metadata/metadatathread.h"
 #include "video/videothread.h"
 #include <QObject>

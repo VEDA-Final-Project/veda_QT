@@ -34,20 +34,20 @@ qt_add_executable(rtsp_test
     src/ocr/plateocrcoordinator.cpp
     src/ocr/plateocrcoordinator.h
     # Core
-    src/core/config.cpp
-    src/core/config.h
-    src/core/cameramanager.cpp
-    src/core/cameramanager.h
-    src/core/camerasessionservice.cpp
-    src/core/camerasessionservice.h
-    src/core/logdeduplicator.cpp
-    src/core/logdeduplicator.h
-    src/core/metadatasynchronizer.cpp
-    src/core/metadatasynchronizer.h
-    src/core/roirepository.cpp
-    src/core/roirepository.h
-    src/core/roiservice.cpp
-    src/core/roiservice.h
+    src/config/config.cpp
+    src/config/config.h
+    src/camera/cameramanager.cpp
+    src/camera/cameramanager.h
+    src/camera/camerasessionservice.cpp
+    src/camera/camerasessionservice.h
+    src/logging/logdeduplicator.cpp
+    src/logging/logdeduplicator.h
+    src/metadata/metadatasynchronizer.cpp
+    src/metadata/metadatasynchronizer.h
+    src/roi/roirepository.cpp
+    src/roi/roirepository.h
+    src/roi/roiservice.cpp
+    src/roi/roiservice.h
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)

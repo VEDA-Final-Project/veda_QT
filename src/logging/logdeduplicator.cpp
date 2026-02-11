@@ -1,4 +1,4 @@
-#include "core/logdeduplicator.h"
+#include "logging/logdeduplicator.h"
 
 LogDeduplicator::LogDeduplicator(qint64 duplicateWindowMs)
     : m_duplicateWindowMs(duplicateWindowMs)

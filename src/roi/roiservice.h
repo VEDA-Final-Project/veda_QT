@@ -1,7 +1,7 @@
 #ifndef ROISERVICE_H
 #define ROISERVICE_H
 
-#include "core/roirepository.h"
+#include "roi/roirepository.h"
 #include <QJsonObject>
 #include <QList>
 #include <QPolygon>

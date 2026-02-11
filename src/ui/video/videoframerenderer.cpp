@@ -1,25 +1,25 @@
 #include "videoframerenderer.h"
-#include "core/config.h"
+#include "config/config.h"
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
 
 namespace
 {
-QRegion roiRegionOnFrame(const QRect &frameRect, const QList<QPolygon> &roiPolygons)
-{
-  QRegion region;
-  const QRegion frameRegion(frameRect);
-  for (const QPolygon &polygon : roiPolygons)
+  QRegion roiRegionOnFrame(const QRect &frameRect, const QList<QPolygon> &roiPolygons)
   {
-    if (polygon.size() < 3)
+    QRegion region;
+    const QRegion frameRegion(frameRect);
+    for (const QPolygon &polygon : roiPolygons)
     {
-      continue;
+      if (polygon.size() < 3)
+      {
+        continue;
+      }
+      region = region.united(QRegion(polygon, Qt::WindingFill).intersected(frameRegion));
     }
-    region = region.united(QRegion(polygon, Qt::WindingFill).intersected(frameRegion));
+    return region;
   }
-  return region;
-}
 } // namespace
 
 QImage VideoFrameRenderer::compose(const QImage &frame, const QList<ObjectInfo> &objects,

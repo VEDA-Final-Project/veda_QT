@@ -1,5 +1,5 @@
 #include "ocr/plateocrcoordinator.h"
-#include "core/config.h"
+#include "config/config.h"
 #include <QDebug>
 
 PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent)
