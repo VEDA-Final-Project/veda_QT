@@ -7,40 +7,49 @@
 
 - **RTSP 영상 스트리밍**: OpenCV 및 FFmpeg를 활용한 저지연 비디오 재생
 - **AI 메타데이터 시각화**: 카메라에서 수신한 AI 객체(차량, 번호판 등) 정보를 영상 위에 오버레이
+- **ROI(관심 구역) 관리**: 다각형 ROI 생성/저장/삭제 및 화면 라벨 표시
 - **번호판 OCR**: Tesseract OCR을 통한 번호판 텍스트 추출 (비동기 처리)
 - **설정 외부화**: `settings.json`을 통해 카메라 IP, 해상도, 싱크 조절 등을 간편하게 관리
-- **싱크 조절**: 영상과 메타데이터 간의 시간차를 UI에서 실시간으로 보정 가능
+- **싱크 조절**: 설정(`defaultDelayMs`) 기반으로 영상/메타데이터 시간차 보정
 
 ## 🏗️ 프로젝트 구조
 
-프로젝트는 기능별로 명확하게 분리된 디렉토리 구조를 가지고 있습니다.
+프로젝트는 기능별 디렉토리로 분리되어 있습니다.
 
-```
+```text
 veda_QT/
-├── CMakeLists.txt          # Qt6(CMake) 빌드 설정, OpenCV/Tesseract/Leptonica 링크
+├── CMakeLists.txt
 ├── config/
-│   └── settings.json       # 런타임 설정 (빌드 시 실행 파일 옆 config/ 로 복사됨)
-	└── src/
-	    ├── main.cpp            # 앱 진입점: Config 로드 후 MainWindow 실행
-	    ├── core/
-	    │   ├── config.h/.cpp                 # settings.json 로드 및 기본값 관리 (싱글톤)
-	    │   ├── cameramanager.h/.cpp          # 카메라/스트림 관련 핵심 관리
-	    │   └── metadatasynchronizer.h/.cpp   # 영상/메타데이터 싱크 보정
-	    ├── ui/
-	    │   ├── windows/
-	    │   │   └── mainwindow.h/.cpp         # 메인 윈도우 및 ROI 관리 UI
-	    │   ├── video/
-	    │   │   ├── videowidget.h/.cpp        # 영상 표시 위젯
-	    │   │   └── videoframerenderer.h/.cpp # 프레임 오버레이/렌더링
-	    │   └── roi/
-	    │       └── roiinteractionstate.h/.cpp # ROI 입력 상태 관리
-	    ├── video/
-	    │   └── videothread.h/.cpp      # RTSP 영상 스트리밍 스레드
-	    ├── metadata/
-	    │   └── metadatathread.h/.cpp   # 카메라 AI 메타데이터 수신 스레드
-	    └── ocr/
-	        ├── ocrmanager.h/.cpp             # Tesseract OCR 엔진 래퍼
-	        └── plateocrcoordinator.h/.cpp    # OCR 요청 직렬화/조율
+│   └── settings.json
+└── src/
+    ├── main.cpp
+    ├── camera/
+    │   ├── cameramanager.h/.cpp
+    │   └── camerasessionservice.h/.cpp
+    ├── config/
+    │   └── config.h/.cpp
+    ├── logging/
+    │   └── logdeduplicator.h/.cpp
+    ├── metadata/
+    │   ├── metadatathread.h/.cpp
+    │   └── metadatasynchronizer.h/.cpp
+    ├── ocr/
+    │   ├── ocrmanager.h/.cpp
+    │   └── plateocrcoordinator.h/.cpp
+    ├── roi/
+    │   ├── roirepository.h/.cpp
+    │   └── roiservice.h/.cpp
+    ├── ui/
+    │   ├── windows/
+    │   │   ├── mainwindow.h/.cpp
+    │   │   └── mainwindowcontroller.h/.cpp
+    │   ├── video/
+    │   │   ├── videowidget.h/.cpp
+    │   │   └── videoframerenderer.h/.cpp
+    │   └── roi/
+    │       └── roiinteractionstate.h/.cpp
+    └── video/
+        └── videothread.h/.cpp
 ```
 
 > **참고**: Tesseract 언어 데이터(`tessdata/`, `kor.traineddata` 등)는 `settings.json`의 `tessdataPath`에 지정한 경로에 두면 됩니다.
