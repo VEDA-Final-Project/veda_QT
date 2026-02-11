@@ -2,17 +2,23 @@
 #define MAINWINDOW_H
 
 #include "ui/video/videowidget.h"
-#include <QComboBox>
 #include <QCloseEvent>
+#include <QComboBox>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QPushButton>
+#include <QSpinBox>
+#include <QTabWidget>
+#include <QTableWidget>
 #include <QTextEdit>
 
+
 class MainWindowController;
-class MainWindow : public QMainWindow
-{
+class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
@@ -35,6 +41,15 @@ private:
   QPushButton *m_btnApplyRoi = nullptr;
   QPushButton *m_btnFinishRoi = nullptr;
   QPushButton *m_btnDeleteRoi = nullptr;
+
+  // Telegram Widgets
+  QLabel *m_userCountLabel = nullptr;
+  QLineEdit *m_entryPlateInput = nullptr;
+  QPushButton *m_btnSendEntry = nullptr;
+  QLineEdit *m_exitPlateInput = nullptr;
+  QSpinBox *m_feeInput = nullptr;
+  QPushButton *m_btnSendExit = nullptr;
+  QTableWidget *m_userTable = nullptr;
 
   MainWindowController *m_controller = nullptr;
 };

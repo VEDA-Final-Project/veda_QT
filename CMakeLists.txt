@@ -48,6 +48,8 @@ qt_add_executable(rtsp_test
     src/roi/roirepository.h
     src/roi/roiservice.cpp
     src/roi/roiservice.h
+    src/telegram/telegrambotapi.cpp
+    src/telegram/telegrambotapi.h
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)

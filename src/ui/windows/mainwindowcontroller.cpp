@@ -9,15 +9,18 @@
 #include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QSpinBox>
 #include <QStringList>
+#include <QTableWidget> // User Table
 
-MainWindowController::MainWindowController(const UiRefs &uiRefs, QObject *parent)
-    : QObject(parent), m_ui(uiRefs)
-{
+MainWindowController::MainWindowController(const UiRefs &uiRefs,
+                                           QObject *parent)
+    : QObject(parent), m_ui(uiRefs) {
   // 컨트롤러가 하위 서비스의 수명을 소유한다.
   // (QObject parent 관계로 MainWindow 종료 시 함께 정리됨)
   m_cameraManager = new CameraManager(this);
   m_ocrCoordinator = new PlateOcrCoordinator(this);
+  m_telegramApi = new TelegramBotAPI(this);
 
   // 세션 서비스는 "카메라 제어 + 메타데이터 지연 동기화"를 묶는 파사드 역할.
   m_cameraSession.setCameraManager(m_cameraManager);
@@ -28,56 +31,47 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs, QObject *parent
   connectSignals();
 }
 
-void MainWindowController::shutdown()
-{
+void MainWindowController::shutdown() {
   QElapsedTimer timer;
   timer.start();
 
   const QString summary = m_logDeduplicator.flushPending();
-  if (!summary.isEmpty())
-  {
+  if (!summary.isEmpty()) {
     qDebug() << summary;
-    if (m_ui.logView)
-    {
+    if (m_ui.logView) {
       m_ui.logView->append(summary);
     }
   }
   m_cameraSession.stop();
 
   const QString shutdownLog =
-      QString("[Shutdown] camera/session stop finished in %1 ms").arg(timer.elapsed());
+      QString("[Shutdown] camera/session stop finished in %1 ms")
+          .arg(timer.elapsed());
   qDebug() << shutdownLog;
-  if (m_ui.logView)
-  {
+  if (m_ui.logView) {
     m_ui.logView->append(shutdownLog);
   }
 }
 
-void MainWindowController::connectSignals()
-{
+void MainWindowController::connectSignals() {
   // UI 이벤트(버튼/위젯) -> Controller 슬롯 연결
-  if (m_ui.btnPlay)
-  {
+  if (m_ui.btnPlay) {
     connect(m_ui.btnPlay, &QPushButton::clicked, this,
             &MainWindowController::playCctv);
   }
-  if (m_ui.btnApplyRoi)
-  {
+  if (m_ui.btnApplyRoi) {
     connect(m_ui.btnApplyRoi, &QPushButton::clicked, this,
             &MainWindowController::onStartRoiDraw);
   }
-  if (m_ui.btnFinishRoi)
-  {
+  if (m_ui.btnFinishRoi) {
     connect(m_ui.btnFinishRoi, &QPushButton::clicked, this,
             &MainWindowController::onFinishRoiDraw);
   }
-  if (m_ui.btnDeleteRoi)
-  {
+  if (m_ui.btnDeleteRoi) {
     connect(m_ui.btnDeleteRoi, &QPushButton::clicked, this,
             &MainWindowController::onDeleteRoi);
   }
-  if (m_ui.videoWidget)
-  {
+  if (m_ui.videoWidget) {
     connect(m_ui.videoWidget, &VideoWidget::roiChanged, this,
             &MainWindowController::onRoiChanged);
     connect(m_ui.videoWidget, &VideoWidget::roiPolygonChanged, this,
@@ -95,47 +89,60 @@ void MainWindowController::connectSignals()
           &MainWindowController::onLogMessage);
   connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
           &MainWindowController::onOcrResult);
+
+  // Telegram UI -> Controller
+  if (m_ui.btnSendEntry) {
+    connect(m_ui.btnSendEntry, &QPushButton::clicked, this,
+            &MainWindowController::onSendEntry);
+  }
+  if (m_ui.btnSendExit) {
+    connect(m_ui.btnSendExit, &QPushButton::clicked, this,
+            &MainWindowController::onSendExit);
+  }
+
+  // Telegram API -> Controller
+  connect(m_telegramApi, &TelegramBotAPI::logMessage, this,
+          &MainWindowController::onTelegramLog);
+  connect(m_telegramApi, &TelegramBotAPI::usersUpdated, this,
+          &MainWindowController::onUsersUpdated);
+  connect(m_telegramApi, &TelegramBotAPI::paymentConfirmed, this,
+          &MainWindowController::onPaymentConfirmed);
 }
 
-void MainWindowController::initRoiDb()
-{
-  const QString roiDbPath =
-      QDir(QCoreApplication::applicationDirPath()).filePath("config/roi.sqlite");
+void MainWindowController::initRoiDb() {
+  const QString roiDbPath = QDir(QCoreApplication::applicationDirPath())
+                                .filePath("config/roi.sqlite");
   const RoiService::InitResult initResult = m_roiService.init(roiDbPath);
-  if (!initResult.ok)
-  {
-    if (m_ui.logView)
-    {
-      m_ui.logView->append(QString("[ROI][DB] 초기화 실패: %1").arg(initResult.error));
+  if (!initResult.ok) {
+    if (m_ui.logView) {
+      m_ui.logView->append(
+          QString("[ROI][DB] 초기화 실패: %1").arg(initResult.error));
     }
     return;
   }
 
-  if (m_ui.videoWidget)
-  {
+  if (m_ui.videoWidget) {
     // DB에는 정규화 좌표(0~1)로 저장되어 있으므로
     // 첫 프레임 렌더 시 실제 픽셀 좌표로 복원하도록 큐에 적재한다.
     QStringList roiLabels;
     const QVector<QJsonObject> &records = m_roiService.records();
     roiLabels.reserve(records.size());
-    for (const QJsonObject &record : records)
-    {
+    for (const QJsonObject &record : records) {
       roiLabels.append(record["rod_name"].toString().trimmed());
     }
-    m_ui.videoWidget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
+    m_ui.videoWidget->queueNormalizedRoiPolygons(initResult.normalizedPolygons,
+                                                 roiLabels);
   }
 
   refreshRoiSelector();
-  if (m_ui.logView && initResult.loadedCount > 0)
-  {
-    m_ui.logView->append(QString("[ROI][DB] %1개 ROI 로드 완료").arg(initResult.loadedCount));
+  if (m_ui.logView && initResult.loadedCount > 0) {
+    m_ui.logView->append(
+        QString("[ROI][DB] %1개 ROI 로드 완료").arg(initResult.loadedCount));
   }
 }
 
-void MainWindowController::appendRoiStructuredLog(const QJsonObject &roiData)
-{
-  if (!m_ui.logView)
-  {
+void MainWindowController::appendRoiStructuredLog(const QJsonObject &roiData) {
+  if (!m_ui.logView) {
     return;
   }
   const QString line =
@@ -144,35 +151,30 @@ void MainWindowController::appendRoiStructuredLog(const QJsonObject &roiData)
   m_ui.logView->append(line);
 }
 
-void MainWindowController::refreshRoiSelector()
-{
-  if (!m_ui.roiSelectorCombo)
-  {
+void MainWindowController::refreshRoiSelector() {
+  if (!m_ui.roiSelectorCombo) {
     return;
   }
   m_ui.roiSelectorCombo->clear();
   m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
 
   const QVector<QJsonObject> &records = m_roiService.records();
-  for (int i = 0; i < records.size(); ++i)
-  {
+  for (int i = 0; i < records.size(); ++i) {
     const QJsonObject &record = records[i];
-    const QString name = record["rod_name"].toString(QString("rod_%1").arg(i + 1));
+    const QString name =
+        record["rod_name"].toString(QString("rod_%1").arg(i + 1));
     const QString purpose = record["rod_purpose"].toString();
     m_ui.roiSelectorCombo->addItem(QString("%1 | %2").arg(name, purpose), i);
   }
 }
 
-void MainWindowController::playCctv()
-{
+void MainWindowController::playCctv() {
   // 실행 중이면 재시작, 아니면 시작 (토글이 아닌 "재생/재연결" 동작)
   m_cameraSession.playOrRestart();
 }
 
-void MainWindowController::onLogMessage(const QString &msg)
-{
-  if (!m_ui.logView)
-  {
+void MainWindowController::onLogMessage(const QString &msg) {
+  if (!m_ui.logView) {
     return;
   }
 
@@ -180,13 +182,11 @@ void MainWindowController::onLogMessage(const QString &msg)
   const LogDeduplicator::IngestResult ingestResult =
       m_logDeduplicator.ingest(msg, nowMs);
 
-  if (!ingestResult.flushSummary.isEmpty())
-  {
+  if (!ingestResult.flushSummary.isEmpty()) {
     qDebug() << ingestResult.flushSummary;
     m_ui.logView->append(ingestResult.flushSummary);
   }
-  if (ingestResult.suppressed)
-  {
+  if (ingestResult.suppressed) {
     return;
   }
 
@@ -194,115 +194,102 @@ void MainWindowController::onLogMessage(const QString &msg)
   m_ui.logView->append(msg);
 }
 
-void MainWindowController::onOcrResult(int objectId, const QString &result)
-{
-  if (!m_ui.logView)
-  {
+void MainWindowController::onOcrResult(int objectId, const QString &result) {
+  if (!m_ui.logView) {
     return;
   }
-  const QString msg = QString("[OCR] ID:%1 Result:%2").arg(objectId).arg(result);
+  const QString msg =
+      QString("[OCR] ID:%1 Result:%2").arg(objectId).arg(result);
   qDebug() << msg;
   m_ui.logView->append(msg);
 }
 
-void MainWindowController::onStartRoiDraw()
-{
-  if (!m_ui.videoWidget || !m_ui.logView)
-  {
+void MainWindowController::onStartRoiDraw() {
+  if (!m_ui.videoWidget || !m_ui.logView) {
     return;
   }
   m_ui.videoWidget->startRoiDrawing();
-  m_ui.logView->append("[ROI] Draw mode: left-click points, then press 'ROI 완료'.");
+  m_ui.logView->append(
+      "[ROI] Draw mode: left-click points, then press 'ROI 완료'.");
 }
 
-void MainWindowController::onFinishRoiDraw()
-{
-  if (!m_ui.videoWidget || !m_ui.logView)
-  {
+void MainWindowController::onFinishRoiDraw() {
+  if (!m_ui.videoWidget || !m_ui.logView) {
     return;
   }
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
   QString nameError;
-  if (!m_roiService.isValidName(typedName, &nameError))
-  {
+  if (!m_roiService.isValidName(typedName, &nameError)) {
     m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError));
     return;
   }
-  if (m_roiService.isDuplicateName(typedName))
-  {
+  if (m_roiService.isDuplicateName(typedName)) {
     m_ui.logView->append(
-        QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.").arg(typedName));
+        QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.")
+            .arg(typedName));
     return;
   }
   // 실제 폴리곤 완료는 VideoWidget에서 처리되고,
   // 성공 시 roiPolygonChanged 시그널이 다시 컨트롤러로 올라온다.
-  if (!m_ui.videoWidget->completeRoiDrawing())
-  {
+  if (!m_ui.videoWidget->completeRoiDrawing()) {
     m_ui.logView->append("[ROI] 완료 실패: 최소 3개 점이 필요합니다.");
   }
 }
 
-void MainWindowController::onDeleteRoi()
-{
-  if (!m_ui.roiSelectorCombo || !m_ui.videoWidget || !m_ui.logView)
-  {
+void MainWindowController::onDeleteRoi() {
+  if (!m_ui.roiSelectorCombo || !m_ui.videoWidget || !m_ui.logView) {
     return;
   }
   const int recordIndex = m_ui.roiSelectorCombo->currentData().toInt();
-  if (recordIndex < 0 || recordIndex >= m_roiService.count())
-  {
+  if (recordIndex < 0 || recordIndex >= m_roiService.count()) {
     m_ui.logView->append("[ROI] 삭제 실패: ROI를 선택해주세요.");
     return;
   }
 
-  const RoiService::DeleteResult deleteResult = m_roiService.removeAt(recordIndex);
-  if (!deleteResult.ok)
-  {
-    m_ui.logView->append(QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
+  const RoiService::DeleteResult deleteResult =
+      m_roiService.removeAt(recordIndex);
+  if (!deleteResult.ok) {
+    m_ui.logView->append(
+        QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
     return;
   }
-  if (!m_ui.videoWidget->removeRoiAt(recordIndex))
-  {
-    m_ui.logView->append("[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
+  if (!m_ui.videoWidget->removeRoiAt(recordIndex)) {
+    m_ui.logView->append(
+        "[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
     return;
   }
 
   refreshRoiSelector();
   int nextRecordIndex = recordIndex;
-  if (nextRecordIndex >= m_roiService.count())
-  {
+  if (nextRecordIndex >= m_roiService.count()) {
     nextRecordIndex = m_roiService.count() - 1;
   }
-  const int comboIndex =
-      (nextRecordIndex >= 0) ? m_ui.roiSelectorCombo->findData(nextRecordIndex) : -1;
+  const int comboIndex = (nextRecordIndex >= 0)
+                             ? m_ui.roiSelectorCombo->findData(nextRecordIndex)
+                             : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
-  m_ui.logView->append(QString("[ROI] 삭제 완료: %1").arg(deleteResult.removedName));
+  m_ui.logView->append(
+      QString("[ROI] 삭제 완료: %1").arg(deleteResult.removedName));
 }
 
-void MainWindowController::onRoiChanged(const QRect &roi)
-{
-  if (!m_ui.logView)
-  {
+void MainWindowController::onRoiChanged(const QRect &roi) {
+  if (!m_ui.logView) {
     return;
   }
-  m_ui.logView->append(
-      QString("[ROI] bbox x:%1 y:%2 w:%3 h:%4")
-          .arg(roi.x())
-          .arg(roi.y())
-          .arg(roi.width())
-          .arg(roi.height()));
+  m_ui.logView->append(QString("[ROI] bbox x:%1 y:%2 w:%3 h:%4")
+                           .arg(roi.x())
+                           .arg(roi.y())
+                           .arg(roi.width())
+                           .arg(roi.height()));
 }
 
 void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
-                                               const QSize &frameSize)
-{
-  if (!m_ui.logView)
-  {
+                                               const QSize &frameSize) {
+  if (!m_ui.logView) {
     return;
   }
-  if (frameSize.isEmpty())
-  {
+  if (frameSize.isEmpty()) {
     m_ui.logView->append("[ROI] 저장 실패: 프레임 크기가 유효하지 않습니다.");
     return;
   }
@@ -314,43 +301,38 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
 
   const RoiService::CreateResult createResult =
       m_roiService.createFromPolygon(polygon, frameSize, typedName, purpose);
-  if (!createResult.ok)
-  {
+  if (!createResult.ok) {
     // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
-    if (m_ui.videoWidget && m_ui.videoWidget->roiCount() > 0)
-    {
+    if (m_ui.videoWidget && m_ui.videoWidget->roiCount() > 0) {
       m_ui.videoWidget->removeRoiAt(m_ui.videoWidget->roiCount() - 1);
     }
-    m_ui.logView->append(QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
+    m_ui.logView->append(
+        QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
     refreshRoiSelector();
     return;
   }
 
   refreshRoiSelector();
-  if (m_ui.roiSelectorCombo)
-  {
+  if (m_ui.roiSelectorCombo) {
     m_ui.roiSelectorCombo->setCurrentIndex(m_ui.roiSelectorCombo->count() - 1);
   }
-  if (m_ui.videoWidget)
-  {
+  if (m_ui.videoWidget) {
     const int recordIndex = m_roiService.count() - 1;
-    m_ui.videoWidget->setRoiLabelAt(recordIndex,
-                                    createResult.record["rod_name"].toString().trimmed());
+    m_ui.videoWidget->setRoiLabelAt(
+        recordIndex, createResult.record["rod_name"].toString().trimmed());
   }
   appendRoiStructuredLog(createResult.record);
 }
 
-void MainWindowController::onMetadataReceived(const QList<ObjectInfo> &objects)
-{
+void MainWindowController::onMetadataReceived(
+    const QList<ObjectInfo> &objects) {
   // 메타데이터는 즉시 렌더하지 않고 타임스탬프와 함께 큐에 넣는다.
   // 프레임 도착 시점에 지연값(delay)을 반영해 꺼내 쓰기 위함.
   m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
 }
 
-void MainWindowController::onFrameCaptured(const QImage &frame)
-{
-  if (!m_ui.videoWidget)
-  {
+void MainWindowController::onFrameCaptured(const QImage &frame) {
+  if (!m_ui.videoWidget) {
     return;
   }
 
@@ -359,4 +341,64 @@ void MainWindowController::onFrameCaptured(const QImage &frame)
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_ui.videoWidget->updateMetadata(m_cameraSession.consumeReadyMetadata(nowMs));
   m_ui.videoWidget->updateFrame(frame);
+}
+
+void MainWindowController::onSendEntry() {
+  if (!m_ui.entryPlateInput || !m_ui.logView)
+    return;
+
+  QString plate = m_ui.entryPlateInput->text().trimmed();
+  if (plate.isEmpty()) {
+    m_ui.logView->append("[Telegram] 차량번호를 입력해주세요.");
+    return;
+  }
+  m_telegramApi->sendEntryNotice(plate);
+}
+
+void MainWindowController::onSendExit() {
+  if (!m_ui.exitPlateInput || !m_ui.feeInput || !m_ui.logView)
+    return;
+
+  QString plate = m_ui.exitPlateInput->text().trimmed();
+  if (plate.isEmpty()) {
+    m_ui.logView->append("[Telegram] 차량번호를 입력해주세요.");
+    return;
+  }
+  m_telegramApi->sendExitNotice(plate, m_ui.feeInput->value());
+}
+
+void MainWindowController::onTelegramLog(const QString &msg) {
+  if (m_ui.logView) {
+    m_ui.logView->append(msg);
+  }
+}
+
+void MainWindowController::onUsersUpdated(int count) {
+  if (m_ui.userCountLabel) {
+    m_ui.userCountLabel->setText(QString("%1 명").arg(count));
+  }
+
+  // Update Table
+  if (m_ui.userTable && m_telegramApi) {
+    QMap<QString, QString> users = m_telegramApi->getRegisteredUsers();
+    m_ui.userTable->setRowCount(0); // Clear
+    for (auto it = users.begin(); it != users.end(); ++it) {
+      int row = m_ui.userTable->rowCount();
+      m_ui.userTable->insertRow(row);
+      m_ui.userTable->setItem(row, 0,
+                              new QTableWidgetItem(it.key())); // Chat ID
+      m_ui.userTable->setItem(row, 1,
+                              new QTableWidgetItem(it.value())); // Plate
+    }
+  }
+}
+
+void MainWindowController::onPaymentConfirmed(const QString &plate,
+                                              int amount) {
+  if (m_ui.logView) {
+    m_ui.logView->append(
+        QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
+            .arg(plate)
+            .arg(amount));
+  }
 }
