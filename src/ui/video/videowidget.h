@@ -10,6 +10,7 @@
 #include <QPaintEvent>
 #include <QPolygonF>
 #include <QSize>
+#include <QStringList>
 #include <QWidget>
 
 /**
@@ -30,7 +31,9 @@ public:
   void setUserRoi(const QRect &roi);
   void addUserRoi(const QRect &roi);
   void addUserRoiPolygon(const QPolygon &polygon);
-  void queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons);
+  void queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons,
+                                  const QStringList &labels = QStringList());
+  void setRoiLabelAt(int index, const QString &label);
   bool removeRoiAt(int index);
   int roiCount() const;
   void startRoiDrawing();
@@ -58,6 +61,8 @@ private:
   RoiInteractionState m_roiState;
   VideoFrameRenderer m_frameRenderer;
   QList<QPolygonF> m_pendingNormalizedRoiPolygons;
+  QStringList m_pendingRoiLabels;
+  QStringList m_roiLabels;
 };
 
 #endif // VIDEOWIDGET_H

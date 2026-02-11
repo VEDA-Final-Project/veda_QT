@@ -23,7 +23,8 @@ QRegion roiRegionOnFrame(const QRect &frameRect, const QList<QPolygon> &roiPolyg
 } // namespace
 
 QImage VideoFrameRenderer::compose(const QImage &frame, const QList<ObjectInfo> &objects,
-                                   const QList<QPolygon> &roiPolygons, bool roiEnabled,
+                                   const QList<QPolygon> &roiPolygons,
+                                   const QStringList &roiLabels, bool roiEnabled,
                                    QList<OcrRequest> *ocrRequests) const
 {
   QImage keyFrame = frame;
@@ -75,11 +76,24 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QList<ObjectInfo> 
   if (hasActiveRoi)
   {
     painter.setPen(QPen(Qt::red, 2, Qt::DashLine));
-    for (const QPolygon &polygon : roiPolygons)
+    for (int i = 0; i < roiPolygons.size(); ++i)
     {
+      const QPolygon &polygon = roiPolygons[i];
       if (polygon.size() >= 3)
       {
         painter.drawPolygon(polygon);
+        const QString label =
+            (i < roiLabels.size() && !roiLabels[i].trimmed().isEmpty())
+                ? roiLabels[i].trimmed()
+                : QString("ROI %1").arg(i + 1);
+        QRect textRect = painter.fontMetrics().boundingRect(label);
+        textRect.adjust(-6, -3, 6, 3);
+        const QPoint anchor = polygon.boundingRect().topLeft() + QPoint(2, 2);
+        textRect.moveTopLeft(anchor);
+        painter.fillRect(textRect, QColor(180, 0, 0, 180));
+        painter.setPen(Qt::white);
+        painter.drawText(textRect, Qt::AlignCenter, label);
+        painter.setPen(QPen(Qt::red, 2, Qt::DashLine));
       }
     }
     painter.setPen(pen);

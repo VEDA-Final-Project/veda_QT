@@ -41,12 +41,12 @@ bool RoiService::isValidName(const QString &name, QString *errorMessage) const
   }
 
   constexpr int kMinNameLen = 1;
-  constexpr int kMaxNameLen = 30;
+  constexpr int kMaxNameLen = 20;
   if (name.size() < kMinNameLen || name.size() > kMaxNameLen)
   {
     if (errorMessage)
     {
-      *errorMessage = QStringLiteral("ROI 이름은 1~30자로 입력해주세요.");
+      *errorMessage = QStringLiteral("ROI 이름은 1~20자로 입력해주세요.");
     }
     return false;
   }
@@ -103,10 +103,12 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
 
   const double frameW = static_cast<double>(frameSize.width());
   const double frameH = static_cast<double>(frameSize.height());
-  auto normX = [frameW](int x) {
+  auto normX = [frameW](int x)
+  {
     return qBound(0.0, static_cast<double>(x) / frameW, 1.0);
   };
-  auto normY = [frameH](int y) {
+  auto normY = [frameH](int y)
+  {
     return qBound(0.0, static_cast<double>(y) / frameH, 1.0);
   };
 

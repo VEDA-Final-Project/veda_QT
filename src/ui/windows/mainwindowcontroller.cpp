@@ -6,22 +6,33 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QStringList>
 
 MainWindowController::MainWindowController(const UiRefs &uiRefs, QObject *parent)
     : QObject(parent), m_ui(uiRefs)
 {
+  // 컨트롤러가 하위 서비스의 수명을 소유한다.
+  // (QObject parent 관계로 MainWindow 종료 시 함께 정리됨)
   m_cameraManager = new CameraManager(this);
   m_ocrCoordinator = new PlateOcrCoordinator(this);
+
+  // 세션 서비스는 "카메라 제어 + 메타데이터 지연 동기화"를 묶는 파사드 역할.
   m_cameraSession.setCameraManager(m_cameraManager);
   m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
+
+  // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.
   initRoiDb();
   connectSignals();
 }
 
 void MainWindowController::shutdown()
 {
+  QElapsedTimer timer;
+  timer.start();
+
   const QString summary = m_logDeduplicator.flushPending();
   if (!summary.isEmpty())
   {
@@ -32,10 +43,19 @@ void MainWindowController::shutdown()
     }
   }
   m_cameraSession.stop();
+
+  const QString shutdownLog =
+      QString("[Shutdown] camera/session stop finished in %1 ms").arg(timer.elapsed());
+  qDebug() << shutdownLog;
+  if (m_ui.logView)
+  {
+    m_ui.logView->append(shutdownLog);
+  }
 }
 
 void MainWindowController::connectSignals()
 {
+  // UI 이벤트(버튼/위젯) -> Controller 슬롯 연결
   if (m_ui.btnPlay)
   {
     connect(m_ui.btnPlay, &QPushButton::clicked, this,
@@ -65,6 +85,8 @@ void MainWindowController::connectSignals()
     connect(m_ui.videoWidget, &VideoWidget::ocrRequested, m_ocrCoordinator,
             &PlateOcrCoordinator::requestOcr);
   }
+
+  // 백엔드 이벤트(Camera/OCR) -> Controller 슬롯 연결
   connect(m_cameraManager, &CameraManager::metadataReceived, this,
           &MainWindowController::onMetadataReceived);
   connect(m_cameraManager, &CameraManager::frameCaptured, this,
@@ -77,27 +99,34 @@ void MainWindowController::connectSignals()
 
 void MainWindowController::initRoiDb()
 {
-  if (!m_ui.logView)
-  {
-    return;
-  }
-
   const QString roiDbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/roi.sqlite");
   const RoiService::InitResult initResult = m_roiService.init(roiDbPath);
   if (!initResult.ok)
   {
-    m_ui.logView->append(QString("[ROI][DB] 초기화 실패: %1").arg(initResult.error));
+    if (m_ui.logView)
+    {
+      m_ui.logView->append(QString("[ROI][DB] 초기화 실패: %1").arg(initResult.error));
+    }
     return;
   }
 
   if (m_ui.videoWidget)
   {
-    m_ui.videoWidget->queueNormalizedRoiPolygons(initResult.normalizedPolygons);
+    // DB에는 정규화 좌표(0~1)로 저장되어 있으므로
+    // 첫 프레임 렌더 시 실제 픽셀 좌표로 복원하도록 큐에 적재한다.
+    QStringList roiLabels;
+    const QVector<QJsonObject> &records = m_roiService.records();
+    roiLabels.reserve(records.size());
+    for (const QJsonObject &record : records)
+    {
+      roiLabels.append(record["rod_name"].toString().trimmed());
+    }
+    m_ui.videoWidget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
   }
 
   refreshRoiSelector();
-  if (initResult.loadedCount > 0)
+  if (m_ui.logView && initResult.loadedCount > 0)
   {
     m_ui.logView->append(QString("[ROI][DB] %1개 ROI 로드 완료").arg(initResult.loadedCount));
   }
@@ -136,6 +165,7 @@ void MainWindowController::refreshRoiSelector()
 
 void MainWindowController::playCctv()
 {
+  // 실행 중이면 재시작, 아니면 시작 (토글이 아닌 "재생/재연결" 동작)
   m_cameraSession.playOrRestart();
 }
 
@@ -205,6 +235,8 @@ void MainWindowController::onFinishRoiDraw()
         QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.").arg(typedName));
     return;
   }
+  // 실제 폴리곤 완료는 VideoWidget에서 처리되고,
+  // 성공 시 roiPolygonChanged 시그널이 다시 컨트롤러로 올라온다.
   if (!m_ui.videoWidget->completeRoiDrawing())
   {
     m_ui.logView->append("[ROI] 완료 실패: 최소 3개 점이 필요합니다.");
@@ -284,6 +316,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
       m_roiService.createFromPolygon(polygon, frameSize, typedName, purpose);
   if (!createResult.ok)
   {
+    // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
     if (m_ui.videoWidget && m_ui.videoWidget->roiCount() > 0)
     {
       m_ui.videoWidget->removeRoiAt(m_ui.videoWidget->roiCount() - 1);
@@ -298,11 +331,19 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   {
     m_ui.roiSelectorCombo->setCurrentIndex(m_ui.roiSelectorCombo->count() - 1);
   }
+  if (m_ui.videoWidget)
+  {
+    const int recordIndex = m_roiService.count() - 1;
+    m_ui.videoWidget->setRoiLabelAt(recordIndex,
+                                    createResult.record["rod_name"].toString().trimmed());
+  }
   appendRoiStructuredLog(createResult.record);
 }
 
 void MainWindowController::onMetadataReceived(const QList<ObjectInfo> &objects)
 {
+  // 메타데이터는 즉시 렌더하지 않고 타임스탬프와 함께 큐에 넣는다.
+  // 프레임 도착 시점에 지연값(delay)을 반영해 꺼내 쓰기 위함.
   m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
 }
 
@@ -312,6 +353,9 @@ void MainWindowController::onFrameCaptured(const QImage &frame)
   {
     return;
   }
+
+  // 프레임 갱신 직전에 "현재 시각 기준으로 준비된 메타데이터"만 소비한다.
+  // 이렇게 해야 박스/객체 정보와 비디오 프레임이 더 자연스럽게 맞는다.
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_ui.videoWidget->updateMetadata(m_cameraSession.consumeReadyMetadata(nowMs));
   m_ui.videoWidget->updateFrame(frame);

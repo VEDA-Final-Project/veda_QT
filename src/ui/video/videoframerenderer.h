@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QList>
 #include <QPolygon>
+#include <QStringList>
 
 struct OcrRequest
 {
@@ -16,7 +17,8 @@ class VideoFrameRenderer
 {
 public:
   QImage compose(const QImage &frame, const QList<ObjectInfo> &objects,
-                 const QList<QPolygon> &roiPolygons, bool roiEnabled,
+                 const QList<QPolygon> &roiPolygons, const QStringList &roiLabels,
+                 bool roiEnabled,
                  QList<OcrRequest> *ocrRequests) const;
 };
 

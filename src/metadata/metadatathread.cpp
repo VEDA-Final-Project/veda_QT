@@ -59,8 +59,9 @@ void MetadataThread::setConnectionInfo(const QString &ip, const QString &user,
  * - 이벤트 루프 종료 → run() 정리 단계로 이동
  */
 void MetadataThread::stop() {
-    quit();   // 이벤트 루프 종료 요청
-    wait();   // 스레드 종료까지 대기
+    // 이벤트 루프 종료 요청만 수행한다.
+    // 실제 대기는 상위 호출자(CameraManager)에서 타임아웃 정책으로 처리한다.
+    quit();
 }
 
 /**

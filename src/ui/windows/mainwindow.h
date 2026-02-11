@@ -17,7 +17,7 @@ class MainWindow : public QMainWindow
 
 public:
   MainWindow(QWidget *parent = nullptr);
-  ~MainWindow();
+  ~MainWindow() override = default;
 
 protected:
   void closeEvent(QCloseEvent *event) override;
@@ -25,7 +25,6 @@ protected:
 private:
   void setupUi();
 
-  // UI Components
   VideoWidget *m_videoWidget = nullptr;
   QLineEdit *m_roiNameEdit = nullptr;
   QComboBox *m_roiPurposeCombo = nullptr;

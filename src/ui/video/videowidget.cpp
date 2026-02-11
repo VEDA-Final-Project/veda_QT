@@ -11,24 +11,51 @@ VideoWidget::VideoWidget(QWidget *parent) : QLabel(parent)
 void VideoWidget::setUserRoi(const QRect &roi)
 {
     m_roiState.setUserRoi(roi);
+    m_roiLabels.clear();
+    m_roiLabels.resize(m_roiState.roiCount());
     update();
 }
 
 void VideoWidget::addUserRoi(const QRect &roi)
 {
+    const int beforeCount = m_roiState.roiCount();
     m_roiState.addUserRoi(roi);
+    if (m_roiState.roiCount() > beforeCount)
+    {
+        m_roiLabels.append(QString());
+    }
     update();
 }
 
 void VideoWidget::addUserRoiPolygon(const QPolygon &polygon)
 {
+    const int beforeCount = m_roiState.roiCount();
     m_roiState.addUserRoiPolygon(polygon);
+    if (m_roiState.roiCount() > beforeCount)
+    {
+        m_roiLabels.append(QString());
+    }
     update();
 }
 
-void VideoWidget::queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons)
+void VideoWidget::queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons,
+                                             const QStringList &labels)
 {
     m_pendingNormalizedRoiPolygons = normalizedPolygons;
+    m_pendingRoiLabels = labels;
+}
+
+void VideoWidget::setRoiLabelAt(int index, const QString &label)
+{
+    if (index < 0)
+    {
+        return;
+    }
+    if (m_roiLabels.size() <= index)
+    {
+        m_roiLabels.resize(index + 1);
+    }
+    m_roiLabels[index] = label.trimmed();
 }
 
 bool VideoWidget::removeRoiAt(int index)
@@ -40,12 +67,20 @@ bool VideoWidget::removeRoiAt(int index)
             return false;
         }
         m_pendingNormalizedRoiPolygons.removeAt(index);
+        if (index < m_pendingRoiLabels.size())
+        {
+            m_pendingRoiLabels.removeAt(index);
+        }
         return true;
     }
 
     const bool removed = m_roiState.removeRoiAt(index);
     if (removed)
     {
+        if (index >= 0 && index < m_roiLabels.size())
+        {
+            m_roiLabels.removeAt(index);
+        }
         update();
     }
     return removed;
@@ -66,10 +101,15 @@ void VideoWidget::startRoiDrawing()
 
 bool VideoWidget::completeRoiDrawing()
 {
+    const int beforeCount = m_roiState.roiCount();
     const RoiFinishResult result = m_roiState.finishDrawing();
 
     if (result.completed)
     {
+        if (m_roiState.roiCount() > beforeCount)
+        {
+            m_roiLabels.append(QString());
+        }
         emit roiChanged(result.boundingRect);
         emit roiPolygonChanged(result.polygon, m_lastFrameSize);
         qDebug() << "[ROI][VideoWidget] polygon drawn: points=" << result.polygon.size()
@@ -100,8 +140,9 @@ void VideoWidget::renderFrame(const QImage &frame)
     m_lastFrameSize = frame.size();
     if (!m_pendingNormalizedRoiPolygons.isEmpty() && !m_lastFrameSize.isEmpty())
     {
-        for (const QPolygonF &normalizedPolygon : m_pendingNormalizedRoiPolygons)
+        for (int i = 0; i < m_pendingNormalizedRoiPolygons.size(); ++i)
         {
+            const QPolygonF &normalizedPolygon = m_pendingNormalizedRoiPolygons[i];
             QPolygon framePolygon;
             framePolygon.reserve(normalizedPolygon.size());
             for (const QPointF &normPoint : normalizedPolygon)
@@ -115,14 +156,26 @@ void VideoWidget::renderFrame(const QImage &frame)
                 framePolygon << QPoint(frameX, frameY);
             }
             m_roiState.addUserRoiPolygon(framePolygon);
+            m_roiLabels.append(i < m_pendingRoiLabels.size() ? m_pendingRoiLabels[i] : QString());
         }
         m_pendingNormalizedRoiPolygons.clear();
+        m_pendingRoiLabels.clear();
+    }
+
+    const int roiCount = m_roiState.roiCount();
+    if (m_roiLabels.size() < roiCount)
+    {
+        m_roiLabels.resize(roiCount);
+    }
+    else if (m_roiLabels.size() > roiCount)
+    {
+        m_roiLabels.resize(roiCount);
     }
 
     QList<OcrRequest> ocrRequests;
     const QImage composed =
         m_frameRenderer.compose(frame, m_currentObjects, m_roiState.roiPolygons(),
-                               m_roiState.roiEnabled(), &ocrRequests);
+                               m_roiLabels, m_roiState.roiEnabled(), &ocrRequests);
 
     for (const OcrRequest &req : ocrRequests)
     {
