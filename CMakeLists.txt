@@ -48,6 +48,8 @@ qt_add_executable(rtsp_test
     src/roi/roirepository.h
     src/roi/roiservice.cpp
     src/roi/roiservice.h
+    src/rpi/rpitcpclient.cpp
+    src/rpi/rpitcpclient.h
     src/telegram/telegrambotapi.cpp
     src/telegram/telegrambotapi.h
 )

@@ -21,6 +21,8 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   m_cameraManager = new CameraManager(this);
   m_ocrCoordinator = new PlateOcrCoordinator(this);
   m_telegramApi = new TelegramBotAPI(this);
+  m_rpiClient = new RpiTcpClient(this);
+  m_rpiClient->setBarrierAngles(90, 0);
 
   // 세션 서비스는 "카메라 제어 + 메타데이터 지연 동기화"를 묶는 파사드 역할.
   m_cameraSession.setCameraManager(m_cameraManager);
@@ -43,6 +45,9 @@ void MainWindowController::shutdown() {
     }
   }
   m_cameraSession.stop();
+  if (m_rpiClient) {
+    m_rpiClient->disconnectFromServer();
+  }
 
   const QString shutdownLog =
       QString("[Shutdown] camera/session stop finished in %1 ms")
@@ -100,6 +105,32 @@ void MainWindowController::connectSignals() {
             &MainWindowController::onSendExit);
   }
 
+  // RPi UI -> Controller
+  if (m_ui.btnRpiConnect) {
+    connect(m_ui.btnRpiConnect, &QPushButton::clicked, this,
+            &MainWindowController::onRpiConnect);
+  }
+  if (m_ui.btnRpiDisconnect) {
+    connect(m_ui.btnRpiDisconnect, &QPushButton::clicked, this,
+            &MainWindowController::onRpiDisconnect);
+  }
+  if (m_ui.btnBarrierUp) {
+    connect(m_ui.btnBarrierUp, &QPushButton::clicked, this,
+            &MainWindowController::onRpiBarrierUp);
+  }
+  if (m_ui.btnBarrierDown) {
+    connect(m_ui.btnBarrierDown, &QPushButton::clicked, this,
+            &MainWindowController::onRpiBarrierDown);
+  }
+  if (m_ui.btnLedOn) {
+    connect(m_ui.btnLedOn, &QPushButton::clicked, this,
+            &MainWindowController::onRpiLedOn);
+  }
+  if (m_ui.btnLedOff) {
+    connect(m_ui.btnLedOff, &QPushButton::clicked, this,
+            &MainWindowController::onRpiLedOff);
+  }
+
   // Telegram API -> Controller
   connect(m_telegramApi, &TelegramBotAPI::logMessage, this,
           &MainWindowController::onTelegramLog);
@@ -107,6 +138,21 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onUsersUpdated);
   connect(m_telegramApi, &TelegramBotAPI::paymentConfirmed, this,
           &MainWindowController::onPaymentConfirmed);
+
+  // RPi Client -> Controller
+  connect(m_rpiClient, &RpiTcpClient::connectedChanged, this,
+          &MainWindowController::onRpiConnectedChanged);
+  connect(m_rpiClient, &RpiTcpClient::parkingStatusUpdated, this,
+          &MainWindowController::onRpiParkingStatusUpdated);
+  connect(m_rpiClient, &RpiTcpClient::ackReceived, this,
+          &MainWindowController::onRpiAckReceived);
+  connect(m_rpiClient, &RpiTcpClient::errReceived, this,
+          &MainWindowController::onRpiErrReceived);
+  connect(m_rpiClient, &RpiTcpClient::logMessage, this,
+          &MainWindowController::onRpiLogMessage);
+
+  onRpiConnectedChanged(false);
+  onRpiParkingStatusUpdated(false, false, -1, -1);
 }
 
 void MainWindowController::initRoiDb() {
@@ -400,5 +446,95 @@ void MainWindowController::onPaymentConfirmed(const QString &plate,
         QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
             .arg(plate)
             .arg(amount));
+  }
+}
+
+void MainWindowController::onRpiConnect() {
+  if (!m_rpiClient) {
+    return;
+  }
+
+  const QString host =
+      m_ui.rpiHostEdit ? m_ui.rpiHostEdit->text().trimmed() : QString();
+  const int port = m_ui.rpiPortSpin ? m_ui.rpiPortSpin->value() : 5000;
+  const bool useMock = host.compare("mock", Qt::CaseInsensitive) == 0;
+
+  m_rpiClient->setMockMode(useMock);
+  m_rpiClient->setServer(host.isEmpty() ? QStringLiteral("127.0.0.1") : host,
+                         static_cast<quint16>(port));
+  m_rpiClient->connectToServer();
+}
+
+void MainWindowController::onRpiDisconnect() {
+  if (m_rpiClient) {
+    m_rpiClient->disconnectFromServer();
+  }
+}
+
+void MainWindowController::onRpiBarrierUp() {
+  if (!m_rpiClient || !m_rpiClient->sendBarrierUp()) {
+    onRpiLogMessage("[RPI] Barrier up command failed");
+  }
+}
+
+void MainWindowController::onRpiBarrierDown() {
+  if (!m_rpiClient || !m_rpiClient->sendBarrierDown()) {
+    onRpiLogMessage("[RPI] Barrier down command failed");
+  }
+}
+
+void MainWindowController::onRpiLedOn() {
+  if (!m_rpiClient || !m_rpiClient->sendLedOn()) {
+    onRpiLogMessage("[RPI] LED on command failed");
+  }
+}
+
+void MainWindowController::onRpiLedOff() {
+  if (!m_rpiClient || !m_rpiClient->sendLedOff()) {
+    onRpiLogMessage("[RPI] LED off command failed");
+  }
+}
+
+void MainWindowController::onRpiConnectedChanged(bool connected) {
+  if (m_ui.rpiConnectionStatusLabel) {
+    m_ui.rpiConnectionStatusLabel->setText(connected ? "Connected"
+                                                     : "Disconnected");
+  }
+}
+
+void MainWindowController::onRpiParkingStatusUpdated(bool vehicleDetected,
+                                                     bool ledOn, int irRaw,
+                                                     int servoAngle) {
+  if (m_ui.rpiVehicleStatusLabel) {
+    m_ui.rpiVehicleStatusLabel->setText(vehicleDetected ? "Detected" : "Clear");
+  }
+  if (m_ui.rpiLedStatusLabel) {
+    m_ui.rpiLedStatusLabel->setText(ledOn ? "ON" : "OFF");
+  }
+  if (m_ui.rpiIrRawLabel) {
+    m_ui.rpiIrRawLabel->setText(irRaw >= 0 ? QString::number(irRaw) : "-");
+  }
+  if (m_ui.rpiServoAngleLabel) {
+    m_ui.rpiServoAngleLabel->setText(servoAngle >= 0
+                                         ? QString("%1 deg").arg(servoAngle)
+                                         : "-");
+  }
+}
+
+void MainWindowController::onRpiAckReceived(const QString &messageId) {
+  onRpiLogMessage(QString("[RPI] Ack: %1").arg(messageId));
+}
+
+void MainWindowController::onRpiErrReceived(const QString &messageId,
+                                            const QString &code,
+                                            const QString &message) {
+  onRpiLogMessage(
+      QString("[RPI] Error: id=%1 code=%2 message=%3")
+          .arg(messageId, code, message));
+}
+
+void MainWindowController::onRpiLogMessage(const QString &message) {
+  if (m_ui.logView) {
+    m_ui.logView->append(message);
   }
 }

@@ -51,6 +51,21 @@ private:
   QPushButton *m_btnSendExit = nullptr;
   QTableWidget *m_userTable = nullptr;
 
+  // RPi Widgets
+  QLineEdit *m_rpiHostEdit = nullptr;
+  QSpinBox *m_rpiPortSpin = nullptr;
+  QPushButton *m_btnRpiConnect = nullptr;
+  QPushButton *m_btnRpiDisconnect = nullptr;
+  QPushButton *m_btnBarrierUp = nullptr;
+  QPushButton *m_btnBarrierDown = nullptr;
+  QPushButton *m_btnLedOn = nullptr;
+  QPushButton *m_btnLedOff = nullptr;
+  QLabel *m_rpiConnectionStatusLabel = nullptr;
+  QLabel *m_rpiVehicleStatusLabel = nullptr;
+  QLabel *m_rpiLedStatusLabel = nullptr;
+  QLabel *m_rpiIrRawLabel = nullptr;
+  QLabel *m_rpiServoAngleLabel = nullptr;
+
   MainWindowController *m_controller = nullptr;
 };
 

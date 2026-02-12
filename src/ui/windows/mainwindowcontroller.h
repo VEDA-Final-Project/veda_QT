@@ -4,6 +4,7 @@
 #include "camera/camerasessionservice.h"
 #include "logging/logdeduplicator.h"
 #include "ocr/plateocrcoordinator.h"
+#include "rpi/rpitcpclient.h"
 #include "roi/roiservice.h"
 #include <QComboBox>
 #include <QJsonObject>
@@ -42,6 +43,21 @@ public:
     QSpinBox *feeInput = nullptr;
     QPushButton *btnSendExit = nullptr;
     QTableWidget *userTable = nullptr;
+
+    // RPi Widgets
+    QLineEdit *rpiHostEdit = nullptr;
+    QSpinBox *rpiPortSpin = nullptr;
+    QPushButton *btnRpiConnect = nullptr;
+    QPushButton *btnRpiDisconnect = nullptr;
+    QPushButton *btnBarrierUp = nullptr;
+    QPushButton *btnBarrierDown = nullptr;
+    QPushButton *btnLedOn = nullptr;
+    QPushButton *btnLedOff = nullptr;
+    QLabel *rpiConnectionStatusLabel = nullptr;
+    QLabel *rpiVehicleStatusLabel = nullptr;
+    QLabel *rpiLedStatusLabel = nullptr;
+    QLabel *rpiIrRawLabel = nullptr;
+    QLabel *rpiServoAngleLabel = nullptr;
   };
 
   explicit MainWindowController(const UiRefs &uiRefs,
@@ -71,10 +87,26 @@ private:
   void onUsersUpdated(int count);
   void onPaymentConfirmed(const QString &plate, int amount);
 
+  // RPi Slots
+  void onRpiConnect();
+  void onRpiDisconnect();
+  void onRpiBarrierUp();
+  void onRpiBarrierDown();
+  void onRpiLedOn();
+  void onRpiLedOff();
+  void onRpiConnectedChanged(bool connected);
+  void onRpiParkingStatusUpdated(bool vehicleDetected, bool ledOn, int irRaw,
+                                 int servoAngle);
+  void onRpiAckReceived(const QString &messageId);
+  void onRpiErrReceived(const QString &messageId, const QString &code,
+                        const QString &message);
+  void onRpiLogMessage(const QString &message);
+
   UiRefs m_ui;
   CameraManager *m_cameraManager = nullptr;
   PlateOcrCoordinator *m_ocrCoordinator = nullptr;
   TelegramBotAPI *m_telegramApi = nullptr;
+  RpiTcpClient *m_rpiClient = nullptr;
   CameraSessionService m_cameraSession;
   RoiService m_roiService;
   LogDeduplicator m_logDeduplicator;
