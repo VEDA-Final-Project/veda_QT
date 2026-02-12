@@ -20,8 +20,7 @@
  * OCR 실행 및 메타데이터 동기화는 외부 코디네이터가 담당합니다.
  */
 
-class VideoWidget : public QLabel
-{
+class VideoWidget : public QLabel {
   Q_OBJECT
 
 public:
@@ -36,6 +35,7 @@ public:
   void setRoiLabelAt(int index, const QString &label);
   bool removeRoiAt(int index);
   int roiCount() const;
+  const QList<QPolygon> &roiPolygons() const;
   void startRoiDrawing();
   bool completeRoiDrawing();
 

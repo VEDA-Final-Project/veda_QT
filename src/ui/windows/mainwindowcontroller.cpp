@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "ui/video/videowidget.h"
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
@@ -9,6 +10,9 @@
 #include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QRectF>
+#include <QRegularExpression>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTableWidget> // User Table
@@ -23,10 +27,20 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   m_telegramApi = new TelegramBotAPI(this);
   m_rpiClient = new RpiTcpClient(this);
   m_rpiClient->setBarrierAngles(90, 0);
+  m_parkingService = new ParkingService(this);
 
   // 세션 서비스는 "카메라 제어 + 메타데이터 지연 동기화"를 묶는 파사드 역할.
   m_cameraSession.setCameraManager(m_cameraManager);
   m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
+
+  // Parking 서비스 초기화 (DB + Telegram 연결)
+  const QString parkingDbPath = QDir(QCoreApplication::applicationDirPath())
+                                    .filePath("config/parking.sqlite");
+  QString parkingError;
+  if (!m_parkingService->init(parkingDbPath, &parkingError)) {
+    qWarning() << "[Parking] DB init failed:" << parkingError;
+  }
+  m_parkingService->setTelegramApi(m_telegramApi);
 
   // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.
   initRoiDb();
@@ -70,11 +84,11 @@ void MainWindowController::connectSignals() {
   }
   if (m_ui.btnFinishRoi) {
     connect(m_ui.btnFinishRoi, &QPushButton::clicked, this,
-            &MainWindowController::onFinishRoiDraw);
+            &MainWindowController::onCompleteRoiDraw);
   }
   if (m_ui.btnDeleteRoi) {
     connect(m_ui.btnDeleteRoi, &QPushButton::clicked, this,
-            &MainWindowController::onDeleteRoi);
+            &MainWindowController::onDeleteSelectedRoi);
   }
   if (m_ui.videoWidget) {
     connect(m_ui.videoWidget, &VideoWidget::roiChanged, this,
@@ -153,6 +167,31 @@ void MainWindowController::connectSignals() {
 
   onRpiConnectedChanged(false);
   onRpiParkingStatusUpdated(false, false, -1, -1);
+
+  // ParkingService -> Controller (로그 이벤트)
+  connect(m_parkingService, &ParkingService::logMessage, this,
+          &MainWindowController::onLogMessage);
+
+  // Parking DB Panel
+  if (m_ui.btnRefreshLogs) {
+    connect(m_ui.btnRefreshLogs, &QPushButton::clicked, this,
+            &MainWindowController::onRefreshParkingLogs);
+  }
+  if (m_ui.btnSearchPlate) {
+    connect(m_ui.btnSearchPlate, &QPushButton::clicked, this,
+            &MainWindowController::onSearchParkingLogs);
+  }
+  if (m_ui.btnForcePlate) {
+    connect(m_ui.btnForcePlate, &QPushButton::clicked, this,
+            &MainWindowController::onForcePlate);
+  }
+  if (m_ui.btnEditPlate) {
+    connect(m_ui.btnEditPlate, &QPushButton::clicked, this,
+            &MainWindowController::onEditPlate);
+  }
+
+  // 초기 데이터 로드
+  onRefreshParkingLogs();
 }
 
 void MainWindowController::initRoiDb() {
@@ -224,20 +263,32 @@ void MainWindowController::onLogMessage(const QString &msg) {
     return;
   }
 
+  // 번호판 인식 로그 필터링 (UI만 무시, qDebug는 출력)
+  bool showInUi = true;
+  if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
+    if (msg.startsWith(QStringLiteral("[Parking]"))) {
+      showInUi = false;
+    }
+  }
+
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   const LogDeduplicator::IngestResult ingestResult =
       m_logDeduplicator.ingest(msg, nowMs);
 
   if (!ingestResult.flushSummary.isEmpty()) {
     qDebug() << ingestResult.flushSummary;
-    m_ui.logView->append(ingestResult.flushSummary);
+    if (showInUi) {
+      m_ui.logView->append(ingestResult.flushSummary);
+    }
   }
   if (ingestResult.suppressed) {
     return;
   }
 
   qDebug() << "[Camera]" << msg;
-  m_ui.logView->append(msg);
+  if (showInUi) {
+    m_ui.logView->append(msg);
+  }
 }
 
 void MainWindowController::onOcrResult(int objectId, const QString &result) {
@@ -247,7 +298,15 @@ void MainWindowController::onOcrResult(int objectId, const QString &result) {
   const QString msg =
       QString("[OCR] ID:%1 Result:%2").arg(objectId).arg(result);
   qDebug() << msg;
+
+  // 번호판 인식 로그 필터링
+  if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
+    return;
+  }
   m_ui.logView->append(msg);
+
+  // OCR 결과를 ParkingService에 전달하여 DB 기록 + 알림 처리
+  m_parkingService->processOcrResult(objectId, result);
 }
 
 void MainWindowController::onStartRoiDraw() {
@@ -259,7 +318,7 @@ void MainWindowController::onStartRoiDraw() {
       "[ROI] Draw mode: left-click points, then press 'ROI 완료'.");
 }
 
-void MainWindowController::onFinishRoiDraw() {
+void MainWindowController::onCompleteRoiDraw() {
   if (!m_ui.videoWidget || !m_ui.logView) {
     return;
   }
@@ -276,6 +335,7 @@ void MainWindowController::onFinishRoiDraw() {
             .arg(typedName));
     return;
   }
+
   // 실제 폴리곤 완료는 VideoWidget에서 처리되고,
   // 성공 시 roiPolygonChanged 시그널이 다시 컨트롤러로 올라온다.
   if (!m_ui.videoWidget->completeRoiDrawing()) {
@@ -283,8 +343,13 @@ void MainWindowController::onFinishRoiDraw() {
   }
 }
 
-void MainWindowController::onDeleteRoi() {
+void MainWindowController::onDeleteSelectedRoi() {
   if (!m_ui.roiSelectorCombo || !m_ui.videoWidget || !m_ui.logView) {
+    return;
+  }
+  // 콤보박스에서 현재 선택된 인덱스 확인
+  int idx = m_ui.roiSelectorCombo->currentIndex();
+  if (idx < 0) {
     return;
   }
   const int recordIndex = m_ui.roiSelectorCombo->currentData().toInt();
@@ -315,8 +380,10 @@ void MainWindowController::onDeleteRoi() {
                              ? m_ui.roiSelectorCombo->findData(nextRecordIndex)
                              : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
-  m_ui.logView->append(
-      QString("[ROI] 삭제 완료: %1").arg(deleteResult.removedName));
+  if (m_ui.logView) {
+    m_ui.logView->append(
+        QString("[ROI] 삭제 완료: %1").arg(deleteResult.removedName));
+  }
 }
 
 void MainWindowController::onRoiChanged(const QRect &roi) {
@@ -375,6 +442,85 @@ void MainWindowController::onMetadataReceived(
   // 메타데이터는 즉시 렌더하지 않고 타임스탬프와 함께 큐에 넣는다.
   // 프레임 도착 시점에 지연값(delay)을 반영해 꺼내 쓰기 위함.
   m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
+
+  // ParkingService에도 메타데이터를 전달하여 입출차 감지 수행
+  // 매 프레임마다 ROI 폴리곤을 동기화 (DB 로드/사용자 그리기 반영)
+  if (m_ui.videoWidget) {
+    m_parkingService->updateRoiPolygons(m_ui.videoWidget->roiPolygons());
+  }
+  const auto &cfg = Config::instance();
+  int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
+  m_parkingService->processMetadata(objects, cfg.effectiveWidth(),
+                                    cfg.sourceHeight(), pruneMs);
+
+  // === ReID Table Update (ID 기반 누적 관리) ===
+  if (m_ui.reidTable) {
+    m_ui.reidTable->setRowCount(0); // Clear
+
+    // 현재 시스템이 추적 중인 모든 객체 목록 가져오기 (실시간 감지 객체 포함)
+    const QList<VehicleState> vsList = m_parkingService->activeVehicles();
+
+    // ID 순서대로 정렬 (선택 사항, 사용자 편의성)
+    QList<VehicleState> sortedVs = vsList;
+    std::sort(sortedVs.begin(), sortedVs.end(),
+              [](const VehicleState &a, const VehicleState &b) {
+                return a.objectId < b.objectId;
+              });
+
+    // 현재 시각 가져오기 (Stale 체크용)
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    int staleMs =
+        m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
+
+    for (const VehicleState &vs : sortedVs) {
+      if (vs.objectId < 0)
+        continue;
+
+      // 현재 프레임에서 감지되었는지 확인 (마지막 감지 시각 기준)
+      bool isStale = (nowMs - vs.lastSeenMs) > staleMs;
+
+      // Stale 객체 표시 여부 체크
+      if (isStale && m_ui.chkShowStaleObjects &&
+          !m_ui.chkShowStaleObjects->isChecked()) {
+        continue;
+      }
+
+      int row = m_ui.reidTable->rowCount();
+      m_ui.reidTable->insertRow(row);
+
+      QColor textColor = isStale ? Qt::gray : Qt::black;
+
+      // Col 0: ID
+      auto *idItem = new QTableWidgetItem(QString::number(vs.objectId));
+      idItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 0, idItem);
+
+      // Col 1: Type
+      auto *typeItem = new QTableWidgetItem(vs.type);
+      typeItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 1, typeItem);
+
+      // Col 2: Plate
+      auto *plateItem = new QTableWidgetItem(vs.plateNumber);
+      plateItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 2, plateItem);
+
+      // Col 3: Score (소수점 2자리)
+      auto *scoreItem = new QTableWidgetItem(QString::number(vs.score, 'f', 2));
+      scoreItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 3, scoreItem);
+
+      // Col 4: BBox
+      const QRectF &rect = vs.boundingBox;
+      auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
+                                                .arg(rect.x(), 0, 'f', 1)
+                                                .arg(rect.y(), 0, 'f', 1)
+                                                .arg(rect.width(), 0, 'f', 1)
+                                                .arg(rect.height(), 0, 'f', 1));
+      bboxItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 4, bboxItem);
+    }
+  }
 }
 
 void MainWindowController::onFrameCaptured(const QImage &frame) {
@@ -442,10 +588,175 @@ void MainWindowController::onUsersUpdated(int count) {
 void MainWindowController::onPaymentConfirmed(const QString &plate,
                                               int amount) {
   if (m_ui.logView) {
-    m_ui.logView->append(
+    const QString msg =
         QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
             .arg(plate)
-            .arg(amount));
+            .arg(amount);
+    qDebug() << msg;
+
+    // 번호판 인식 로그 필터링
+    if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
+      return;
+    }
+    m_ui.logView->append(msg);
+  }
+}
+
+// ── Parking DB Panel Slots ──────────────────────────────────────────
+
+static void populateParkingTable(QTableWidget *table,
+                                 const QVector<QJsonObject> &logs) {
+  if (!table) {
+    return;
+  }
+  table->setRowCount(logs.size());
+  for (int i = 0; i < logs.size(); ++i) {
+    const QJsonObject &row = logs[i];
+    table->setItem(i, 0,
+                   new QTableWidgetItem(QString::number(row["id"].toInt())));
+    table->setItem(i, 1, new QTableWidgetItem(row["plate_number"].toString()));
+    table->setItem(
+        i, 2,
+        new QTableWidgetItem(QString::number(row["roi_index"].toInt() + 1)));
+    table->setItem(i, 3, new QTableWidgetItem(row["entry_time"].toString()));
+    table->setItem(i, 4, new QTableWidgetItem(row["exit_time"].toString()));
+  }
+}
+
+void MainWindowController::onRefreshParkingLogs() {
+  const QVector<QJsonObject> logs = m_parkingService->recentLogs(100);
+  populateParkingTable(m_ui.parkingLogTable, logs);
+  if (m_ui.logView) {
+    m_ui.logView->append(
+        QString("[DB] 전체 새로고침: %1건 표시").arg(logs.size()));
+  }
+}
+
+void MainWindowController::onSearchParkingLogs() {
+  if (!m_ui.plateSearchInput) {
+    return;
+  }
+  const QString keyword = m_ui.plateSearchInput->text().trimmed();
+  if (keyword.isEmpty()) {
+    onRefreshParkingLogs();
+    return;
+  }
+  const QVector<QJsonObject> logs = m_parkingService->searchByPlate(keyword);
+  populateParkingTable(m_ui.parkingLogTable, logs);
+  if (m_ui.logView) {
+    m_ui.logView->append(
+        QString("[DB] '%1' 검색 결과: %2건").arg(keyword).arg(logs.size()));
+  }
+}
+
+void MainWindowController::onForcePlate() {
+  if (!m_ui.forceObjectIdInput || !m_ui.forceTypeInput ||
+      !m_ui.forcePlateInput || !m_ui.forceScoreInput || !m_ui.forceBBoxInput) {
+    return;
+  }
+
+  const int objectId = m_ui.forceObjectIdInput->value();
+  const QString type = m_ui.forceTypeInput->text().trimmed();
+  const QString plate = m_ui.forcePlateInput->text().trimmed();
+  const double score = m_ui.forceScoreInput->value();
+  QString bboxStr = m_ui.forceBBoxInput->text().trimmed();
+
+  // Parse BBox "x y w h"
+  // Supports "x:10 y:20..." format or "10 20 100 100"
+  // Just simple space parsing
+  bboxStr.remove("x:");
+  bboxStr.remove("y:");
+  bboxStr.remove("w:");
+  bboxStr.remove("h:");
+  QStringList parts =
+      bboxStr.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+
+  QRectF bbox(0, 0, 0, 0);
+  if (parts.size() >= 4) {
+    bbox.setX(parts[0].toDouble());
+    bbox.setY(parts[1].toDouble());
+    bbox.setWidth(parts[2].toDouble());
+    bbox.setHeight(parts[3].toDouble());
+  }
+
+  m_parkingService->forceObjectData(objectId, type, plate, score, bbox);
+
+  if (m_ui.logView) {
+    m_ui.logView->append(
+        QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId));
+  }
+}
+
+void MainWindowController::onReidTableCellClicked(int row, int column) {
+  if (!m_ui.reidTable)
+    return;
+
+  QTableWidgetItem *idItem = m_ui.reidTable->item(row, 0);
+  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 2);
+
+  if (idItem && m_ui.forceObjectIdInput) {
+    m_ui.forceObjectIdInput->setValue(idItem->text().toInt());
+  }
+
+  // Type
+  QTableWidgetItem *typeItem = m_ui.reidTable->item(row, 1);
+  if (typeItem && m_ui.forceTypeInput) {
+    m_ui.forceTypeInput->setText(typeItem->text());
+  }
+
+  // Plate
+  if (plateItem && m_ui.forcePlateInput) {
+    m_ui.forcePlateInput->setText(plateItem->text());
+  }
+
+  // Score
+  QTableWidgetItem *scoreItem = m_ui.reidTable->item(row, 3);
+  if (scoreItem && m_ui.forceScoreInput) {
+    m_ui.forceScoreInput->setValue(scoreItem->text().toDouble());
+  }
+
+  // BBox
+  QTableWidgetItem *bboxItem = m_ui.reidTable->item(row, 4);
+  if (bboxItem && m_ui.forceBBoxInput) {
+    m_ui.forceBBoxInput->setText(bboxItem->text());
+  }
+}
+
+void MainWindowController::onEditPlate() {
+  if (!m_ui.parkingLogTable || !m_ui.editPlateInput) {
+    return;
+  }
+  const int currentRow = m_ui.parkingLogTable->currentRow();
+  if (currentRow < 0) {
+    if (m_ui.logView) {
+      m_ui.logView->append("[DB] 수정할 레코드를 먼저 선택해주세요.");
+    }
+    return;
+  }
+  const QString newPlate = m_ui.editPlateInput->text().trimmed();
+  if (newPlate.isEmpty()) {
+    if (m_ui.logView) {
+      m_ui.logView->append("[DB] 새 번호판을 입력해주세요.");
+    }
+    return;
+  }
+  QTableWidgetItem *idItem = m_ui.parkingLogTable->item(currentRow, 0);
+  if (!idItem) {
+    return;
+  }
+  const int recordId = idItem->text().toInt();
+  if (m_parkingService->updatePlate(recordId, newPlate)) {
+    if (m_ui.logView) {
+      m_ui.logView->append(QString("[DB] 번호판 수정 완료: ID=%1 → %2")
+                               .arg(recordId)
+                               .arg(newPlate));
+    }
+    onRefreshParkingLogs();
+  } else {
+    if (m_ui.logView) {
+      m_ui.logView->append(
+          QString("[DB] 번호판 수정 실패: ID=%1").arg(recordId));
+    }
   }
 }
 
@@ -515,9 +826,8 @@ void MainWindowController::onRpiParkingStatusUpdated(bool vehicleDetected,
     m_ui.rpiIrRawLabel->setText(irRaw >= 0 ? QString::number(irRaw) : "-");
   }
   if (m_ui.rpiServoAngleLabel) {
-    m_ui.rpiServoAngleLabel->setText(servoAngle >= 0
-                                         ? QString("%1 deg").arg(servoAngle)
-                                         : "-");
+    m_ui.rpiServoAngleLabel->setText(
+        servoAngle >= 0 ? QString("%1 deg").arg(servoAngle) : "-");
   }
 }
 
@@ -528,9 +838,8 @@ void MainWindowController::onRpiAckReceived(const QString &messageId) {
 void MainWindowController::onRpiErrReceived(const QString &messageId,
                                             const QString &code,
                                             const QString &message) {
-  onRpiLogMessage(
-      QString("[RPI] Error: id=%1 code=%2 message=%3")
-          .arg(messageId, code, message));
+  onRpiLogMessage(QString("[RPI] Error: id=%1 code=%2 message=%3")
+                      .arg(messageId, code, message));
 }
 
 void MainWindowController::onRpiLogMessage(const QString &message) {

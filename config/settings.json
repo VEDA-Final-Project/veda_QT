@@ -16,6 +16,6 @@
     "tessdataPath": "C:/vcpkg/installed/x64-windows/share/tessdata/"
   },
   "sync": {
-    "defaultDelayMs": 0
+    "defaultDelayMs": 100
   }
 }

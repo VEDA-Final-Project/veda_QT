@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "ui/video/videowidget.h"
+#include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QFormLayout>
@@ -15,7 +16,6 @@
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTextEdit>
-
 
 class MainWindowController;
 class MainWindow : public QMainWindow {
@@ -65,6 +65,28 @@ private:
   QLabel *m_rpiLedStatusLabel = nullptr;
   QLabel *m_rpiIrRawLabel = nullptr;
   QLabel *m_rpiServoAngleLabel = nullptr;
+
+  // Parking DB Panel Widgets
+  QTableWidget *m_parkingLogTable = nullptr;
+  QLineEdit *m_plateSearchInput = nullptr;
+  QPushButton *m_btnSearchPlate = nullptr;
+  QPushButton *m_btnRefreshLogs = nullptr;
+  QLineEdit *m_forcePlateInput = nullptr;
+  QSpinBox *m_forceObjectIdInput = nullptr;
+  QLineEdit *m_forceTypeInput = nullptr;
+  QDoubleSpinBox *m_forceScoreInput = nullptr;
+  QLineEdit *m_forceBBoxInput = nullptr;
+  QPushButton *m_btnForcePlate = nullptr;
+  QLineEdit *m_editPlateInput = nullptr;
+  QPushButton *m_btnEditPlate = nullptr;
+
+  // Log Filter
+  QCheckBox *m_chkShowPlateLogs = nullptr;
+
+  QTableWidget *m_reidTable = nullptr;
+  QSpinBox *m_staleTimeoutInput = nullptr;
+  QSpinBox *m_pruneTimeoutInput = nullptr;
+  QCheckBox *m_chkShowStaleObjects = nullptr;
 
   MainWindowController *m_controller = nullptr;
 };
