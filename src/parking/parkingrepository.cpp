@@ -143,9 +143,9 @@ QJsonObject ParkingRepository::findActiveByPlate(const QString &plateNumber,
   return record;
 }
 
-QVector<QJsonObject>
-ParkingRepository::recentLogs(int limit, QString *errorMessage) const {
-  QVector<QJsonObject> results;
+QList<QJsonObject> ParkingRepository::recentLogs(int limit,
+                                                 QString *errorMessage) const {
+  QList<QJsonObject> results;
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return results;
@@ -175,10 +175,10 @@ ParkingRepository::recentLogs(int limit, QString *errorMessage) const {
   return results;
 }
 
-QVector<QJsonObject>
+QList<QJsonObject>
 ParkingRepository::searchByPlate(const QString &plate,
                                  QString *errorMessage) const {
-  QVector<QJsonObject> results;
+  QList<QJsonObject> results;
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return results;
@@ -228,6 +228,58 @@ bool ParkingRepository::updatePlate(int recordId, const QString &newPlate,
     if (errorMessage) {
       *errorMessage = err;
     }
+    return false;
+  }
+  return true;
+}
+
+QList<QJsonObject> ParkingRepository::getAllLogs(QString *errorMessage) const {
+  QList<QJsonObject> results;
+  QSqlDatabase db = DatabaseContext::database();
+
+  if (!db.isOpen()) {
+    if (errorMessage)
+      *errorMessage = "Database is not open";
+    return results;
+  }
+
+  QSqlQuery query(db);
+  if (!query.exec(
+          "SELECT id, plate_number, roi_index, entry_time, exit_time FROM "
+          "parking_logs ORDER BY entry_time DESC")) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
+    return results;
+  }
+
+  while (query.next()) {
+    QJsonObject row;
+    row["id"] = query.value("id").toInt();
+    row["plate_number"] = query.value("plate_number").toString();
+    row["roi_index"] = query.value("roi_index").toInt();
+    row["entry_time"] = query.value("entry_time").toString();
+    row["exit_time"] = query.value("exit_time").toString();
+    results.append(row);
+  }
+  return results;
+}
+
+bool ParkingRepository::deleteLog(int id, QString *errorMessage) {
+  QSqlDatabase db = DatabaseContext::database();
+
+  if (!db.isOpen()) {
+    if (errorMessage)
+      *errorMessage = "Database is not open";
+    return false;
+  }
+
+  QSqlQuery query(db);
+  query.prepare("DELETE FROM parking_logs WHERE id = :id");
+  query.bindValue(":id", id);
+
+  if (!query.exec()) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
     return false;
   }
   return true;

@@ -67,6 +67,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   uiRefs.btnForcePlate = m_btnForcePlate;
   uiRefs.editPlateInput = m_editPlateInput;
   uiRefs.btnEditPlate = m_btnEditPlate;
+
+  // New DB sub-tab refs
+  uiRefs.userDbTable = m_userDbTable;
+  uiRefs.btnRefreshUsers = m_btnRefreshUsers;
+  uiRefs.btnDeleteUser = m_btnDeleteUser;
+
+  uiRefs.hwLogTable = m_hwLogTable;
+  uiRefs.btnRefreshHwLogs = m_btnRefreshHwLogs;
+  uiRefs.btnClearHwLogs = m_btnClearHwLogs;
+
+  uiRefs.vehicleTable = m_vehicleTable;
+  uiRefs.btnRefreshVehicles = m_btnRefreshVehicles;
+  uiRefs.btnDeleteVehicle = m_btnDeleteVehicle;
+
+  uiRefs.zoneTable = m_zoneTable;
+  uiRefs.btnRefreshZone = m_btnRefreshZone;
+
   // Log Filter
   uiRefs.chkShowPlateLogs = m_chkShowPlateLogs;
   // ReID Table
@@ -352,10 +369,128 @@ void MainWindow::setupUi() {
   QWidget *parkingDbTab = new QWidget(this);
   QVBoxLayout *dbLayout = new QVBoxLayout(parkingDbTab);
 
-  QLabel *placeholderLabel = new QLabel(
-      QString::fromUtf8("<h3>주차 DB 통합 후 재설계 예정</h3>"), this);
-  placeholderLabel->setAlignment(Qt::AlignCenter);
-  dbLayout->addWidget(placeholderLabel);
+  QTabWidget *dbSubTabs = new QTabWidget(this);
+
+  // --- Sub-Tab 1: 주차 이력 (Parking Logs) ---
+  QWidget *logsTab = new QWidget(this);
+  QVBoxLayout *logsLayout = new QVBoxLayout(logsTab);
+
+  QHBoxLayout *logsToolBar = new QHBoxLayout();
+  m_plateSearchInput = new QLineEdit(this);
+  m_plateSearchInput->setPlaceholderText("번호판 검색...");
+  m_btnSearchPlate = new QPushButton("검색", this);
+  m_btnRefreshLogs = new QPushButton("새로고침", this);
+  logsToolBar->addWidget(m_plateSearchInput);
+  logsToolBar->addWidget(m_btnSearchPlate);
+  logsToolBar->addWidget(m_btnRefreshLogs);
+  logsToolBar->addStretch();
+
+  m_parkingLogTable = new QTableWidget(this);
+  m_parkingLogTable->setColumnCount(5);
+  m_parkingLogTable->setHorizontalHeaderLabels(
+      QStringList() << "ID" << "번호판" << "ROI" << "입차시간" << "출차시간");
+  m_parkingLogTable->horizontalHeader()->setSectionResizeMode(
+      QHeaderView::Stretch);
+  m_parkingLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_parkingLogTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+  logsLayout->addLayout(logsToolBar);
+  logsLayout->addWidget(m_parkingLogTable);
+  dbSubTabs->addTab(logsTab, "🚗 주차 이력");
+
+  // --- Sub-Tab 2: 텔레그램 사용자 (Users) ---
+  QWidget *usersTab = new QWidget(this);
+  QVBoxLayout *usersLayout = new QVBoxLayout(usersTab);
+
+  QHBoxLayout *usersToolBar = new QHBoxLayout();
+  m_btnRefreshUsers = new QPushButton("새로고침", this);
+  m_btnDeleteUser = new QPushButton("삭제", this);
+  usersToolBar->addWidget(m_btnRefreshUsers);
+  usersToolBar->addWidget(m_btnDeleteUser);
+  usersToolBar->addStretch();
+
+  m_userDbTable = new QTableWidget(this);
+  m_userDbTable->setColumnCount(5);
+  m_userDbTable->setHorizontalHeaderLabels(
+      QStringList() << "Chat ID" << "번호판" << "이름" << "연락처" << "등록일");
+  m_userDbTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  m_userDbTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_userDbTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+  usersLayout->addLayout(usersToolBar);
+  usersLayout->addWidget(m_userDbTable);
+  dbSubTabs->addTab(usersTab, "👥 사용자");
+
+  // --- Sub-Tab 3: 장치 로그 (Hardware Logs) ---
+  QWidget *hwTab = new QWidget(this);
+  QVBoxLayout *hwLayout = new QVBoxLayout(hwTab);
+
+  QHBoxLayout *hwToolBar = new QHBoxLayout();
+  m_btnRefreshHwLogs = new QPushButton("새로고침", this);
+  m_btnClearHwLogs = new QPushButton("로그 비우기", this);
+  hwToolBar->addWidget(m_btnRefreshHwLogs);
+  hwToolBar->addWidget(m_btnClearHwLogs);
+  hwToolBar->addStretch();
+
+  m_hwLogTable = new QTableWidget(this);
+  m_hwLogTable->setColumnCount(5);
+  m_hwLogTable->setHorizontalHeaderLabels(
+      QStringList() << "ID" << "구역" << "장치" << "동작" << "시간");
+  m_hwLogTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  m_hwLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+  hwLayout->addLayout(hwToolBar);
+  hwLayout->addWidget(m_hwLogTable);
+  dbSubTabs->addTab(hwTab, "🔧 장치 로그");
+
+  // --- Sub-Tab 4: 차량 정보 (Vehicles) ---
+  QWidget *vhTab = new QWidget(this);
+  QVBoxLayout *vhLayout = new QVBoxLayout(vhTab);
+
+  QHBoxLayout *vhToolBar = new QHBoxLayout();
+  m_btnRefreshVehicles = new QPushButton("새로고침", this);
+  m_btnDeleteVehicle = new QPushButton("삭제", this);
+  vhToolBar->addWidget(m_btnRefreshVehicles);
+  vhToolBar->addWidget(m_btnDeleteVehicle);
+  vhToolBar->addStretch();
+
+  m_vehicleTable = new QTableWidget(this);
+  m_vehicleTable->setColumnCount(5);
+  m_vehicleTable->setHorizontalHeaderLabels(QStringList()
+                                            << "번호판" << "차종" << "색상"
+                                            << "지정여부" << "최근수정");
+  m_vehicleTable->horizontalHeader()->setSectionResizeMode(
+      QHeaderView::Stretch);
+  m_vehicleTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_vehicleTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+  vhLayout->addLayout(vhToolBar);
+  vhLayout->addWidget(m_vehicleTable);
+  dbSubTabs->addTab(vhTab, "🚘 차량 정보");
+
+  // --- Sub-Tab 5: 주차구역 현황 (Zones) ---
+  QWidget *zoneTab = new QWidget(this);
+  QVBoxLayout *zoneLayout = new QVBoxLayout(zoneTab);
+
+  QHBoxLayout *zoneToolBar = new QHBoxLayout();
+  m_btnRefreshZone = new QPushButton("새로고침", this);
+  zoneToolBar->addWidget(m_btnRefreshZone);
+  zoneToolBar->addStretch();
+
+  m_zoneTable = new QTableWidget(this);
+  m_zoneTable->setColumnCount(4);
+  m_zoneTable->setHorizontalHeaderLabels(QStringList()
+                                         << "구역 ID" << "이름" << "용도"
+                                         << "생성일");
+  m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_zoneTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+  zoneLayout->addLayout(zoneToolBar);
+  zoneLayout->addWidget(m_zoneTable);
+  dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
+
+  dbLayout->addWidget(dbSubTabs);
 
   // 탭 추가
   // ======================

@@ -93,6 +93,52 @@ UserRepository::getAllUsers(QString *errorMessage) const {
   return users;
 }
 
+bool UserRepository::deleteUser(const QString &chatId, QString *errorMessage) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return false;
+
+  QSqlQuery query(db);
+  query.prepare(
+      QStringLiteral("DELETE FROM telegram_users WHERE chat_id = :chatId"));
+  query.bindValue(":chatId", chatId);
+
+  if (!query.exec()) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
+    return false;
+  }
+  return true;
+}
+
+QVector<QJsonObject>
+UserRepository::getAllUsersFull(QString *errorMessage) const {
+  QVector<QJsonObject> results;
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return results;
+
+  QSqlQuery query(db);
+  if (!query.exec(QStringLiteral("SELECT chat_id, plate_number, name, phone, "
+                                 "created_at FROM telegram_users "
+                                 "ORDER BY created_at DESC"))) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
+    return results;
+  }
+
+  while (query.next()) {
+    QJsonObject row;
+    row["chat_id"] = query.value("chat_id").toString();
+    row["plate_number"] = query.value("plate_number").toString();
+    row["name"] = query.value("name").toString();
+    row["phone"] = query.value("phone").toString();
+    row["created_at"] = query.value("created_at").toString();
+    results.append(row);
+  }
+  return results;
+}
+
 QString UserRepository::findChatIdByPlate(const QString &plateNumber) const {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())

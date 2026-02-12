@@ -80,6 +80,22 @@ private:
   QLineEdit *m_editPlateInput = nullptr;
   QPushButton *m_btnEditPlate = nullptr;
 
+  // New DB sub-tab widgets
+  QTableWidget *m_userDbTable = nullptr;
+  QPushButton *m_btnRefreshUsers = nullptr;
+  QPushButton *m_btnDeleteUser = nullptr;
+
+  QTableWidget *m_hwLogTable = nullptr;
+  QPushButton *m_btnRefreshHwLogs = nullptr;
+  QPushButton *m_btnClearHwLogs = nullptr;
+
+  QTableWidget *m_vehicleTable = nullptr;
+  QPushButton *m_btnRefreshVehicles = nullptr;
+  QPushButton *m_btnDeleteVehicle = nullptr;
+
+  QTableWidget *m_zoneTable = nullptr;
+  QPushButton *m_btnRefreshZone = nullptr;
+
   // Log Filter
   QCheckBox *m_chkShowPlateLogs = nullptr;
 

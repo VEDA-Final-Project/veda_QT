@@ -1,8 +1,10 @@
 #ifndef USERREPOSITORY_H
 #define USERREPOSITORY_H
 
+#include <QJsonObject>
 #include <QMap>
 #include <QString>
+#include <QVector>
 
 /**
  * @brief 텔레그램 사용자 정보(ChatID <-> 차량번호)를 관리하는 리포지토리
@@ -44,6 +46,16 @@ public:
    * @return 차량번호 (없으면 빈 문자열)
    */
   QString findPlateByChatId(const QString &chatId) const;
+
+  /**
+   * @brief 모든 사용자 상세 정보 조회
+   */
+  QVector<QJsonObject> getAllUsersFull(QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 사용자 삭제
+   */
+  bool deleteUser(const QString &chatId, QString *errorMessage = nullptr);
 };
 
 #endif // USERREPOSITORY_H

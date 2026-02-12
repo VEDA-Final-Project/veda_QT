@@ -3,8 +3,8 @@
 
 #include <QDateTime>
 #include <QJsonObject>
+#include <QList>
 #include <QString>
-#include <QVector>
 
 /**
  * @brief 주차 기록을 SQLite DB에 저장/조회하는 클래스
@@ -43,20 +43,30 @@ public:
   /**
    * @brief 최근 N건의 입출차 기록 조회
    */
-  QVector<QJsonObject> recentLogs(int limit = 50,
-                                  QString *errorMessage = nullptr) const;
+  QList<QJsonObject> recentLogs(int limit = 50,
+                                QString *errorMessage = nullptr) const;
 
   /**
    * @brief 번호판으로 기록 검색 (부분 일치)
    */
-  QVector<QJsonObject> searchByPlate(const QString &plate,
-                                     QString *errorMessage = nullptr) const;
+  QList<QJsonObject> searchByPlate(const QString &plate,
+                                   QString *errorMessage = nullptr) const;
 
   /**
    * @brief 특정 레코드의 번호판 수정
    */
   bool updatePlate(int recordId, const QString &newPlate,
                    QString *errorMessage = nullptr);
+
+  /**
+   * @brief 전체 주차 기록 조회
+   */
+  QList<QJsonObject> getAllLogs(QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 주차 기록 삭제
+   */
+  bool deleteLog(int id, QString *errorMessage = nullptr);
 
 private:
   bool ensureSchema(QString *errorMessage = nullptr);

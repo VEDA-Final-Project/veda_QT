@@ -3,7 +3,7 @@
 
 #include <QJsonObject>
 #include <QString>
-
+#include <QVector>
 
 /**
  * @brief 차량 정보(Vehicles)를 관리하는 리포지토리
@@ -28,6 +28,17 @@ public:
    */
   QJsonObject findByPlate(const QString &plateNumber,
                           QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 모든 차량 정보 조회
+   */
+  QVector<QJsonObject> getAllVehicles(QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 차량 정보 삭제
+   */
+  bool deleteVehicle(const QString &plateNumber,
+                     QString *errorMessage = nullptr);
 };
 
 #endif // VEHICLEREPOSITORY_H

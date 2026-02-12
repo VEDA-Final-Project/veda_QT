@@ -2,6 +2,10 @@
 
 #include "config/config.h"
 #include "database/databasecontext.h"
+#include "database/hardwarelogrepository.h"
+#include "database/userrepository.h"
+#include "database/vehiclerepository.h"
+#include "parking/parkingrepository.h"
 #include "ui/video/videowidget.h"
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -11,12 +15,14 @@
 #include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRectF>
 #include <QRegularExpression>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTableWidget> // User Table
+
 
 MainWindowController::MainWindowController(const UiRefs &uiRefs,
                                            QObject *parent)
@@ -157,6 +163,8 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onUsersUpdated);
   connect(m_telegramApi, &TelegramBotAPI::paymentConfirmed, this,
           &MainWindowController::onPaymentConfirmed);
+  connect(m_telegramApi, &TelegramBotAPI::adminSummoned, this,
+          &MainWindowController::onAdminSummoned);
 
   // RPi Client -> Controller
   connect(m_rpiClient, &RpiTcpClient::connectedChanged, this,
@@ -195,8 +203,74 @@ void MainWindowController::connectSignals() {
             &MainWindowController::onEditPlate);
   }
 
+  // New DB CRUD Connections
+  if (m_ui.btnRefreshUsers) {
+    connect(m_ui.btnRefreshUsers, &QPushButton::clicked, this,
+            &MainWindowController::refreshUserTable);
+  }
+  if (m_ui.btnDeleteUser) {
+    connect(m_ui.btnDeleteUser, &QPushButton::clicked, this,
+            &MainWindowController::deleteUser);
+  }
+  if (m_ui.btnRefreshHwLogs) {
+    connect(m_ui.btnRefreshHwLogs, &QPushButton::clicked, this,
+            &MainWindowController::refreshHwLogs);
+  }
+  if (m_ui.btnClearHwLogs) {
+    connect(m_ui.btnClearHwLogs, &QPushButton::clicked, this,
+            &MainWindowController::clearHwLogs);
+  }
+  if (m_ui.btnRefreshVehicles) {
+    connect(m_ui.btnRefreshVehicles, &QPushButton::clicked, this,
+            &MainWindowController::refreshVehicleTable);
+  }
+  if (m_ui.btnDeleteVehicle) {
+    connect(m_ui.btnDeleteVehicle, &QPushButton::clicked, this,
+            &MainWindowController::deleteVehicle);
+  }
+  if (m_ui.btnRefreshZone) {
+    connect(m_ui.btnRefreshZone, &QPushButton::clicked, this,
+            &MainWindowController::refreshZoneTable);
+  }
+
   // 초기 데이터 로드
   onRefreshParkingLogs();
+  refreshUserTable();
+  refreshHwLogs();
+  refreshVehicleTable();
+  refreshZoneTable();
+}
+
+void MainWindowController::refreshZoneTable() {
+  if (!m_ui.zoneTable)
+    return;
+
+  m_ui.zoneTable->setRowCount(0);
+  const QVector<QJsonObject> &records = m_roiService.records();
+
+  for (const QJsonObject &record : records) {
+    int row = m_ui.zoneTable->rowCount();
+    m_ui.zoneTable->insertRow(row);
+
+    m_ui.zoneTable->setItem(row, 0,
+                            new QTableWidgetItem(record["rod_id"].toString()));
+    m_ui.zoneTable->setItem(
+        row, 1, new QTableWidgetItem(record["rod_name"].toString()));
+
+    QString purpose = record["rod_purpose"].toString();
+    // 한글 변환 (일반구역/지정구역)
+    QString displayPurpose = purpose;
+    if (purpose == "General")
+      displayPurpose = "일반구역";
+    else if (purpose == "Reserved")
+      displayPurpose = "지정구역";
+
+    m_ui.zoneTable->setItem(row, 2, new QTableWidgetItem(displayPurpose));
+    m_ui.zoneTable->setItem(
+        row, 3, new QTableWidgetItem(record["created_at"].toString()));
+  }
+
+  onLogMessage(QString("주차구역 현황 갱신 완료 (%1건)").arg(records.size()));
 }
 
 void MainWindowController::initRoiDb() {
@@ -587,6 +661,9 @@ void MainWindowController::onUsersUpdated(int count) {
                               new QTableWidgetItem(it.value())); // Plate
     }
   }
+
+  // DB 탭의 사용자 테이블도 함께 갱신
+  refreshUserTable();
 }
 
 void MainWindowController::onPaymentConfirmed(const QString &plate,
@@ -798,6 +875,144 @@ void MainWindowController::onRpiBarrierDown() {
   }
 }
 
+void MainWindowController::refreshParkingLogs() { onRefreshParkingLogs(); }
+
+void MainWindowController::deleteParkingLog() {
+  if (!m_ui.parkingLogTable)
+    return;
+  int row = m_ui.parkingLogTable->currentRow();
+  if (row < 0)
+    return;
+  int id = m_ui.parkingLogTable->item(row, 0)->text().toInt();
+
+  ParkingRepository repo;
+  QString error;
+  if (repo.deleteLog(id, &error)) {
+    onLogMessage(QString("[DB] 주차 기록 삭제 완료: ID=%1").arg(id));
+    onRefreshParkingLogs();
+  } else {
+    onLogMessage(QString("[DB] 주차 기록 삭제 실패: %1").arg(error));
+  }
+}
+
+void MainWindowController::refreshUserTable() {
+  if (!m_ui.userDbTable)
+    return;
+  UserRepository repo;
+  QString error;
+  QVector<QJsonObject> users = repo.getAllUsersFull(&error);
+
+  m_ui.userDbTable->setRowCount(0);
+  for (int i = 0; i < users.size(); ++i) {
+    const QJsonObject &u = users[i];
+    m_ui.userDbTable->insertRow(i);
+    m_ui.userDbTable->setItem(i, 0,
+                              new QTableWidgetItem(u["chat_id"].toString()));
+    m_ui.userDbTable->setItem(
+        i, 1, new QTableWidgetItem(u["plate_number"].toString()));
+    m_ui.userDbTable->setItem(i, 2, new QTableWidgetItem(u["name"].toString()));
+    m_ui.userDbTable->setItem(i, 3,
+                              new QTableWidgetItem(u["phone"].toString()));
+    m_ui.userDbTable->setItem(i, 4,
+                              new QTableWidgetItem(u["created_at"].toString()));
+  }
+}
+
+void MainWindowController::deleteUser() {
+  if (!m_ui.userDbTable)
+    return;
+  int row = m_ui.userDbTable->currentRow();
+  if (row < 0)
+    return;
+  QString chatId = m_ui.userDbTable->item(row, 0)->text();
+
+  UserRepository repo;
+  QString error;
+  if (repo.deleteUser(chatId, &error)) {
+    onLogMessage(QString("[DB] 사용자 삭제 완료: ChatID=%1").arg(chatId));
+    refreshUserTable();
+  } else {
+    onLogMessage(QString("[DB] 사용자 삭제 실패: %1").arg(error));
+  }
+}
+
+void MainWindowController::refreshHwLogs() {
+  if (!m_ui.hwLogTable)
+    return;
+  HardwareLogRepository repo;
+  QString error;
+  QVector<QJsonObject> logs = repo.getAllLogs(&error);
+
+  m_ui.hwLogTable->setRowCount(0);
+  for (int i = 0; i < logs.size(); ++i) {
+    const QJsonObject &l = logs[i];
+    m_ui.hwLogTable->insertRow(i);
+    m_ui.hwLogTable->setItem(
+        i, 0, new QTableWidgetItem(QString::number(l["log_id"].toInt())));
+    m_ui.hwLogTable->setItem(i, 1,
+                             new QTableWidgetItem(l["zone_id"].toString()));
+    m_ui.hwLogTable->setItem(i, 2,
+                             new QTableWidgetItem(l["device_type"].toString()));
+    m_ui.hwLogTable->setItem(i, 3,
+                             new QTableWidgetItem(l["action"].toString()));
+    m_ui.hwLogTable->setItem(i, 4,
+                             new QTableWidgetItem(l["timestamp"].toString()));
+  }
+}
+
+void MainWindowController::clearHwLogs() {
+  HardwareLogRepository repo;
+  QString error;
+  if (repo.clearLogs(&error)) {
+    onLogMessage("[DB] 장치 로그 초기화 완료");
+    refreshHwLogs();
+  } else {
+    onLogMessage(QString("[DB] 장치 로그 초기화 실패: %1").arg(error));
+  }
+}
+
+void MainWindowController::refreshVehicleTable() {
+  if (!m_ui.vehicleTable)
+    return;
+  VehicleRepository repo;
+  QString error;
+  QVector<QJsonObject> vehicles = repo.getAllVehicles(&error);
+
+  m_ui.vehicleTable->setRowCount(0);
+  for (int i = 0; i < vehicles.size(); ++i) {
+    const QJsonObject &v = vehicles[i];
+    m_ui.vehicleTable->insertRow(i);
+    m_ui.vehicleTable->setItem(
+        i, 0, new QTableWidgetItem(v["plate_number"].toString()));
+    m_ui.vehicleTable->setItem(i, 1,
+                               new QTableWidgetItem(v["car_type"].toString()));
+    m_ui.vehicleTable->setItem(i, 2,
+                               new QTableWidgetItem(v["car_color"].toString()));
+    m_ui.vehicleTable->setItem(
+        i, 3, new QTableWidgetItem(v["is_assigned"].toBool() ? "Yes" : "No"));
+    m_ui.vehicleTable->setItem(
+        i, 4, new QTableWidgetItem(v["updated_at"].toString()));
+  }
+}
+
+void MainWindowController::deleteVehicle() {
+  if (!m_ui.vehicleTable)
+    return;
+  int row = m_ui.vehicleTable->currentRow();
+  if (row < 0)
+    return;
+  QString plate = m_ui.vehicleTable->item(row, 0)->text();
+
+  VehicleRepository repo;
+  QString error;
+  if (repo.deleteVehicle(plate, &error)) {
+    onLogMessage(QString("[DB] 차량 정보 삭제 완료: %1").arg(plate));
+    refreshVehicleTable();
+  } else {
+    onLogMessage(QString("[DB] 차량 정보 삭제 실패: %1").arg(error));
+  }
+}
+
 void MainWindowController::onRpiLedOn() {
   if (!m_rpiClient || !m_rpiClient->sendLedOn()) {
     onRpiLogMessage("[RPI] LED on command failed");
@@ -850,4 +1065,18 @@ void MainWindowController::onRpiLogMessage(const QString &message) {
   if (m_ui.logView) {
     m_ui.logView->append(message);
   }
+}
+
+void MainWindowController::onAdminSummoned(const QString &chatId,
+                                           const QString &name) {
+  if (m_ui.logView) {
+    m_ui.logView->append(
+        QString("[알림] 🚨 관리자 호출 수신! (User: %1, ChatID: %2)")
+            .arg(name, chatId));
+  }
+
+  QMessageBox::information(
+      nullptr, "관리자 호출",
+      QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
+          .arg(name, chatId));
 }

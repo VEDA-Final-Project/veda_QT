@@ -55,10 +55,10 @@ qt_add_executable(rtsp_test
     # Parking
     src/parking/vehicletracker.cpp
     src/parking/vehicletracker.h
-    src/parking/parkingrepository.cpp
-    src/parking/parkingrepository.h
     src/parking/parkingservice.cpp
     src/parking/parkingservice.h
+    src/parking/parkingrepository.cpp
+    src/parking/parkingrepository.h
     # Database (New Phase 9)
     src/database/databasecontext.cpp
     src/database/databasecontext.h
@@ -66,7 +66,6 @@ qt_add_executable(rtsp_test
     src/database/userrepository.h
     src/database/hardwarelogrepository.cpp
     src/database/hardwarelogrepository.h
-    src/database/vehiclerepository.h
     src/database/vehiclerepository.cpp
 )
 

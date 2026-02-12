@@ -4,7 +4,6 @@
 #include <QSqlError>
 #include <QSqlQuery>
 
-
 VehicleRepository::VehicleRepository() {}
 
 bool VehicleRepository::init(QString *errorMessage) {
@@ -89,4 +88,51 @@ QJsonObject VehicleRepository::findByPlate(const QString &plateNumber,
   record["car_color"] = query.value("car_color").toString();
   record["is_assigned"] = query.value("is_assigned").toBool();
   return record;
+}
+
+QVector<QJsonObject>
+VehicleRepository::getAllVehicles(QString *errorMessage) const {
+  QVector<QJsonObject> results;
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return results;
+
+  QSqlQuery query(db);
+  if (!query.exec(QStringLiteral("SELECT plate_number, car_type, car_color, "
+                                 "is_assigned, updated_at FROM vehicles "
+                                 "ORDER BY updated_at DESC"))) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
+    return results;
+  }
+
+  while (query.next()) {
+    QJsonObject row;
+    row["plate_number"] = query.value("plate_number").toString();
+    row["car_type"] = query.value("car_type").toString();
+    row["car_color"] = query.value("car_color").toString();
+    row["is_assigned"] = query.value("is_assigned").toBool();
+    row["updated_at"] = query.value("updated_at").toString();
+    results.append(row);
+  }
+  return results;
+}
+
+bool VehicleRepository::deleteVehicle(const QString &plateNumber,
+                                      QString *errorMessage) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return false;
+
+  QSqlQuery query(db);
+  query.prepare(
+      QStringLiteral("DELETE FROM vehicles WHERE plate_number = :plate"));
+  query.bindValue(":plate", plateNumber);
+
+  if (!query.exec()) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
+    return false;
+  }
+  return true;
 }

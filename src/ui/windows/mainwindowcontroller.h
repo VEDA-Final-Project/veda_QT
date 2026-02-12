@@ -13,7 +13,6 @@
 #include <QPushButton>
 #include <QTextEdit>
 
-
 #include "telegram/telegrambotapi.h"
 
 class QLineEdit;
@@ -82,6 +81,22 @@ public:
     QSpinBox *staleTimeoutInput = nullptr;
     QSpinBox *pruneTimeoutInput = nullptr;
     QCheckBox *chkShowStaleObjects = nullptr;
+
+    // New DB sub-tab refs
+    QTableWidget *userDbTable = nullptr;
+    QPushButton *btnRefreshUsers = nullptr;
+    QPushButton *btnDeleteUser = nullptr;
+
+    QTableWidget *hwLogTable = nullptr;
+    QPushButton *btnRefreshHwLogs = nullptr;
+    QPushButton *btnClearHwLogs = nullptr;
+
+    QTableWidget *vehicleTable = nullptr;
+    QPushButton *btnRefreshVehicles = nullptr;
+    QPushButton *btnDeleteVehicle = nullptr;
+
+    QTableWidget *zoneTable = nullptr;
+    QPushButton *btnRefreshZone = nullptr;
   };
 
   explicit MainWindowController(const UiRefs &uiRefs,
@@ -111,6 +126,7 @@ public slots:
   void onTelegramLog(const QString &msg);
   void onUsersUpdated(int count);
   void onPaymentConfirmed(const QString &plate, int amount);
+  void onAdminSummoned(const QString &chatId, const QString &name);
 
   // RPi Slots
   void onRpiConnect();
@@ -132,6 +148,17 @@ public slots:
   void onSearchParkingLogs();
   void onForcePlate();
   void onEditPlate();
+
+  // New DB CRUD slots
+  void refreshParkingLogs();
+  void deleteParkingLog();
+  void refreshUserTable();
+  void deleteUser();
+  void refreshHwLogs();
+  void clearHwLogs();
+  void refreshVehicleTable();
+  void deleteVehicle();
+  void refreshZoneTable();
 
 private:
   UiRefs m_ui;

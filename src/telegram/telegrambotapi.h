@@ -48,6 +48,9 @@ signals:
   /// [Mock] 결제 확인 시그널 (버튼 클릭 시 발생)
   void paymentConfirmed(const QString &plateNumber, int amount);
 
+  /// 관리자 호출 시그널
+  void adminSummoned(const QString &chatId, const QString &name);
+
 private slots:
   /// Long Polling으로 업데이트 가져오기
   void pollUpdates();

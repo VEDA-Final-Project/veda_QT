@@ -2,6 +2,8 @@
 #define HARDWARELOGREPOSITORY_H
 
 #include <QDateTime>
+#include <QJsonObject>
+#include <QList>
 #include <QString>
 
 
@@ -27,6 +29,21 @@ public:
    */
   bool addLog(const QString &zoneId, const QString &deviceType,
               const QString &action, QString *errorMessage = nullptr);
+
+  /**
+   * @brief 모든 제어 로그 조회
+   */
+  QList<QJsonObject> getAllLogs(QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 특정 로그 삭제
+   */
+  bool deleteLog(int logId, QString *errorMessage = nullptr);
+
+  /**
+   * @brief 모든 로그 삭제 (초기화)
+   */
+  bool clearLogs(QString *errorMessage = nullptr);
 };
 
 #endif // HARDWARELOGREPOSITORY_H
