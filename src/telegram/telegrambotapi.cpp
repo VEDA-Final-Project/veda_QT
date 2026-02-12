@@ -28,6 +28,24 @@ TelegramBotAPI::TelegramBotAPI(QObject *parent)
       emit logMessage(QString("[Telegram] ✅ 봇 토큰 로드 완료 (길이: %1)")
                           .arg(m_botToken.length()));
     }
+
+    // DB에서 사용자 로드
+    QString dbErr;
+    if (m_userRepository.init(&dbErr)) {
+      m_chatToPlate = m_userRepository.getAllUsers();
+      // 역방향 맵 구성
+      m_plateToChat.clear();
+      for (auto it = m_chatToPlate.begin(); it != m_chatToPlate.end(); ++it) {
+        m_plateToChat.insert(it.value(), it.key());
+      }
+      emit logMessage(QString("[Telegram] 📂 저장된 사용자 %1명 로드 완료")
+                          .arg(m_chatToPlate.size()));
+      emit usersUpdated(m_chatToPlate.size());
+    } else {
+      emit logMessage(
+          QString("[Telegram] ⚠️ 사용자 DB 초기화 실패: %1").arg(dbErr));
+    }
+
     // 시그널 연결 후 폴링 시작
     startPolling();
   });
@@ -408,24 +426,33 @@ void TelegramBotAPI::pollUpdates() {
       // 3. 차량번호 입력 처리 (대기 목록에 있는 경우)
       else if (m_pendingRegistration.contains(chatId)) {
         if (text.length() >= 7) {
-          m_plateToChat.insert(text, chatId);
-          m_chatToPlate.insert(chatId, text); // 역방향 매핑 추가
-          m_pendingRegistration.remove(chatId);
-          ++newUsers;
+          // DB 영속화
+          QString pushErr;
+          if (m_userRepository.registerUser(chatId, text, &pushErr)) {
+            m_plateToChat.insert(text, chatId);
+            m_chatToPlate.insert(chatId, text); // 역방향 매핑 추가
+            m_pendingRegistration.remove(chatId);
+            ++newUsers;
 
-          emit logMessage(
-              QString("[Telegram] ✅ 사용자 등록 완료: %1 (차량: %2)")
-                  .arg(firstName)
-                  .arg(text));
+            emit logMessage(
+                QString("[Telegram] ✅ 사용자 등록 완료 및 저장: %1 (차량: %2)")
+                    .arg(firstName)
+                    .arg(text));
 
-          sendMessage(
-              chatId,
-              QString("등록 완료되었습니다! 🎉\n"
-                      "이제 차량 **%1**의 입출차 알림을 받으실 수 있습니다.")
-                  .arg(text));
+            sendMessage(
+                chatId,
+                QString("등록 완료되었습니다! 🎉\n"
+                        "이제 차량 **%1**의 입출차 알림을 받으실 수 있습니다.")
+                    .arg(text));
 
-          // 등록 완료 후 메인 메뉴 표시
-          sendMainMenu(chatId);
+            // 등록 완료 후 메인 메뉴 표시
+            sendMainMenu(chatId);
+          } else {
+            emit logMessage(
+                QString("[Telegram] ❌ 사용자 저장 실패: %1").arg(pushErr));
+            sendMessage(chatId, "죄송합니다. 내부 오류로 등록에 실패했습니다. "
+                                "관리자에게 문의해주세요.");
+          }
         } else {
           sendMessage(chatId, "올바른 차량번호 형식이 아닌 것 같아요. 다시 "
                               "입력해주세요. (예: 123가4567)");

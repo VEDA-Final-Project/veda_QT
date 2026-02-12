@@ -1,6 +1,7 @@
 #ifndef TELEGRAMBOTAPI_H
 #define TELEGRAMBOTAPI_H
 
+#include "database/userrepository.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
@@ -75,6 +76,9 @@ private:
 
   /// 차량 등록 진행 중인 ChatID 목록 (상태 관리)
   QSet<QString> m_pendingRegistration;
+
+  /// 사용자 정보 리포지토리 (영속화)
+  UserRepository m_userRepository;
 };
 
 #endif // TELEGRAMBOTAPI_H

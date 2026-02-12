@@ -25,7 +25,7 @@ public:
   /**
    * @brief 서비스 초기화 (DB 열기, 외부 의존성 연결)
    */
-  bool init(const QString &dbPath, QString *errorMessage = nullptr);
+  bool init(QString *errorMessage = nullptr);
 
   /**
    * @brief 외부 텔레그램 API 연결

@@ -1,6 +1,7 @@
 #include "mainwindowcontroller.h"
 
 #include "config/config.h"
+#include "database/databasecontext.h"
 #include "ui/video/videowidget.h"
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -33,12 +34,15 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   m_cameraSession.setCameraManager(m_cameraManager);
   m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
 
-  // Parking 서비스 초기화 (DB + Telegram 연결)
-  const QString parkingDbPath = QDir(QCoreApplication::applicationDirPath())
-                                    .filePath("config/parking.sqlite");
+  // 통합 DB 초기화 (veda.db)
+  const QString dbPath =
+      QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
+  DatabaseContext::init(dbPath);
+
+  // Parking 서비스 초기화 (DB Context 사용)
   QString parkingError;
-  if (!m_parkingService->init(parkingDbPath, &parkingError)) {
-    qWarning() << "[Parking] DB init failed:" << parkingError;
+  if (!m_parkingService->init(&parkingError)) {
+    qWarning() << "[Parking] Service init failed:" << parkingError;
   }
   m_parkingService->setTelegramApi(m_telegramApi);
 
@@ -195,9 +199,8 @@ void MainWindowController::connectSignals() {
 }
 
 void MainWindowController::initRoiDb() {
-  const QString roiDbPath = QDir(QCoreApplication::applicationDirPath())
-                                .filePath("config/roi.sqlite");
-  const RoiService::InitResult initResult = m_roiService.init(roiDbPath);
+  // 통합 DB 사용 (인자 없음)
+  const RoiService::InitResult initResult = m_roiService.init();
   if (!initResult.ok) {
     if (m_ui.logView) {
       m_ui.logView->append(

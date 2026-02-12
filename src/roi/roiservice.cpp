@@ -5,19 +5,17 @@
 #include <QRegularExpression>
 #include <QtGlobal>
 
-RoiService::InitResult RoiService::init(const QString &dbPath)
-{
+RoiService::InitResult RoiService::init() {
   InitResult result;
   QString dbError;
-  if (!m_repository.init(dbPath, &dbError))
-  {
+  // 통합 DB 사용, 경로 인자 제거
+  if (!m_repository.init(&dbError)) {
     result.error = dbError;
     return result;
   }
 
   m_records = m_repository.loadAll(&dbError);
-  if (!dbError.isEmpty())
-  {
+  if (!dbError.isEmpty()) {
     result.error = dbError;
     return result;
   }
@@ -29,12 +27,9 @@ RoiService::InitResult RoiService::init(const QString &dbPath)
   return result;
 }
 
-bool RoiService::isValidName(const QString &name, QString *errorMessage) const
-{
-  if (name.isEmpty())
-  {
-    if (errorMessage)
-    {
+bool RoiService::isValidName(const QString &name, QString *errorMessage) const {
+  if (name.isEmpty()) {
+    if (errorMessage) {
       *errorMessage = QStringLiteral("ROI 이름은 필수입니다.");
     }
     return false;
@@ -42,10 +37,8 @@ bool RoiService::isValidName(const QString &name, QString *errorMessage) const
 
   constexpr int kMinNameLen = 1;
   constexpr int kMaxNameLen = 20;
-  if (name.size() < kMinNameLen || name.size() > kMaxNameLen)
-  {
-    if (errorMessage)
-    {
+  if (name.size() < kMinNameLen || name.size() > kMaxNameLen) {
+    if (errorMessage) {
       *errorMessage = QStringLiteral("ROI 이름은 1~20자로 입력해주세요.");
     }
     return false;
@@ -53,24 +46,19 @@ bool RoiService::isValidName(const QString &name, QString *errorMessage) const
 
   static const QRegularExpression kAllowedNamePattern(
       QStringLiteral("^[A-Za-z0-9가-힣 _-]+$"));
-  if (!kAllowedNamePattern.match(name).hasMatch())
-  {
-    if (errorMessage)
-    {
-      *errorMessage = QStringLiteral(
-          "ROI 이름은 한글/영문/숫자/공백/밑줄(_) / 하이픈(-)만 사용할 수 있습니다.");
+  if (!kAllowedNamePattern.match(name).hasMatch()) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("ROI 이름은 한글/영문/숫자/공백/밑줄(_) / "
+                                     "하이픈(-)만 사용할 수 있습니다.");
     }
     return false;
   }
   return true;
 }
 
-bool RoiService::isDuplicateName(const QString &name) const
-{
-  for (const QJsonObject &record : m_records)
-  {
-    if (record["rod_name"].toString().compare(name, Qt::CaseInsensitive) == 0)
-    {
+bool RoiService::isDuplicateName(const QString &name) const {
+  for (const QJsonObject &record : m_records) {
+    if (record["rod_name"].toString().compare(name, Qt::CaseInsensitive) == 0) {
       return true;
     }
   }
@@ -80,41 +68,34 @@ bool RoiService::isDuplicateName(const QString &name) const
 RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
                                                        const QSize &frameSize,
                                                        const QString &name,
-                                                       const QString &purpose)
-{
+                                                       const QString &purpose) {
   CreateResult result;
-  if (frameSize.isEmpty())
-  {
+  if (frameSize.isEmpty()) {
     result.error = QStringLiteral("프레임 크기가 유효하지 않습니다.");
     return result;
   }
 
   QString nameError;
-  if (!isValidName(name, &nameError))
-  {
+  if (!isValidName(name, &nameError)) {
     result.error = nameError;
     return result;
   }
-  if (isDuplicateName(name))
-  {
+  if (isDuplicateName(name)) {
     result.error = QString("이름 '%1' 이(가) 이미 존재합니다.").arg(name);
     return result;
   }
 
   const double frameW = static_cast<double>(frameSize.width());
   const double frameH = static_cast<double>(frameSize.height());
-  auto normX = [frameW](int x)
-  {
+  auto normX = [frameW](int x) {
     return qBound(0.0, static_cast<double>(x) / frameW, 1.0);
   };
-  auto normY = [frameH](int y)
-  {
+  auto normY = [frameH](int y) {
     return qBound(0.0, static_cast<double>(y) / frameH, 1.0);
   };
 
   QJsonArray points;
-  for (const QPoint &pt : polygon)
-  {
+  for (const QPoint &pt : polygon) {
     points.append(QJsonObject{{"x", normX(pt.x())}, {"y", normY(pt.y())}});
   }
 
@@ -143,8 +124,7 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
   };
 
   QString dbError;
-  if (!m_repository.upsert(roiData, &dbError))
-  {
+  if (!m_repository.upsert(roiData, &dbError)) {
     result.error = dbError;
     return result;
   }
@@ -155,19 +135,16 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
   return result;
 }
 
-RoiService::DeleteResult RoiService::removeAt(int index)
-{
+RoiService::DeleteResult RoiService::removeAt(int index) {
   DeleteResult result;
-  if (index < 0 || index >= m_records.size())
-  {
+  if (index < 0 || index >= m_records.size()) {
     result.error = QStringLiteral("ROI를 선택해주세요.");
     return result;
   }
 
   const QString removedId = m_records[index]["rod_id"].toString();
   QString dbError;
-  if (!m_repository.removeById(removedId, &dbError))
-  {
+  if (!m_repository.removeById(removedId, &dbError)) {
     result.error = dbError;
     return result;
   }
@@ -178,57 +155,43 @@ RoiService::DeleteResult RoiService::removeAt(int index)
   return result;
 }
 
-const QVector<QJsonObject> &RoiService::records() const
-{
-  return m_records;
-}
+const QVector<QJsonObject> &RoiService::records() const { return m_records; }
 
-int RoiService::count() const
-{
-  return m_records.size();
-}
+int RoiService::count() const { return m_records.size(); }
 
-QList<QPolygonF> RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records)
-{
+QList<QPolygonF>
+RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records) {
   QList<QPolygonF> normalizedPolygons;
   normalizedPolygons.reserve(records.size());
 
-  for (const QJsonObject &record : records)
-  {
+  for (const QJsonObject &record : records) {
     const QJsonArray points = record["rod_points"].toArray();
-    if (points.size() < 3)
-    {
+    if (points.size() < 3) {
       continue;
     }
 
     QPolygonF polygon;
-    for (const QJsonValue &pointValue : points)
-    {
+    for (const QJsonValue &pointValue : points) {
       const QJsonObject pointObj = pointValue.toObject();
       polygon << QPointF(pointObj["x"].toDouble(), pointObj["y"].toDouble());
     }
-    if (polygon.size() >= 3)
-    {
+    if (polygon.size() >= 3) {
       normalizedPolygons.append(polygon);
     }
   }
   return normalizedPolygons;
 }
 
-void RoiService::recomputeSequenceFromRecords()
-{
+void RoiService::recomputeSequenceFromRecords() {
   m_roiSequence = 0;
-  for (const QJsonObject &record : m_records)
-  {
+  for (const QJsonObject &record : m_records) {
     const QString rodId = record["rod_id"].toString();
-    if (!rodId.startsWith("rod-"))
-    {
+    if (!rodId.startsWith("rod-")) {
       continue;
     }
     bool ok = false;
     const int seq = rodId.mid(4).toInt(&ok);
-    if (ok)
-    {
+    if (ok) {
       m_roiSequence = qMax(m_roiSequence, seq);
     }
   }

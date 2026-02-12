@@ -9,19 +9,16 @@
 /**
  * @brief 주차 기록을 SQLite DB에 저장/조회하는 클래스
  *
- * RoiRepository와 동일한 패턴으로 설계되었습니다.
- * parking_logs 테이블에 입출차 기록을 관리합니다.
+ * DatabaseContext를 통해 통합 DB(veda.db)의 parking_logs 테이블을 관리합니다.
  */
 class ParkingRepository {
 public:
   ParkingRepository();
-  ~ParkingRepository();
 
   /**
-   * @brief DB 초기화 및 스키마 생성
-   * @param dbFilePath SQLite 파일 경로
+   * @brief 테이블 초기화 (앱 시작 시 호출)
    */
-  bool init(const QString &dbFilePath, QString *errorMessage = nullptr);
+  bool init(QString *errorMessage = nullptr);
 
   /**
    * @brief 입차 기록 생성
@@ -63,7 +60,6 @@ public:
 
 private:
   bool ensureSchema(QString *errorMessage = nullptr);
-  QString m_connectionName;
 };
 
 #endif // PARKINGREPOSITORY_H

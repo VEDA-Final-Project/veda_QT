@@ -5,8 +5,8 @@
 
 ParkingService::ParkingService(QObject *parent) : QObject(parent) {}
 
-bool ParkingService::init(const QString &dbPath, QString *errorMessage) {
-  return m_repository.init(dbPath, errorMessage);
+bool ParkingService::init(QString *errorMessage) {
+  return m_repository.init(errorMessage);
 }
 
 void ParkingService::setTelegramApi(TelegramBotAPI *api) { m_telegram = api; }

@@ -10,43 +10,41 @@
 #include <QString>
 #include <QVector>
 
-class RoiService
-{
+class RoiService {
 public:
-  struct InitResult
-  {
+  struct InitResult {
     bool ok = false;
     QString error;
     QList<QPolygonF> normalizedPolygons;
     int loadedCount = 0;
   };
 
-  struct CreateResult
-  {
+  struct CreateResult {
     bool ok = false;
     QString error;
     QJsonObject record;
   };
 
-  struct DeleteResult
-  {
+  struct DeleteResult {
     bool ok = false;
     QString error;
     QString removedName;
   };
 
-  InitResult init(const QString &dbPath);
+  InitResult init();
   bool isValidName(const QString &name, QString *errorMessage) const;
   bool isDuplicateName(const QString &name) const;
-  CreateResult createFromPolygon(const QPolygon &polygon, const QSize &frameSize,
-                                 const QString &name, const QString &purpose);
+  CreateResult createFromPolygon(const QPolygon &polygon,
+                                 const QSize &frameSize, const QString &name,
+                                 const QString &purpose);
   DeleteResult removeAt(int index);
 
   const QVector<QJsonObject> &records() const;
   int count() const;
 
 private:
-  static QList<QPolygonF> toNormalizedPolygons(const QVector<QJsonObject> &records);
+  static QList<QPolygonF>
+  toNormalizedPolygons(const QVector<QJsonObject> &records);
   void recomputeSequenceFromRecords();
 
   RoiRepository m_repository;

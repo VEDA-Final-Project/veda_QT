@@ -1,51 +1,25 @@
 #include "parking/parkingrepository.h"
+#include "database/databasecontext.h"
 #include <QDebug>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QUuid>
 
-ParkingRepository::ParkingRepository()
-    : m_connectionName(
-          QStringLiteral("ParkingRepo_") +
-          QUuid::createUuid().toString(QUuid::WithoutBraces).left(8)) {}
+ParkingRepository::ParkingRepository() {}
 
-ParkingRepository::~ParkingRepository() {
-  if (QSqlDatabase::contains(m_connectionName)) {
-    {
-      QSqlDatabase db = QSqlDatabase::database(m_connectionName);
-      if (db.isOpen()) {
-        db.close();
-      }
-    }
-    QSqlDatabase::removeDatabase(m_connectionName);
-  }
-}
-
-bool ParkingRepository::init(const QString &dbFilePath, QString *errorMessage) {
-  QSqlDatabase db =
-      QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
-  db.setDatabaseName(dbFilePath);
-
-  if (!db.open()) {
-    const QString err =
-        QStringLiteral("Cannot open parking DB: ") + db.lastError().text();
-    qWarning() << err;
-    if (errorMessage) {
-      *errorMessage = err;
-    }
-    return false;
-  }
-
+// 통합 DB 사용 시 init은 스키마 확인만 수행
+bool ParkingRepository::init(QString *errorMessage) {
   return ensureSchema(errorMessage);
 }
 
 bool ParkingRepository::ensureSchema(QString *errorMessage) {
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen()) {
+    if (errorMessage)
+      *errorMessage = QStringLiteral("Database is not open");
     return false;
   }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
 
   const QString sql =
@@ -74,11 +48,10 @@ bool ParkingRepository::ensureSchema(QString *errorMessage) {
 int ParkingRepository::insertEntry(const QString &plateNumber, int roiIndex,
                                    const QDateTime &entryTime,
                                    QString *errorMessage) {
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
     return -1;
-  }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "INSERT INTO parking_logs (plate_number, roi_index, entry_time) "
@@ -102,11 +75,10 @@ int ParkingRepository::insertEntry(const QString &plateNumber, int roiIndex,
 
 bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
                                    QString *errorMessage) {
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
     return false;
-  }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "UPDATE parking_logs SET exit_time = :exit WHERE id = :id"));
@@ -127,11 +99,10 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
 
 QJsonObject ParkingRepository::findActiveByPlate(const QString &plateNumber,
                                                  QString *errorMessage) const {
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
     return QJsonObject();
-  }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "SELECT id, plate_number, roi_index, entry_time "
@@ -157,12 +128,10 @@ QJsonObject ParkingRepository::findActiveByPlate(const QString &plateNumber,
 QVector<QJsonObject>
 ParkingRepository::recentLogs(int limit, QString *errorMessage) const {
   QVector<QJsonObject> results;
-
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
     return results;
-  }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "SELECT id, plate_number, roi_index, entry_time, exit_time "
@@ -192,11 +161,10 @@ QVector<QJsonObject>
 ParkingRepository::searchByPlate(const QString &plate,
                                  QString *errorMessage) const {
   QVector<QJsonObject> results;
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
     return results;
-  }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "SELECT id, plate_number, roi_index, entry_time, exit_time "
@@ -225,11 +193,10 @@ ParkingRepository::searchByPlate(const QString &plate,
 
 bool ParkingRepository::updatePlate(int recordId, const QString &newPlate,
                                     QString *errorMessage) {
-  if (!QSqlDatabase::contains(m_connectionName)) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
     return false;
-  }
 
-  QSqlDatabase db = QSqlDatabase::database(m_connectionName);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "UPDATE parking_logs SET plate_number = :plate WHERE id = :id"));

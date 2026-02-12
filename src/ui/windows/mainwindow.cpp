@@ -455,9 +455,9 @@ void MainWindow::setupUi() {
 
   tabWidget->addTab(cctvTab, QString::fromUtf8("📷 CCTV"));
   tabWidget->addTab(telegramTab, QString::fromUtf8("📱 텔레그램 테스트"));
-  tabWidget->addTab(rpiTab, QString::fromUtf8("🧠 RPi 제어"));
-  tabWidget->addTab(parkingDbTab, QString::fromUtf8("🗄️ 주차 DB 조회"));
-  tabWidget->addTab(reidTab, QString::fromUtf8("🔍 객체 ReID"));
+  tabWidget->addTab(rpiTab, QString::fromUtf8("🧠 RPi 제어 테스트"));
+  tabWidget->addTab(parkingDbTab, QString::fromUtf8("🗄️DB 조회"));
+  tabWidget->addTab(reidTab, QString::fromUtf8("🔍 객체 ReID 테스트"));
 
   // 상위 레이아웃 구성
   layout->addWidget(tabWidget);

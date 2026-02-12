@@ -59,6 +59,11 @@ qt_add_executable(rtsp_test
     src/parking/parkingrepository.h
     src/parking/parkingservice.cpp
     src/parking/parkingservice.h
+    # Database (New Phase 9)
+    src/database/databasecontext.cpp
+    src/database/databasecontext.h
+    src/database/userrepository.cpp
+    src/database/userrepository.h
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)
