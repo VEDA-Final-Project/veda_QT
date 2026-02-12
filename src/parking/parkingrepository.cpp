@@ -1,6 +1,8 @@
 #include "parking/parkingrepository.h"
 #include "database/databasecontext.h"
 #include <QDebug>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -29,6 +31,9 @@ bool ParkingRepository::ensureSchema(QString *errorMessage) {
                      "  roi_index INTEGER NOT NULL,"
                      "  entry_time TEXT NOT NULL,"
                      "  exit_time TEXT,"
+                     "  pay_status TEXT DEFAULT 'Pending',"
+                     "  bestshot_path TEXT,"
+                     "  ocr_confidence REAL DEFAULT 0.0,"
                      "  created_at TEXT DEFAULT (datetime('now','localtime'))"
                      ")");
 
@@ -40,6 +45,18 @@ bool ParkingRepository::ensureSchema(QString *errorMessage) {
       *errorMessage = err;
     }
     return false;
+  }
+
+  // 마이그레이션: 컬럼 추가 (존재하지 않을 경우)
+  const QStringList newColumns = {
+      "ALTER TABLE parking_logs ADD COLUMN pay_status TEXT DEFAULT 'Pending'",
+      "ALTER TABLE parking_logs ADD COLUMN bestshot_path TEXT",
+      "ALTER TABLE parking_logs ADD COLUMN ocr_confidence REAL DEFAULT 0.0"};
+
+  for (const QString &alterSql : newColumns) {
+    QSqlQuery alterQuery(db);
+    // 컬럼이 이미 존재하면 에러가 발생하겠지만 무시
+    alterQuery.exec(alterSql);
   }
 
   return true;
@@ -54,8 +71,9 @@ int ParkingRepository::insertEntry(const QString &plateNumber, int roiIndex,
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "INSERT INTO parking_logs (plate_number, roi_index, entry_time) "
-      "VALUES (:plate, :roi, :entry)"));
+      "INSERT INTO parking_logs (plate_number, roi_index, entry_time, "
+      "pay_status, ocr_confidence, bestshot_path) "
+      "VALUES (:plate, :roi, :entry, 'Pending', 0.0, '')")); // 기본값 설정
   query.bindValue(":plate", plateNumber);
   query.bindValue(":roi", roiIndex);
   query.bindValue(":entry", entryTime.toString(Qt::ISODate));

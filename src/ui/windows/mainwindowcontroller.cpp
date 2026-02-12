@@ -44,6 +44,7 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   if (!m_parkingService->init(&parkingError)) {
     qWarning() << "[Parking] Service init failed:" << parkingError;
   }
+  m_rpiClient->init();
   m_parkingService->setTelegramApi(m_telegramApi);
 
   // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.

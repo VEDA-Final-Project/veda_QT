@@ -64,6 +64,10 @@ qt_add_executable(rtsp_test
     src/database/databasecontext.h
     src/database/userrepository.cpp
     src/database/userrepository.h
+    src/database/hardwarelogrepository.cpp
+    src/database/hardwarelogrepository.h
+    src/database/vehiclerepository.h
+    src/database/vehiclerepository.cpp
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)

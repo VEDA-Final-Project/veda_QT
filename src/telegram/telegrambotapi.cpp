@@ -428,7 +428,9 @@ void TelegramBotAPI::pollUpdates() {
         if (text.length() >= 7) {
           // DB 영속화
           QString pushErr;
-          if (m_userRepository.registerUser(chatId, text, &pushErr)) {
+          // 이름은 firstName 사용, 전화번호는 수집하지 않음 ("")
+          if (m_userRepository.registerUser(chatId, text, firstName, "",
+                                            &pushErr)) {
             m_plateToChat.insert(text, chatId);
             m_chatToPlate.insert(chatId, text); // 역방향 매핑 추가
             m_pendingRegistration.remove(chatId);

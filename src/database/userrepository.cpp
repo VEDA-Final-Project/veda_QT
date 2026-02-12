@@ -5,7 +5,6 @@
 #include <QSqlQuery>
 #include <QVariant>
 
-
 UserRepository::UserRepository() {}
 
 bool UserRepository::init(QString *errorMessage) {
@@ -33,20 +32,34 @@ bool UserRepository::init(QString *errorMessage) {
       *errorMessage = err;
     return false;
   }
+
+  // 마이그레이션: 신규 컬럼 추가
+  const QStringList newColumns = {
+      "ALTER TABLE telegram_users ADD COLUMN name TEXT",
+      "ALTER TABLE telegram_users ADD COLUMN phone TEXT"};
+
+  for (const QString &alterSql : newColumns) {
+    QSqlQuery alterQuery(db);
+    alterQuery.exec(alterSql);
+  }
+
   return true;
 }
 
 bool UserRepository::registerUser(const QString &chatId,
                                   const QString &plateNumber,
+                                  const QString &name, const QString &phone,
                                   QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
-  query.prepare(
-      QStringLiteral("INSERT OR REPLACE INTO telegram_users (chat_id, "
-                     "plate_number, created_at) "
-                     "VALUES (:chat_id, :plate, datetime('now','localtime'))"));
+  query.prepare(QStringLiteral(
+      "INSERT OR REPLACE INTO telegram_users (chat_id, "
+      "plate_number, name, phone, created_at) "
+      "VALUES (:chat_id, :plate, :name, :phone, datetime('now','localtime'))"));
   query.bindValue(":chat_id", chatId);
   query.bindValue(":plate", plateNumber);
+  query.bindValue(":name", name);
+  query.bindValue(":phone", phone);
 
   if (!query.exec()) {
     const QString err =

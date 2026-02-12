@@ -4,7 +4,6 @@
 #include <QMap>
 #include <QString>
 
-
 /**
  * @brief 텔레그램 사용자 정보(ChatID <-> 차량번호)를 관리하는 리포지토리
  *
@@ -25,6 +24,7 @@ public:
    * @param plateNumber 차량번호
    */
   bool registerUser(const QString &chatId, const QString &plateNumber,
+                    const QString &name = "", const QString &phone = "",
                     QString *errorMessage = nullptr);
 
   /**
