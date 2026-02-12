@@ -1,6 +1,7 @@
 #ifndef RPITCPCLIENT_H
 #define RPITCPCLIENT_H
 
+#include "database/hardwarelogrepository.h"
 #include <QJsonObject>
 #include <QObject>
 
@@ -12,6 +13,7 @@ class RpiTcpClient : public QObject {
 
 public:
   explicit RpiTcpClient(QObject *parent = nullptr);
+  bool init(); // DB 초기화용
 
   void setServer(const QString &host, quint16 port);
   void setBarrierAngles(int upAngle, int downAngle);
@@ -80,6 +82,8 @@ private:
   int m_mockServoAngle = 0;
   int m_barrierUpAngle = 90;
   int m_barrierDownAngle = 0;
+
+  HardwareLogRepository m_hwLogRepo;
 };
 
 #endif // RPITCPCLIENT_H

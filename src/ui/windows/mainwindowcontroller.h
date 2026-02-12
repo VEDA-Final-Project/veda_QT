@@ -4,8 +4,9 @@
 #include "camera/camerasessionservice.h"
 #include "logging/logdeduplicator.h"
 #include "ocr/plateocrcoordinator.h"
-#include "rpi/rpitcpclient.h"
+#include "parking/parkingservice.h"
 #include "roi/roiservice.h"
+#include "rpi/rpitcpclient.h"
 #include <QComboBox>
 #include <QJsonObject>
 #include <QObject>
@@ -19,6 +20,9 @@ class QSpinBox;
 class QLabel;
 class VideoWidget;
 class QTableWidget;
+class QTableWidget;
+class QCheckBox;
+class QDoubleSpinBox;
 
 class MainWindowController : public QObject {
   Q_OBJECT
@@ -58,13 +62,48 @@ public:
     QLabel *rpiLedStatusLabel = nullptr;
     QLabel *rpiIrRawLabel = nullptr;
     QLabel *rpiServoAngleLabel = nullptr;
+
+    // Parking DB Panel Widgets
+    QTableWidget *parkingLogTable = nullptr;
+    QLineEdit *plateSearchInput = nullptr;
+    QPushButton *btnSearchPlate = nullptr;
+    QPushButton *btnRefreshLogs = nullptr;
+    QLineEdit *forcePlateInput = nullptr;
+    QSpinBox *forceObjectIdInput = nullptr;
+    QLineEdit *forceTypeInput = nullptr;
+    QDoubleSpinBox *forceScoreInput = nullptr;
+    QLineEdit *forceBBoxInput = nullptr;
+    QPushButton *btnForcePlate = nullptr;
+    QLineEdit *editPlateInput = nullptr;
+    QPushButton *btnEditPlate = nullptr;
+    QCheckBox *chkShowPlateLogs = nullptr;
+    QTableWidget *reidTable = nullptr; // ReID Tab
+    QSpinBox *staleTimeoutInput = nullptr;
+    QSpinBox *pruneTimeoutInput = nullptr;
+    QCheckBox *chkShowStaleObjects = nullptr;
+
+    // New DB sub-tab refs
+    QTableWidget *userDbTable = nullptr;
+    QPushButton *btnRefreshUsers = nullptr;
+    QPushButton *btnDeleteUser = nullptr;
+
+    QTableWidget *hwLogTable = nullptr;
+    QPushButton *btnRefreshHwLogs = nullptr;
+    QPushButton *btnClearHwLogs = nullptr;
+
+    QTableWidget *vehicleTable = nullptr;
+    QPushButton *btnRefreshVehicles = nullptr;
+    QPushButton *btnDeleteVehicle = nullptr;
+
+    QTableWidget *zoneTable = nullptr;
+    QPushButton *btnRefreshZone = nullptr;
   };
 
   explicit MainWindowController(const UiRefs &uiRefs,
                                 QObject *parent = nullptr);
   void shutdown();
 
-private:
+public slots:
   void connectSignals();
   void initRoiDb();
   void appendRoiStructuredLog(const QJsonObject &roiData);
@@ -73,12 +112,13 @@ private:
   void onLogMessage(const QString &msg);
   void onOcrResult(int objectId, const QString &result);
   void onStartRoiDraw();
-  void onFinishRoiDraw();
-  void onDeleteRoi();
+  void onCompleteRoiDraw();   // Renamed from onFinishRoiDraw
+  void onDeleteSelectedRoi(); // Renamed from onDeleteRoi
   void onRoiChanged(const QRect &roi);
   void onRoiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
   void onMetadataReceived(const QList<ObjectInfo> &objects);
   void onFrameCaptured(const QImage &frame);
+  void onReidTableCellClicked(int row, int column);
 
   // Telegram Slots
   void onSendEntry();
@@ -86,6 +126,7 @@ private:
   void onTelegramLog(const QString &msg);
   void onUsersUpdated(int count);
   void onPaymentConfirmed(const QString &plate, int amount);
+  void onAdminSummoned(const QString &chatId, const QString &name);
 
   // RPi Slots
   void onRpiConnect();
@@ -102,6 +143,24 @@ private:
                         const QString &message);
   void onRpiLogMessage(const QString &message);
 
+  // Parking DB Slots
+  void onRefreshParkingLogs();
+  void onSearchParkingLogs();
+  void onForcePlate();
+  void onEditPlate();
+
+  // New DB CRUD slots
+  void refreshParkingLogs();
+  void deleteParkingLog();
+  void refreshUserTable();
+  void deleteUser();
+  void refreshHwLogs();
+  void clearHwLogs();
+  void refreshVehicleTable();
+  void deleteVehicle();
+  void refreshZoneTable();
+
+private:
   UiRefs m_ui;
   CameraManager *m_cameraManager = nullptr;
   PlateOcrCoordinator *m_ocrCoordinator = nullptr;
@@ -109,6 +168,7 @@ private:
   RpiTcpClient *m_rpiClient = nullptr;
   CameraSessionService m_cameraSession;
   RoiService m_roiService;
+  ParkingService *m_parkingService = nullptr;
   LogDeduplicator m_logDeduplicator;
 };
 

@@ -52,6 +52,21 @@ qt_add_executable(rtsp_test
     src/rpi/rpitcpclient.h
     src/telegram/telegrambotapi.cpp
     src/telegram/telegrambotapi.h
+    # Parking
+    src/parking/vehicletracker.cpp
+    src/parking/vehicletracker.h
+    src/parking/parkingservice.cpp
+    src/parking/parkingservice.h
+    src/parking/parkingrepository.cpp
+    src/parking/parkingrepository.h
+    # Database (New Phase 9)
+    src/database/databasecontext.cpp
+    src/database/databasecontext.h
+    src/database/userrepository.cpp
+    src/database/userrepository.h
+    src/database/hardwarelogrepository.cpp
+    src/database/hardwarelogrepository.h
+    src/database/vehiclerepository.cpp
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)

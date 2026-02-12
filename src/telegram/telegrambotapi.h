@@ -1,6 +1,7 @@
 #ifndef TELEGRAMBOTAPI_H
 #define TELEGRAMBOTAPI_H
 
+#include "database/userrepository.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
@@ -47,6 +48,9 @@ signals:
   /// [Mock] 결제 확인 시그널 (버튼 클릭 시 발생)
   void paymentConfirmed(const QString &plateNumber, int amount);
 
+  /// 관리자 호출 시그널
+  void adminSummoned(const QString &chatId, const QString &name);
+
 private slots:
   /// Long Polling으로 업데이트 가져오기
   void pollUpdates();
@@ -75,6 +79,9 @@ private:
 
   /// 차량 등록 진행 중인 ChatID 목록 (상태 관리)
   QSet<QString> m_pendingRegistration;
+
+  /// 사용자 정보 리포지토리 (영속화)
+  UserRepository m_userRepository;
 };
 
 #endif // TELEGRAMBOTAPI_H

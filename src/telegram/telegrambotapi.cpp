@@ -28,6 +28,24 @@ TelegramBotAPI::TelegramBotAPI(QObject *parent)
       emit logMessage(QString("[Telegram] ✅ 봇 토큰 로드 완료 (길이: %1)")
                           .arg(m_botToken.length()));
     }
+
+    // DB에서 사용자 로드
+    QString dbErr;
+    if (m_userRepository.init(&dbErr)) {
+      m_chatToPlate = m_userRepository.getAllUsers();
+      // 역방향 맵 구성
+      m_plateToChat.clear();
+      for (auto it = m_chatToPlate.begin(); it != m_chatToPlate.end(); ++it) {
+        m_plateToChat.insert(it.value(), it.key());
+      }
+      emit logMessage(QString("[Telegram] 📂 저장된 사용자 %1명 로드 완료")
+                          .arg(m_chatToPlate.size()));
+      emit usersUpdated(m_chatToPlate.size());
+    } else {
+      emit logMessage(
+          QString("[Telegram] ⚠️ 사용자 DB 초기화 실패: %1").arg(dbErr));
+    }
+
     // 시그널 연결 후 폴링 시작
     startPolling();
   });
@@ -254,8 +272,9 @@ void TelegramBotAPI::pollUpdates() {
       QString("https://api.telegram.org/bot%1/getUpdates").arg(m_botToken));
 
   QUrlQuery query;
-  // timeout: 롱 폴링 대기 시간 (초 단위, 최대 50)
-  query.addQueryItem("timeout", "30");
+  // timeout: 롱 폴링 대기 시간 (초 단위). 네트워크 환경 안정을 위해 20초로
+  // 단축.
+  query.addQueryItem("timeout", "20");
   // offset: 확인하지 않은 새 메시지부터 가져오기
   if (m_lastUpdateId > 0) {
     query.addQueryItem("offset", QString::number(m_lastUpdateId + 1));
@@ -263,8 +282,8 @@ void TelegramBotAPI::pollUpdates() {
   url.setQuery(query);
 
   QNetworkRequest request(url);
-  // 네트워크 타임아웃을 롱 폴링 시간보다 넉넉하게 설정 (40초)
-  request.setTransferTimeout(40000);
+  // 네트워크 타임아웃을 롱 폴링 시간보다 약간 넉넉하게 설정 (25초)
+  request.setTransferTimeout(25000);
 
   QNetworkReply *reply = m_networkManager->get(request);
 
@@ -272,13 +291,17 @@ void TelegramBotAPI::pollUpdates() {
     QByteArray data = reply->readAll();
 
     if (reply->error() != QNetworkReply::NoError) {
-      if (reply->error() != QNetworkReply::OperationCanceledError &&
-          reply->error() != QNetworkReply::TimeoutError) {
-        emit logMessage(
-            QString("[Telegram] Polling Error: %1").arg(reply->errorString()));
+      QNetworkReply::NetworkError err = reply->error();
+      if (err != QNetworkReply::OperationCanceledError &&
+          err != QNetworkReply::TimeoutError &&
+          err != QNetworkReply::RemoteHostClosedError) {
+        emit logMessage(QString("[Telegram] Polling Error (Code: %1): %2")
+                            .arg(static_cast<int>(err))
+                            .arg(reply->errorString()));
         m_pollTimer->start(5000); // 5초 후 재시도
       } else {
-        pollUpdates(); // 타임아웃 등은 즉시 재시도
+        // 네트워크 끊김이나 타임아웃은 일반적인 상황이므로 조용히 즉시 재시도
+        pollUpdates();
       }
       reply->deleteLater();
       return;
@@ -286,9 +309,24 @@ void TelegramBotAPI::pollUpdates() {
 
     QJsonDocument doc = QJsonDocument::fromJson(data);
     QJsonObject root = doc.object();
+    if (root.contains("error_code")) {
+      int errorCode = root["error_code"].toInt();
+      // Conflict Error (409) handling
+      if (errorCode == 409 || errorCode == 206) {
+        emit logMessage("[Telegram] ⚠️ 봇 중복 실행 감지! 다른 곳에서 봇이 실행 "
+                        "중이거나 웹훅이 설정되어 있습니다.");
+        m_pollTimer->start(10000); // 10초 후 재시도 (빈도 줄임)
+        reply->deleteLater();
+        return;
+      }
+    }
 
     if (!root["ok"].toBool()) {
-      emit logMessage("[Telegram] getUpdates returned ok=false");
+      int errorCode = root["error_code"].toInt();
+      QString description = root["description"].toString();
+      emit logMessage(QString("[Telegram] getUpdates failed: %1 (Error: %2)")
+                          .arg(description)
+                          .arg(errorCode));
       m_pollTimer->start(5000);
       reply->deleteLater();
       return;
@@ -359,8 +397,14 @@ void TelegramBotAPI::pollUpdates() {
           message["chat"].toObject()["id"].toVariant().toLongLong());
       QString firstName = message["chat"].toObject()["first_name"].toString();
 
-      if (chatId.isEmpty() || chatId == "0")
+      if (chatId.isEmpty() || chatId == "0") {
+        emit logMessage("[Telegram] ⚠️ Invalid Chat ID parsed. Skipping.");
         continue;
+      }
+
+      emit logMessage(
+          QString("[Telegram] 📩 Msg received - From: %1 (%2), Text: %3")
+              .arg(firstName, chatId, text));
 
       // 1. /start 메시지 처리
       if (text == "/start") {
@@ -401,31 +445,45 @@ void TelegramBotAPI::pollUpdates() {
         // 키보드 제거하면서 메시지 전송
         sendMessage(chatId, "차량번호를 입력해주세요.\n(예: 123가4567)",
                     QString("{\"remove_keyboard\": true}"));
-        emit logMessage(
-            QString("[Telegram] 📝 등록 요청: %1 (차량번호 입력 대기)")
-                .arg(firstName));
+        emit logMessage(QString("[Telegram] 📝 등록 요청: %1 (차량번호 입력 "
+                                "대기) [Pending Count: %2]")
+                            .arg(firstName)
+                            .arg(m_pendingRegistration.size()));
       }
       // 3. 차량번호 입력 처리 (대기 목록에 있는 경우)
       else if (m_pendingRegistration.contains(chatId)) {
+        emit logMessage(QString("[Telegram] 🔍 %1님의 차량번호 입력 감지: %2")
+                            .arg(firstName, text));
         if (text.length() >= 7) {
-          m_plateToChat.insert(text, chatId);
-          m_chatToPlate.insert(chatId, text); // 역방향 매핑 추가
-          m_pendingRegistration.remove(chatId);
-          ++newUsers;
+          // DB 영속화
+          QString pushErr;
+          // 이름은 firstName 사용, 전화번호는 수집하지 않음 ("")
+          if (m_userRepository.registerUser(chatId, text, firstName, "",
+                                            &pushErr)) {
+            m_plateToChat.insert(text, chatId);
+            m_chatToPlate.insert(chatId, text); // 역방향 매핑 추가
+            m_pendingRegistration.remove(chatId);
+            ++newUsers;
 
-          emit logMessage(
-              QString("[Telegram] ✅ 사용자 등록 완료: %1 (차량: %2)")
-                  .arg(firstName)
-                  .arg(text));
+            emit logMessage(
+                QString("[Telegram] ✅ 사용자 등록 완료 및 저장: %1 (차량: %2)")
+                    .arg(firstName)
+                    .arg(text));
 
-          sendMessage(
-              chatId,
-              QString("등록 완료되었습니다! 🎉\n"
-                      "이제 차량 **%1**의 입출차 알림을 받으실 수 있습니다.")
-                  .arg(text));
+            sendMessage(
+                chatId,
+                QString("등록 완료되었습니다! 🎉\n"
+                        "이제 차량 **%1**의 입출차 알림을 받으실 수 있습니다.")
+                    .arg(text));
 
-          // 등록 완료 후 메인 메뉴 표시
-          sendMainMenu(chatId);
+            // 등록 완료 후 메인 메뉴 표시
+            sendMainMenu(chatId);
+          } else {
+            emit logMessage(
+                QString("[Telegram] ❌ 사용자 저장 실패: %1").arg(pushErr));
+            sendMessage(chatId, "죄송합니다. 내부 오류로 등록에 실패했습니다. "
+                                "관리자에게 문의해주세요.");
+          }
         } else {
           sendMessage(chatId, "올바른 차량번호 형식이 아닌 것 같아요. 다시 "
                               "입력해주세요. (예: 123가4567)");
@@ -464,6 +522,7 @@ void TelegramBotAPI::pollUpdates() {
             "📞 관리자에게 호출 메시지를 보냈습니다.\n잠시만 기다려주세요.");
         emit logMessage(QString("[Telegram] 🚨 관리자 호출 요청! (User: %1)")
                             .arg(firstName));
+        emit adminSummoned(chatId, firstName);
       }
     }
 

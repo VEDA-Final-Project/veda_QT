@@ -73,6 +73,10 @@ bool VideoWidget::removeRoiAt(int index) {
 
 int VideoWidget::roiCount() const { return m_roiState.roiCount(); }
 
+const QList<QPolygon> &VideoWidget::roiPolygons() const {
+  return m_roiState.roiPolygons();
+}
+
 void VideoWidget::startRoiDrawing() {
   m_roiState.startDrawing();
   setCursor(Qt::CrossCursor);

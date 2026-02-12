@@ -7,12 +7,13 @@
 #include <QRectF>
 #include <QThread>
 
-
 struct ObjectInfo {
   int id;
   QString type;      // Person, Vehicle, Face...
-  QString extraInfo; // License Plate Number, etc.
-  QRectF rect;        // 0~1000 Normalized Coordinate or Pixel Coordinate
+  QString extraInfo; // License Plate Number, etc. (Legacy)
+  QString plate;     // Explicit plate number
+  float score;       // Confidence score
+  QRectF rect;       // 0~1000 Normalized Coordinate or Pixel Coordinate
 };
 
 class MetadataThread : public QThread {
@@ -21,8 +22,8 @@ public:
   explicit MetadataThread(QObject *parent = nullptr);
   ~MetadataThread();
 
-  void setConnectionInfo(const QString &ip, const QString &user, const QString &password,
-                         const QString &profile);
+  void setConnectionInfo(const QString &ip, const QString &user,
+                         const QString &password, const QString &profile);
   void stop();
 
 signals:
@@ -52,6 +53,3 @@ private:
 };
 
 #endif // METADATATHREAD_H
-
-
-
