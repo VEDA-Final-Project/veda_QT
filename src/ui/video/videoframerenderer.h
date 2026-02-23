@@ -7,18 +7,17 @@
 #include <QPolygon>
 #include <QStringList>
 
-struct OcrRequest
-{
+struct OcrRequest {
   int objectId = -1;
   QImage crop;
 };
 
-class VideoFrameRenderer
-{
+class VideoFrameRenderer {
 public:
-  QImage compose(const QImage &frame, const QList<ObjectInfo> &objects,
-                 const QList<QPolygon> &roiPolygons, const QStringList &roiLabels,
-                 bool roiEnabled,
+  QImage compose(const QImage &frame, const QSize &targetSize,
+                 const QList<ObjectInfo> &objects,
+                 const QList<QPolygon> &roiPolygons,
+                 const QStringList &roiLabels, bool roiEnabled,
                  QList<OcrRequest> *ocrRequests) const;
 };
 

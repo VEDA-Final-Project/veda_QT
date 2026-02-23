@@ -29,20 +29,30 @@ double regionPixelArea(const QRegion &region) {
 }
 } // namespace
 
-QImage VideoFrameRenderer::compose(const QImage &frame,
+QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
                                    bool roiEnabled,
                                    QList<OcrRequest> *ocrRequests) const {
-  QImage keyFrame = frame;
-  QPainter painter(&keyFrame);
+  if (targetSize.isEmpty()) {
+    return frame;
+  }
+
+  // 1. Scale the image for UI rendering FIRST (SmoothTransformation for better
+  // visual quality) 최적화: 렌더링 부하를 줄이기 위해 먼저 그림판을 UI 크기로
+  // 줄이되, 화질 저하 방지를 위해 사용자의 요청에 따라 SmoothTransformation으로
+  // 복구함.
+  QImage scaledFrame =
+      frame.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  QPainter painter(&scaledFrame);
 
   QPen pen(Qt::green, 3);
   painter.setPen(pen);
 
   QFont font = painter.font();
-  font.setPointSize(14);
+  font.setPointSize(14); // May need dynamic adjustment based on targetSize, but
+                         // 14 is a good start
   font.setBold(true);
   painter.setFont(font);
 
@@ -50,12 +60,13 @@ QImage VideoFrameRenderer::compose(const QImage &frame,
   const double sourceHeight = static_cast<double>(cfg.sourceHeight());
   const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
   const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
-  const QRegion roiRegion = roiRegionOnFrame(keyFrame.rect(), roiPolygons);
+  const QRegion roiRegion = roiRegionOnFrame(scaledFrame.rect(), roiPolygons);
   const bool hasActiveRoi = roiEnabled && !roiRegion.isEmpty();
 
   struct RenderCandidate {
     ObjectInfo obj;
-    QRect rect;
+    QRect scaledRect; // Used for UI drawing
+    QRect srcRect;    // Used for OCR Cropping (Full Res)
     bool intersectsRoi = false;
   };
   QVector<RenderCandidate> candidates;
@@ -63,18 +74,34 @@ QImage VideoFrameRenderer::compose(const QImage &frame,
   bool hasAnyRoiMatch = false;
 
   for (const ObjectInfo &obj : objects) {
-    const QRectF &srcRect = obj.rect;
-    const double x =
-        ((srcRect.x() - cropOffsetX) / effectiveWidth) * keyFrame.width();
-    const double y = (srcRect.y() / sourceHeight) * keyFrame.height();
-    const double w = (srcRect.width() / effectiveWidth) * keyFrame.width();
-    const double h = (srcRect.height() / sourceHeight) * keyFrame.height();
+    const QRectF &nsRect =
+        obj.rect; // Normalized-like source rect (from AI metadata)
 
-    const QRect rect(static_cast<int>(x), static_cast<int>(y),
-                     static_cast<int>(w), static_cast<int>(h));
-    const bool intersects = hasActiveRoi && roiRegion.intersects(rect);
+    // Calculate Coordinates for UI Rendering (Scaled)
+    const double scaledX =
+        ((nsRect.x() - cropOffsetX) / effectiveWidth) * scaledFrame.width();
+    const double scaledY = (nsRect.y() / sourceHeight) * scaledFrame.height();
+    const double scaledW =
+        (nsRect.width() / effectiveWidth) * scaledFrame.width();
+    const double scaledH =
+        (nsRect.height() / sourceHeight) * scaledFrame.height();
+
+    const QRect uRect(static_cast<int>(scaledX), static_cast<int>(scaledY),
+                      static_cast<int>(scaledW), static_cast<int>(scaledH));
+
+    // Calculate Coordinates for OCR Cropping (Full 4K Res)
+    const double srcX =
+        ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
+    const double srcY = (nsRect.y() / sourceHeight) * frame.height();
+    const double srcW = (nsRect.width() / effectiveWidth) * frame.width();
+    const double srcH = (nsRect.height() / sourceHeight) * frame.height();
+
+    const QRect fullSrcRect(static_cast<int>(srcX), static_cast<int>(srcY),
+                            static_cast<int>(srcW), static_cast<int>(srcH));
+
+    const bool intersects = hasActiveRoi && roiRegion.intersects(uRect);
     hasAnyRoiMatch = hasAnyRoiMatch || intersects;
-    candidates.push_back(RenderCandidate{obj, rect, intersects});
+    candidates.push_back(RenderCandidate{obj, uRect, fullSrcRect, intersects});
   }
 
   // If ROI exists but no object intersects, fallback to full rendering/OCR.
@@ -95,7 +122,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame,
         if (!c.obj.type.startsWith("Vehic"))
           continue;
         const QRegion intersection =
-            singleRoiRegion.intersected(QRegion(c.rect));
+            singleRoiRegion.intersected(QRegion(c.scaledRect));
         const double interArea = regionPixelArea(intersection);
         if (roiArea > 0 && (interArea / roiArea) >= 0.5) {
           occupied = true;
@@ -134,9 +161,16 @@ QImage VideoFrameRenderer::compose(const QImage &frame,
   }
 
   for (const RenderCandidate &candidate : candidates) {
+    // 필터링 규칙 적용 (ROI가 비활성화거나, 대상이 ROI 안에 있거나 타겟이
+    // 없거나)
+    if (shouldFilterByRoi && !candidate.intersectsRoi) {
+      // Skip drawing and OCR if it's strictly outside active ROI targets
+      continue;
+    }
+
     const ObjectInfo &obj = candidate.obj;
-    const QRect &rect = candidate.rect;
-    painter.drawRect(rect);
+    const QRect &uRect = candidate.scaledRect;
+    painter.drawRect(uRect);
 
     QString text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
     if (!obj.extraInfo.isEmpty()) {
@@ -144,14 +178,16 @@ QImage VideoFrameRenderer::compose(const QImage &frame,
     }
 
     if (obj.type == "LicensePlate" && ocrRequests != nullptr) {
-      const QRect safeRect = rect.intersected(keyFrame.rect());
+      // 2. OCR Decoupling: Extract from original FULL RES frame, not
+      // scaledFrame
+      const QRect safeRect = candidate.srcRect.intersected(frame.rect());
       if (!safeRect.isEmpty()) {
-        ocrRequests->append(OcrRequest{obj.id, keyFrame.copy(safeRect)});
+        ocrRequests->append(OcrRequest{obj.id, frame.copy(safeRect)});
       }
     }
 
     QRect textRect = painter.fontMetrics().boundingRect(text);
-    textRect.moveTopLeft(rect.topLeft() - QPoint(0, textRect.height() + 5));
+    textRect.moveTopLeft(uRect.topLeft() - QPoint(0, textRect.height() + 5));
 
     painter.fillRect(textRect, Qt::black);
     painter.setPen(Qt::white);
@@ -165,5 +201,5 @@ QImage VideoFrameRenderer::compose(const QImage &frame,
   }
 
   painter.end();
-  return keyFrame;
+  return scaledFrame;
 }

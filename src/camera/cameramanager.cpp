@@ -1,11 +1,10 @@
 #include "cameramanager.h"
 #include <QElapsedTimer>
 
-namespace
-{
+namespace {
 constexpr unsigned long kThreadStopTimeoutMs = 2000;
 constexpr unsigned long kForceStopWaitMs = 500;
-}
+} // namespace
 
 /**
  * @brief CameraManager 생성자
@@ -14,32 +13,30 @@ constexpr unsigned long kForceStopWaitMs = 500;
  */
 CameraManager::CameraManager(QObject *parent) : QObject(parent) {
 
-    // === 스레드 생성 (QObject 부모 설정으로 메모리 관리) ===
-    m_videoThread = new VideoThread(this);
-    m_metadataThread = new MetadataThread(this);
+  // === 스레드 생성 (QObject 부모 설정으로 메모리 관리) ===
+  m_videoThread = new VideoThread(this);
+  m_metadataThread = new MetadataThread(this);
 
-    // === VideoThread → CameraManager 시그널 전달 ===
-    // 캡처된 프레임을 그대로 외부(UI 등)로 전달
-    connect(m_videoThread, &VideoThread::frameCaptured,
-            this, &CameraManager::frameCaptured);
+  // === VideoThread → CameraManager 시그널 전달 ===
+  // 캡처된 프레임을 그대로 외부(UI 등)로 전달
+  connect(m_videoThread, &VideoThread::frameCaptured, this,
+          &CameraManager::frameCaptured);
 
-    // === MetadataThread → CameraManager 시그널 전달 ===
-    // 객체 메타데이터 전달
-    connect(m_metadataThread, &MetadataThread::metadataReceived,
-            this, &CameraManager::metadataReceived);
+  // === MetadataThread → CameraManager 시그널 전달 ===
+  // 객체 메타데이터 전달
+  connect(m_metadataThread, &MetadataThread::metadataReceived, this,
+          &CameraManager::metadataReceived);
 
-    // 로그 메시지 전달
-    connect(m_metadataThread, &MetadataThread::logMessage,
-            this, &CameraManager::logMessage);
+  // 로그 메시지 전달
+  connect(m_metadataThread, &MetadataThread::logMessage, this,
+          &CameraManager::logMessage);
 }
 
 /**
  * @brief CameraManager 소멸자
  * - 실행 중인 스레드가 있다면 안전하게 종료
  */
-CameraManager::~CameraManager() {
-    stop();
-}
+CameraManager::~CameraManager() { stop(); }
 
 /**
  * @brief 카메라 스트림 시작
@@ -49,36 +46,36 @@ CameraManager::~CameraManager() {
  */
 void CameraManager::start() {
 
-    // === 이미 실행 중이면 중복 실행 방지 ===
-    if (isRunning())
-        return;
+  // === 이미 실행 중이면 중복 실행 방지 ===
+  if (isRunning())
+    return;
 
-    // === 설정 파일 재로드 (실행 중 설정 변경 반영) ===
-    if (!Config::instance().load()) {
-        emit logMessage("Warning: could not reload config; using existing values.");
-    }
+  // === 설정 파일 재로드 (실행 중 설정 변경 반영) ===
+  if (!Config::instance().load()) {
+    emit logMessage("Warning: could not reload config; using existing values.");
+  }
 
-    // === 설정 값 가져오기 ===
-    const auto &cfg = Config::instance();
-    QString ip = cfg.cameraIp();
-    QString id = cfg.cameraUsername();
-    QString pw = cfg.cameraPassword();
-    QString profile = cfg.cameraProfile();
-    QString url = cfg.rtspUrl();
+  // === 설정 값 가져오기 ===
+  const auto &cfg = Config::instance();
+  QString ip = cfg.cameraIp();
+  QString id = cfg.cameraUsername();
+  QString pw = cfg.cameraPassword();
+  QString profile = cfg.cameraProfile();
+  QString url = cfg.rtspUrl();
 
-    // === 시작 로그 출력 ===
-    emit logMessage(QString("Starting camera with IP=%1, profile=%2")
-                        .arg(ip, profile));
-    emit logMessage(QString("RTSP URL: %1").arg(url));
+  // === 시작 로그 출력 ===
+  emit logMessage(
+      QString("Starting camera with IP=%1, profile=%2").arg(ip, profile));
+  emit logMessage(QString("RTSP URL: %1").arg(url));
 
-    // === 비디오 스트림 시작 ===
-    m_videoThread->setUrl(url);
-    m_videoThread->start();
+  // === 비디오 스트림 시작 ===
+  m_videoThread->setUrl(url);
+  m_videoThread->start();
 
-    // === 메타데이터 스트림 시작 ===
-    // 비디오와 동일한 profile 사용 → 싱크 유지
-    m_metadataThread->setConnectionInfo(ip, id, pw, profile);
-    m_metadataThread->start();
+  // === 메타데이터 스트림 시작 ===
+  // 비디오와 동일한 profile 사용 → 싱크 유지
+  m_metadataThread->setConnectionInfo(ip, id, pw, profile);
+  m_metadataThread->start();
 }
 
 /**
@@ -86,8 +83,8 @@ void CameraManager::start() {
  * - 스트림 완전 종료 후 다시 시작
  */
 void CameraManager::restart() {
-    stop();
-    start();
+  stop();
+  start();
 }
 
 /**
@@ -95,36 +92,40 @@ void CameraManager::restart() {
  * - 비디오/메타데이터 스레드를 안전하게 종료
  */
 void CameraManager::stop() {
-    QElapsedTimer shutdownTimer;
-    shutdownTimer.start();
+  QElapsedTimer shutdownTimer;
+  shutdownTimer.start();
 
-    // === 비디오 스레드 종료 ===
-    if (m_videoThread->isRunning()) {
-        m_videoThread->stop(); // 종료 요청
-        if (!m_videoThread->wait(kThreadStopTimeoutMs)) {
-            emit logMessage(QString("Warning: video thread stop timeout (%1 ms). Forcing terminate.")
-                                .arg(kThreadStopTimeoutMs));
-            m_videoThread->terminate();
-            if (!m_videoThread->wait(kForceStopWaitMs)) {
-                emit logMessage("Error: video thread did not terminate cleanly.");
-            }
-        }
+  // === 비디오 스레드 종료 ===
+  if (m_videoThread->isRunning()) {
+    m_videoThread->stop(); // 종료 요청
+    if (!m_videoThread->wait(kThreadStopTimeoutMs)) {
+      emit logMessage(
+          QString(
+              "Warning: video thread stop timeout (%1 ms). Forcing terminate.")
+              .arg(kThreadStopTimeoutMs));
+      m_videoThread->terminate();
+      if (!m_videoThread->wait(kForceStopWaitMs)) {
+        emit logMessage("Error: video thread did not terminate cleanly.");
+      }
     }
+  }
 
-    // === 메타데이터 스레드 종료 ===
-    if (m_metadataThread->isRunning()) {
-        m_metadataThread->stop();
-        if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
-            emit logMessage(QString("Warning: metadata thread stop timeout (%1 ms). Forcing terminate.")
-                                .arg(kThreadStopTimeoutMs));
-            m_metadataThread->terminate();
-            if (!m_metadataThread->wait(kForceStopWaitMs)) {
-                emit logMessage("Error: metadata thread did not terminate cleanly.");
-            }
-        }
+  // === 메타데이터 스레드 종료 ===
+  if (m_metadataThread->isRunning()) {
+    m_metadataThread->stop();
+    if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
+      emit logMessage(QString("Warning: metadata thread stop timeout (%1 ms). "
+                              "Forcing terminate.")
+                          .arg(kThreadStopTimeoutMs));
+      m_metadataThread->terminate();
+      if (!m_metadataThread->wait(kForceStopWaitMs)) {
+        emit logMessage("Error: metadata thread did not terminate cleanly.");
+      }
     }
+  }
 
-    emit logMessage(QString("Camera stop completed in %1 ms.").arg(shutdownTimer.elapsed()));
+  emit logMessage(
+      QString("Camera stop completed in %1 ms.").arg(shutdownTimer.elapsed()));
 }
 
 /**
@@ -132,6 +133,5 @@ void CameraManager::stop() {
  * @return 하나라도 실행 중이면 true
  */
 bool CameraManager::isRunning() const {
-    return m_videoThread->isRunning()
-    || m_metadataThread->isRunning();
+  return m_videoThread->isRunning() || m_metadataThread->isRunning();
 }

@@ -8,8 +8,10 @@
   "video": {
     "sourceWidth": 3840,
     "sourceHeight": 2160,
-    "effectiveWidth": 2880,
-    "cropOffsetX": 480
+    "effectiveWidth": 3840,
+    "cropOffsetX": 0,
+    "offsetY": 0,
+    "offsetX": 0
   },
   "ocr": {
     "language": "kor",
