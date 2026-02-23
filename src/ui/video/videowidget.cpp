@@ -144,15 +144,14 @@ void VideoWidget::renderFrame(const QImage &frame) {
 
   QList<OcrRequest> ocrRequests;
   const QImage composed = m_frameRenderer.compose(
-      frame, m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
+      frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
       m_roiState.roiEnabled(), &ocrRequests);
 
   for (const OcrRequest &req : ocrRequests) {
     emit ocrRequested(req.objectId, req.crop);
   }
 
-  setPixmap(QPixmap::fromImage(composed).scaled(size(), Qt::KeepAspectRatio,
-                                                Qt::SmoothTransformation));
+  setPixmap(QPixmap::fromImage(composed));
 }
 
 void VideoWidget::paintEvent(QPaintEvent *event) {

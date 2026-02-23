@@ -26,7 +26,7 @@ public:
   bool isRunning() const;
 
 signals:
-  void frameCaptured(const QImage &image);
+  void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void metadataReceived(const QList<ObjectInfo> &objects);
   void logMessage(const QString &msg);
 

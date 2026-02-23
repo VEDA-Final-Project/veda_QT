@@ -23,7 +23,6 @@
 #include <QStringList>
 #include <QTableWidget> // User Table
 
-
 MainWindowController::MainWindowController(const UiRefs &uiRefs,
                                            QObject *parent)
     : QObject(parent), m_ui(uiRefs) {
@@ -56,6 +55,8 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.
   initRoiDb();
   connectSignals();
+
+  m_renderTimer.start();
 }
 
 void MainWindowController::shutdown() {
@@ -601,16 +602,48 @@ void MainWindowController::onMetadataReceived(
   }
 }
 
-void MainWindowController::onFrameCaptured(const QImage &frame) {
-  if (!m_ui.videoWidget) {
+void MainWindowController::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
+                                           qint64 timestampMs) {
+  if (!m_ui.videoWidget || !framePtr || framePtr->empty()) {
     return;
   }
 
+  // === UI Frame Throttling ===
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+  // 1. Stale Frame Drop (실시간성 확보 및 OOM 방지)
+  // 큐에 너무 오래 머물러 있던 프레임은 버림 (예: 60ms 이상 지연된 프레임)
+  // 버려진 프레임에 대해서는 메모리 할당/복사(Overhead)가 전혀 발생하지 않음
+  // (Zero-Copy)
+  if ((nowMs - timestampMs) > 60) {
+    return;
+  }
+
+  // 2. Render Throttling (UI 렌더링 부하 방지)
+  // 약 30~33fps 수준인 30ms로 제한하여 부하와 부드러움의 타협점 적용
+  if (m_renderTimer.isValid() && m_renderTimer.elapsed() < 30) {
+    return;
+  }
+  m_renderTimer.restart();
+
+  // === 화면을 그릴 때만 BGR -> RGB 색상 변환 수행 ===
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+
+  // === Zero-Copy QImage 래핑 ===
+  // OpenCV 버퍼 데이터를 복사하지 않고 단순히 쳐다만 보는(shallow copy) QImage
+  // 객체를 생성합니다. framePtr가 이 스코프를 벗어나기 전까진 메모리가
+  // 유지되므로 안전하게 위젯에 넘길 수 있습니다.
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+
   // 프레임 갱신 직전에 "현재 시각 기준으로 준비된 메타데이터"만 소비한다.
   // 이렇게 해야 박스/객체 정보와 비디오 프레임이 더 자연스럽게 맞는다.
-  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_ui.videoWidget->updateMetadata(m_cameraSession.consumeReadyMetadata(nowMs));
-  m_ui.videoWidget->updateFrame(frame);
+
+  // QImage 참조 전달.
+  // 내부에서 scaled 되거나 사용(복사)된 후 qimg 스코프 종료 시 framePtr.reset()
+  // 실행됨.
+  m_ui.videoWidget->updateFrame(qimg);
 }
 
 void MainWindowController::onSendEntry() {

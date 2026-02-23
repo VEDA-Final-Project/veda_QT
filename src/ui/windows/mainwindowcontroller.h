@@ -117,7 +117,7 @@ public slots:
   void onRoiChanged(const QRect &roi);
   void onRoiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
   void onMetadataReceived(const QList<ObjectInfo> &objects);
-  void onFrameCaptured(const QImage &frame);
+  void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
 
   // Telegram Slots
@@ -170,6 +170,7 @@ private:
   RoiService m_roiService;
   ParkingService *m_parkingService = nullptr;
   LogDeduplicator m_logDeduplicator;
+  QElapsedTimer m_renderTimer;
 };
 
 #endif // MAINWINDOWCONTROLLER_H
