@@ -98,54 +98,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // Controller 생성 (MainWindow가 부모 → 자동 메모리 관리)
   m_controller = new MainWindowController(uiRefs, this);
 
-  // === Signal/Slot Connections ===
-  if (m_btnPlay) {
-    connect(m_btnPlay, &QPushButton::clicked, m_controller,
-            &MainWindowController::playCctv);
-  }
-  if (m_btnApplyRoi) {
-    connect(m_btnApplyRoi, &QPushButton::clicked, m_controller,
-            &MainWindowController::onStartRoiDraw);
-  }
-  if (m_btnFinishRoi) {
-    connect(m_btnFinishRoi, &QPushButton::clicked, m_controller,
-            &MainWindowController::onCompleteRoiDraw);
-  }
-  if (m_btnDeleteRoi) {
-    connect(m_btnDeleteRoi, &QPushButton::clicked, m_controller,
-            &MainWindowController::onDeleteSelectedRoi);
-  }
-  // Telegram
-  if (m_btnSendEntry) {
-    connect(m_btnSendEntry, &QPushButton::clicked, m_controller,
-            &MainWindowController::onSendEntry);
-  }
-  if (m_btnSendExit) {
-    connect(m_btnSendExit, &QPushButton::clicked, m_controller,
-            &MainWindowController::onSendExit);
-  }
-  // Parking DB
-  if (m_btnSearchPlate) {
-    connect(m_btnSearchPlate, &QPushButton::clicked, m_controller,
-            &MainWindowController::onSearchParkingLogs);
-  }
-  if (m_btnRefreshLogs) {
-    connect(m_btnRefreshLogs, &QPushButton::clicked, m_controller,
-            &MainWindowController::onRefreshParkingLogs);
-  }
-  if (m_btnForcePlate) {
-    connect(m_btnForcePlate, &QPushButton::clicked, m_controller,
-            &MainWindowController::onForcePlate);
-  }
-  if (m_btnEditPlate) {
-    connect(m_btnEditPlate, &QPushButton::clicked, m_controller,
-            &MainWindowController::onEditPlate);
-  }
-  if (m_reidTable) {
-    connect(m_reidTable, &QTableWidget::cellClicked, m_controller,
-            &MainWindowController::onReidTableCellClicked);
-  }
-
   // === 객체 필터 체크박스 연결 ===
   auto updateFilter = [this]() {
     if (!m_controller)
