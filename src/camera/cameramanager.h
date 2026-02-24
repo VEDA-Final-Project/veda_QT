@@ -25,6 +25,11 @@ public:
   void restart();
   bool isRunning() const;
 
+  void setDisabledObjectTypes(const QSet<QString> &types) {
+    if (m_metadataThread)
+      m_metadataThread->setDisabledTypes(types);
+  }
+
 signals:
   void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void metadataReceived(const QList<ObjectInfo> &objects);

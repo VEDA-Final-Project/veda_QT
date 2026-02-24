@@ -1,10 +1,10 @@
-
 #ifndef METADATATHREAD_H
 #define METADATATHREAD_H
 
 #include <QMutex>
 #include <QProcess>
 #include <QRectF>
+#include <QSet>
 #include <QThread>
 
 struct ObjectInfo {
@@ -24,6 +24,7 @@ public:
 
   void setConnectionInfo(const QString &ip, const QString &user,
                          const QString &password, const QString &profile);
+  void setDisabledTypes(const QSet<QString> &types);
   void stop();
 
 signals:
@@ -50,6 +51,7 @@ private:
   QProcess *m_process;
   QMutex m_mutex;
   QByteArray m_buffer;
+  QSet<QString> m_disabledTypes;
 };
 
 #endif // METADATATHREAD_H

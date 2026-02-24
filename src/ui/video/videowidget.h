@@ -20,7 +20,7 @@
  * OCR 실행 및 메타데이터 동기화는 외부 코디네이터가 담당합니다.
  */
 
-class VideoWidget : public QLabel {
+class VideoWidget : public QWidget {
   Q_OBJECT
 
 public:
@@ -63,6 +63,7 @@ private:
   QList<QPolygonF> m_pendingNormalizedRoiPolygons;
   QStringList m_pendingRoiLabels;
   QStringList m_roiLabels;
+  QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
 };
 
 #endif // VIDEOWIDGET_H
