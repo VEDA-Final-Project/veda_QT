@@ -3,6 +3,7 @@
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
@@ -21,10 +22,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         connect(m_btnExit, &QPushButton::clicked, this, &MainWindow::close);
     }
 
-    /*
-     * Controller에 전달할 UI 참조 묶음
-     */
-    MainWindowController::UiRefs uiRefs;
+    // 초기 창 크기 설정
+    resize(900, 680);
+}
+
+MainWindowUiRefs MainWindow::controllerUiRefs() const
+{
+    MainWindowUiRefs uiRefs;
     uiRefs.videoWidgetPrimary = m_videoWidgetPrimary;
     uiRefs.videoWidgetSecondary = m_videoWidgetSecondary;
     uiRefs.viewModeCombo = m_viewModeCombo;
@@ -40,7 +44,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     uiRefs.btnFinishRoi = m_btnFinishRoi;
     uiRefs.btnDeleteRoi = m_btnDeleteRoi;
 
-    // Telegram Widgets
     uiRefs.userCountLabel = m_userCountLabel;
     uiRefs.entryPlateInput = m_entryPlateInput;
     uiRefs.btnSendEntry = m_btnSendEntry;
@@ -49,7 +52,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     uiRefs.btnSendExit = m_btnSendExit;
     uiRefs.userTable = m_userTable;
 
-    // RPi Widgets
     uiRefs.rpiHostEdit = m_rpiHostEdit;
     uiRefs.rpiPortSpin = m_rpiPortSpin;
     uiRefs.btnRpiConnect = m_btnRpiConnect;
@@ -64,48 +66,46 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     uiRefs.rpiIrRawLabel = m_rpiIrRawLabel;
     uiRefs.rpiServoAngleLabel = m_rpiServoAngleLabel;
 
-    // Parking DB Panel Widgets
     uiRefs.parkingLogTable = m_parkingLogTable;
     uiRefs.plateSearchInput = m_plateSearchInput;
     uiRefs.btnSearchPlate = m_btnSearchPlate;
     uiRefs.btnRefreshLogs = m_btnRefreshLogs;
     uiRefs.forcePlateInput = m_forcePlateInput;
     uiRefs.forceObjectIdInput = m_forceObjectIdInput;
-    uiRefs.btnForcePlate = m_btnForcePlate;
-    uiRefs.editPlateInput = m_editPlateInput;
-    uiRefs.btnEditPlate = m_btnEditPlate;
-
-    // New DB sub-tab refs
-    uiRefs.userDbTable = m_userDbTable;
-    uiRefs.btnRefreshUsers = m_btnRefreshUsers;
-    uiRefs.btnDeleteUser = m_btnDeleteUser;
-
-    uiRefs.hwLogTable = m_hwLogTable;
-    uiRefs.btnRefreshHwLogs = m_btnRefreshHwLogs;
-    uiRefs.btnClearHwLogs = m_btnClearHwLogs;
-
-    uiRefs.vehicleTable = m_vehicleTable;
-    uiRefs.btnRefreshVehicles = m_btnRefreshVehicles;
-    uiRefs.btnDeleteVehicle = m_btnDeleteVehicle;
-
-    uiRefs.zoneTable = m_zoneTable;
-    uiRefs.btnRefreshZone = m_btnRefreshZone;
-
-    // Log Filter
-    uiRefs.chkShowPlateLogs = m_chkShowPlateLogs;
-    // ReID Table
-    uiRefs.reidTable = m_reidTable;
     uiRefs.forceTypeInput = m_forceTypeInput;
     uiRefs.forceScoreInput = m_forceScoreInput;
     uiRefs.forceBBoxInput = m_forceBBoxInput;
+    uiRefs.btnForcePlate = m_btnForcePlate;
+    uiRefs.editPlateInput = m_editPlateInput;
+    uiRefs.btnEditPlate = m_btnEditPlate;
+    uiRefs.chkShowPlateLogs = m_chkShowPlateLogs;
+    uiRefs.reidTable = m_reidTable;
     uiRefs.staleTimeoutInput = m_staleTimeoutInput;
     uiRefs.pruneTimeoutInput = m_pruneTimeoutInput;
     uiRefs.chkShowStaleObjects = m_chkShowStaleObjects;
 
-    // Controller 생성 (MainWindow가 부모 → 자동 메모리 관리)
-    m_controller = new MainWindowController(uiRefs, this);
+    uiRefs.userDbTable = m_userDbTable;
+    uiRefs.btnRefreshUsers = m_btnRefreshUsers;
+    uiRefs.btnDeleteUser = m_btnDeleteUser;
+    uiRefs.hwLogTable = m_hwLogTable;
+    uiRefs.btnRefreshHwLogs = m_btnRefreshHwLogs;
+    uiRefs.btnClearHwLogs = m_btnClearHwLogs;
+    uiRefs.vehicleTable = m_vehicleTable;
+    uiRefs.btnRefreshVehicles = m_btnRefreshVehicles;
+    uiRefs.btnDeleteVehicle = m_btnDeleteVehicle;
+    uiRefs.zoneTable = m_zoneTable;
+    uiRefs.btnRefreshZone = m_btnRefreshZone;
+    return uiRefs;
+}
 
-    // === 객체 필터 체크박스 연결 ===
+void MainWindow::attachController(MainWindowController *controller)
+{
+    m_controller = controller;
+    if (!m_controller)
+    {
+        return;
+    }
+
     auto updateFilter = [this]()
     {
         if (!m_controller)
@@ -137,11 +137,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(m_chkFace, &QCheckBox::toggled, this, updateFilter);
     connect(m_chkPlate, &QCheckBox::toggled, this, updateFilter);
     connect(m_chkOther, &QCheckBox::toggled, this, updateFilter);
-    // 초기값 적용 (기타 기본 체크 해제)
     updateFilter();
-
-    // 초기 창 크기 설정
-    resize(1000, 700);
 }
 
 /*
@@ -163,6 +159,18 @@ void MainWindow::setupUi()
     QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
 
+    // 기본 UI 폰트를 한 단계만 줄여 과도하게 크게 보이는 문제를 완화.
+    QFont compactUiFont = font();
+    int basePointSize = compactUiFont.pointSize();
+    if (basePointSize <= 0) {
+        basePointSize = 10;
+    }
+    compactUiFont.setPointSize(basePointSize - 1);
+    if (compactUiFont.pointSize() < 9) {
+        compactUiFont.setPointSize(9);
+    }
+    centralWidget->setFont(compactUiFont);
+
     QVBoxLayout *layout = new QVBoxLayout(centralWidget);
 
     QTabWidget *tabWidget = new QTabWidget(this);
@@ -173,23 +181,25 @@ void MainWindow::setupUi()
     QWidget *cctvTab = new QWidget(this);
     QVBoxLayout *cctvLayout = new QVBoxLayout(cctvTab);
 
-    // 상단 버튼 / 입력 영역
-    QHBoxLayout *btnLayout = new QHBoxLayout();
+    // 상단 버튼 / 입력 영역 (2줄로 분리하여 초기 창 가로 폭 부담 완화)
+    QVBoxLayout *topControlLayout = new QVBoxLayout();
+    QHBoxLayout *channelLayout = new QHBoxLayout();
+    QHBoxLayout *roiLayout = new QHBoxLayout();
     QLabel *viewModeLabel = new QLabel("모드:", this);
     m_viewModeCombo = new QComboBox(this);
     m_viewModeCombo->addItem(QStringLiteral("1채널"));
     m_viewModeCombo->addItem(QStringLiteral("2채널 동시"));
-    m_viewModeCombo->setMinimumWidth(120);
+    m_viewModeCombo->setMinimumWidth(90);
 
     QLabel *cameraPrimaryLabel = new QLabel("카메라 A:", this);
     m_cameraPrimarySelectorCombo = new QComboBox(this);
-    m_cameraPrimarySelectorCombo->setMinimumWidth(140);
+    m_cameraPrimarySelectorCombo->setMinimumWidth(110);
     m_cameraPrimarySelectorCombo->setSizeAdjustPolicy(
         QComboBox::AdjustToContentsOnFirstShow);
 
     QLabel *cameraSecondaryLabel = new QLabel("카메라 B:", this);
     m_cameraSecondarySelectorCombo = new QComboBox(this);
-    m_cameraSecondarySelectorCombo->setMinimumWidth(140);
+    m_cameraSecondarySelectorCombo->setMinimumWidth(110);
     m_cameraSecondarySelectorCombo->setSizeAdjustPolicy(
         QComboBox::AdjustToContentsOnFirstShow);
     m_cameraSecondarySelectorCombo->setEnabled(false);
@@ -202,14 +212,14 @@ void MainWindow::setupUi()
     m_roiTargetCombo = new QComboBox(this);
     m_roiTargetCombo->addItem(QStringLiteral("카메라 A"));
     m_roiTargetCombo->addItem(QStringLiteral("카메라 B"));
-    m_roiTargetCombo->setMinimumWidth(110);
+    m_roiTargetCombo->setMinimumWidth(90);
 
     QLabel *nameLabel = new QLabel("이름:", this);
     m_roiNameEdit = new QLineEdit(this);
     m_roiNameEdit->setPlaceholderText(QStringLiteral("ROI 이름 입력(필수)"));
     m_roiNameEdit->setClearButtonEnabled(true);
     m_roiNameEdit->setMaxLength(20);
-    m_roiNameEdit->setMinimumWidth(180);
+    m_roiNameEdit->setMinimumWidth(130);
     m_roiNameEdit->setValidator(new QRegularExpressionValidator(
         QRegularExpression(QStringLiteral("^[A-Za-z0-9가-힣 _-]{0,20}$")),
         m_roiNameEdit));
@@ -218,52 +228,57 @@ void MainWindow::setupUi()
     m_roiPurposeCombo = new QComboBox(this);
     m_roiPurposeCombo->addItem(QStringLiteral("지정 주차"));
     m_roiPurposeCombo->addItem(QStringLiteral("일반 주차"));
-    m_roiPurposeCombo->setMinimumWidth(120);
+    m_roiPurposeCombo->setMinimumWidth(90);
 
     QLabel *roiLabel = new QLabel("ROI:", this);
     m_roiSelectorCombo = new QComboBox(this);
-    m_roiSelectorCombo->setMinimumContentsLength(24);
+    m_roiSelectorCombo->setMinimumContentsLength(12);
     m_roiSelectorCombo->setSizeAdjustPolicy(
         QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    m_roiSelectorCombo->setMinimumWidth(260);
+    m_roiSelectorCombo->setMinimumWidth(150);
     m_roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
 
     m_btnDeleteRoi = new QPushButton("ROI 삭제", this);
 
-    btnLayout->addWidget(viewModeLabel);
-    btnLayout->addWidget(m_viewModeCombo);
-    btnLayout->addSpacing(8);
-    btnLayout->addWidget(cameraPrimaryLabel);
-    btnLayout->addWidget(m_cameraPrimarySelectorCombo);
-    btnLayout->addSpacing(8);
-    btnLayout->addWidget(cameraSecondaryLabel);
-    btnLayout->addWidget(m_cameraSecondarySelectorCombo);
-    btnLayout->addSpacing(8);
-    btnLayout->addWidget(m_btnPlay);
-    btnLayout->addWidget(m_btnExit);
-    btnLayout->addSpacing(20);
-    btnLayout->addWidget(m_btnApplyRoi);
-    btnLayout->addWidget(m_btnFinishRoi);
-    btnLayout->addSpacing(8);
-    btnLayout->addWidget(roiTargetLabel);
-    btnLayout->addWidget(m_roiTargetCombo);
-    btnLayout->addSpacing(20);
-    btnLayout->addWidget(nameLabel);
-    btnLayout->addWidget(m_roiNameEdit);
-    btnLayout->addSpacing(12);
-    btnLayout->addWidget(purposeLabel);
-    btnLayout->addWidget(m_roiPurposeCombo);
-    btnLayout->addSpacing(12);
-    btnLayout->addWidget(roiLabel);
-    btnLayout->addWidget(m_roiSelectorCombo);
-    btnLayout->addWidget(m_btnDeleteRoi);
+    channelLayout->addWidget(viewModeLabel);
+    channelLayout->addWidget(m_viewModeCombo);
+    channelLayout->addSpacing(8);
+    channelLayout->addWidget(cameraPrimaryLabel);
+    channelLayout->addWidget(m_cameraPrimarySelectorCombo);
+    channelLayout->addSpacing(8);
+    channelLayout->addWidget(cameraSecondaryLabel);
+    channelLayout->addWidget(m_cameraSecondarySelectorCombo);
+    channelLayout->addSpacing(8);
+    channelLayout->addWidget(m_btnPlay);
+    channelLayout->addWidget(m_btnExit);
+    channelLayout->addStretch(1);
+
+    roiLayout->addWidget(m_btnApplyRoi);
+    roiLayout->addWidget(m_btnFinishRoi);
+    roiLayout->addSpacing(8);
+    roiLayout->addWidget(roiTargetLabel);
+    roiLayout->addWidget(m_roiTargetCombo);
+    roiLayout->addSpacing(12);
+    roiLayout->addWidget(nameLabel);
+    roiLayout->addWidget(m_roiNameEdit);
+    roiLayout->addSpacing(8);
+    roiLayout->addWidget(purposeLabel);
+    roiLayout->addWidget(m_roiPurposeCombo);
+    roiLayout->addSpacing(8);
+    roiLayout->addWidget(roiLabel);
+    roiLayout->addWidget(m_roiSelectorCombo);
+    roiLayout->addWidget(m_btnDeleteRoi);
+    roiLayout->addStretch(1);
+
+    topControlLayout->addLayout(channelLayout);
+    topControlLayout->addLayout(roiLayout);
 
     // 비디오 위젯 (A/B)
     m_videoWidgetPrimary = new VideoWidget(this);
     m_videoWidgetSecondary = new VideoWidget(this);
     m_videoWidgetSecondary->setVisible(false);
 
-    cctvLayout->addLayout(btnLayout);
+    cctvLayout->addLayout(topControlLayout);
     QHBoxLayout *videoLayout = new QHBoxLayout();
     videoLayout->setSpacing(8);
     videoLayout->addWidget(m_videoWidgetPrimary, 1);

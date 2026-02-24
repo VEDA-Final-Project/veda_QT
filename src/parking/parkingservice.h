@@ -65,6 +65,7 @@ public:
    * @brief 특정 레코드의 번호판 수정
    */
   bool updatePlate(int recordId, const QString &newPlate);
+  bool deleteLog(int recordId, QString *errorMessage = nullptr);
 
   /**
    * @brief 수동 번호판 및 객체 정보 강제 지정 (실험용 상세 제어)
@@ -97,11 +98,6 @@ signals:
    * @brief 로그 메시지 (UI 로그 창에 표시)
    */
   void logMessage(const QString &msg);
-
-  /**
-   * @brief OCR 요청 (MainWindowController가 OcrCoordinator로 전달)
-   */
-  void ocrRequested(int objectId);
 
 private:
   void handleNewEntry(const VehicleState &vs);

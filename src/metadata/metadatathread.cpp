@@ -1,4 +1,5 @@
 #include "metadatathread.h"
+#include "util/rtspurl.h"
 #include <QCoreApplication>
 #include <QDebug>
 #include <QEventLoop>
@@ -108,11 +109,23 @@ void MetadataThread::run() {
     return;
   }
 
+  QString ip;
+  QString user;
+  QString password;
+  QString profile;
+  {
+    QMutexLocker locker(&m_mutex);
+    ip = m_ip;
+    user = m_user;
+    password = m_password;
+    profile = m_profile;
+  }
+
   // === RTSP URL 구성 ===
-  QString url =
-      QString("rtsp://%1:%2@%3/%4").arg(m_user, m_password, m_ip, m_profile);
+  const QString url = buildRtspUrl(ip, user, password, profile);
 
   emit logMessage("Starting FFmpeg metadata extraction...");
+  emit logMessage(QString("Metadata RTSP URL: %1").arg(maskedRtspUrl(url)));
 
   // === FFmpeg 실행 인자 구성 ===
   QStringList args;

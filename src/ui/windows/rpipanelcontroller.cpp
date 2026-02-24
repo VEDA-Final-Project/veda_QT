@@ -148,7 +148,9 @@ void RpiPanelController::onRpiErrReceived(const QString &messageId,
                                           const QString &code,
                                           const QString &message) {
   onRpiLogMessage(QString("[RPI] Error: id=%1 code=%2 message=%3")
-                      .arg(messageId, code, message));
+                      .arg(messageId)
+                      .arg(code)
+                      .arg(message));
 }
 
 void RpiPanelController::onRpiLogMessage(const QString &message) {

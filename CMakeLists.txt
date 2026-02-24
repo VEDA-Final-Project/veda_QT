@@ -14,8 +14,13 @@ qt_add_executable(rtsp_test
     # UI
     src/ui/windows/mainwindow.cpp
     src/ui/windows/mainwindow.h
+    src/ui/windows/mainwindowuirefs.h
     src/ui/windows/mainwindowcontroller.cpp
     src/ui/windows/mainwindowcontroller.h
+    src/ui/windows/dbpanelcontroller.cpp
+    src/ui/windows/dbpanelcontroller.h
+    src/ui/windows/rpipanelcontroller.cpp
+    src/ui/windows/rpipanelcontroller.h
     src/ui/video/videowidget.cpp
     src/ui/video/videowidget.h
     src/ui/roi/roiinteractionstate.cpp
@@ -44,6 +49,8 @@ qt_add_executable(rtsp_test
     src/logging/logdeduplicator.h
     src/metadata/metadatasynchronizer.cpp
     src/metadata/metadatasynchronizer.h
+    src/util/rtspurl.cpp
+    src/util/rtspurl.h
     src/roi/roirepository.cpp
     src/roi/roirepository.h
     src/roi/roiservice.cpp

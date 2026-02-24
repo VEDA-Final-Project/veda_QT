@@ -2,10 +2,8 @@
 
 #include "config/config.h"
 #include "database/databasecontext.h"
-#include "database/hardwarelogrepository.h"
-#include "database/userrepository.h"
-#include "database/vehiclerepository.h"
-#include "parking/parkingrepository.h"
+#include "dbpanelcontroller.h"
+#include "rpipanelcontroller.h"
 #include "ui/video/videowidget.h"
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -18,14 +16,17 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRectF>
-#include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTableWidget> // User Table
 #include <algorithm>
 
-MainWindowController::MainWindowController(const UiRefs &uiRefs,
+static void populateReidTable(QTableWidget *table,
+                              const QList<VehicleState> &vehicleStates,
+                              int staleTimeoutMs, bool showStaleObjects);
+
+MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
                                            QObject *parent)
     : QObject(parent), m_ui(uiRefs) {
   // 컨트롤러가 하위 서비스의 수명을 소유한다.
@@ -35,8 +36,22 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   m_ocrCoordinatorPrimary = new PlateOcrCoordinator(this);
   m_ocrCoordinatorSecondary = new PlateOcrCoordinator(this);
   m_telegramApi = new TelegramBotAPI(this);
-  m_rpiClient = new RpiTcpClient(this);
-  m_rpiClient->setBarrierAngles(90, 0);
+  RpiPanelController::UiRefs rpiUiRefs;
+  rpiUiRefs.hostEdit = m_ui.rpiHostEdit;
+  rpiUiRefs.portSpin = m_ui.rpiPortSpin;
+  rpiUiRefs.btnConnect = m_ui.btnRpiConnect;
+  rpiUiRefs.btnDisconnect = m_ui.btnRpiDisconnect;
+  rpiUiRefs.btnBarrierUp = m_ui.btnBarrierUp;
+  rpiUiRefs.btnBarrierDown = m_ui.btnBarrierDown;
+  rpiUiRefs.btnLedOn = m_ui.btnLedOn;
+  rpiUiRefs.btnLedOff = m_ui.btnLedOff;
+  rpiUiRefs.connectionStatusLabel = m_ui.rpiConnectionStatusLabel;
+  rpiUiRefs.vehicleStatusLabel = m_ui.rpiVehicleStatusLabel;
+  rpiUiRefs.ledStatusLabel = m_ui.rpiLedStatusLabel;
+  rpiUiRefs.irRawLabel = m_ui.rpiIrRawLabel;
+  rpiUiRefs.servoAngleLabel = m_ui.rpiServoAngleLabel;
+  rpiUiRefs.logView = m_ui.logView;
+  m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
   m_parkingServicePrimary = new ParkingService(this);
   m_parkingServiceSecondary = new ParkingService(this);
 
@@ -48,10 +63,10 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   m_cameraSessionSecondary.setDelayMs(delayMs);
   refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
                                     m_selectedCameraKeyPrimary,
-                                    &m_selectedCameraKeyPrimary);
+                                    &m_selectedCameraKeyPrimary, true);
   refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
                                     m_selectedCameraKeySecondary,
-                                    &m_selectedCameraKeySecondary);
+                                    &m_selectedCameraKeySecondary, false);
 
   // 통합 DB 초기화 (veda.db)
   const QString dbPath =
@@ -67,7 +82,6 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   if (!m_parkingServiceSecondary->init(&parkingErrorSecondary)) {
     qWarning() << "[Parking][B] Service init failed:" << parkingErrorSecondary;
   }
-  m_rpiClient->init();
   m_parkingServicePrimary->setTelegramApi(m_telegramApi);
   m_parkingServiceSecondary->setTelegramApi(m_telegramApi);
 
@@ -79,9 +93,48 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   if (m_parkingServiceSecondary) {
     m_parkingServiceSecondary->setCameraKey(m_selectedCameraKeySecondary);
   }
+
+  DbPanelController::UiRefs dbUiRefs;
+  dbUiRefs.parkingLogTable = m_ui.parkingLogTable;
+  dbUiRefs.plateSearchInput = m_ui.plateSearchInput;
+  dbUiRefs.btnSearchPlate = m_ui.btnSearchPlate;
+  dbUiRefs.btnRefreshLogs = m_ui.btnRefreshLogs;
+  dbUiRefs.forcePlateInput = m_ui.forcePlateInput;
+  dbUiRefs.forceObjectIdInput = m_ui.forceObjectIdInput;
+  dbUiRefs.forceTypeInput = m_ui.forceTypeInput;
+  dbUiRefs.forceScoreInput = m_ui.forceScoreInput;
+  dbUiRefs.forceBBoxInput = m_ui.forceBBoxInput;
+  dbUiRefs.btnForcePlate = m_ui.btnForcePlate;
+  dbUiRefs.editPlateInput = m_ui.editPlateInput;
+  dbUiRefs.btnEditPlate = m_ui.btnEditPlate;
+  dbUiRefs.userDbTable = m_ui.userDbTable;
+  dbUiRefs.btnRefreshUsers = m_ui.btnRefreshUsers;
+  dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
+  dbUiRefs.hwLogTable = m_ui.hwLogTable;
+  dbUiRefs.btnRefreshHwLogs = m_ui.btnRefreshHwLogs;
+  dbUiRefs.btnClearHwLogs = m_ui.btnClearHwLogs;
+  dbUiRefs.vehicleTable = m_ui.vehicleTable;
+  dbUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
+  dbUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
+  dbUiRefs.zoneTable = m_ui.zoneTable;
+  dbUiRefs.btnRefreshZone = m_ui.btnRefreshZone;
+  dbUiRefs.logView = m_ui.logView;
+
+  DbPanelController::Context dbContext;
+  dbContext.parkingServiceProvider = [this]() {
+    return parkingServiceForTarget(m_roiTarget);
+  };
+  dbContext.primaryZoneRecordsProvider = [this]() {
+    return m_roiServicePrimary.records();
+  };
+  dbContext.secondaryZoneRecordsProvider = [this]() {
+    return m_roiServiceSecondary.records();
+  };
+  dbContext.logMessage = [this](const QString &message) { onLogMessage(message); };
+  m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
-  refreshZoneTableAllChannels();
   applyViewModeUiState();
   connectSignals();
 
@@ -102,8 +155,8 @@ void MainWindowController::shutdown() {
   }
   m_cameraSessionPrimary.stop();
   m_cameraSessionSecondary.stop();
-  if (m_rpiClient) {
-    m_rpiClient->disconnectFromServer();
+  if (m_rpiPanelController) {
+    m_rpiPanelController->shutdown();
   }
 
   const QString shutdownLog =
@@ -171,6 +224,10 @@ void MainWindowController::connectSignals() {
             m_ocrCoordinatorSecondary,
             &PlateOcrCoordinator::requestOcr);
   }
+  if (m_ui.reidTable) {
+    connect(m_ui.reidTable, &QTableWidget::cellClicked, this,
+            &MainWindowController::onReidTableCellClicked);
+  }
 
   // 백엔드 이벤트(Camera/OCR) -> Controller 슬롯 연결
   connect(m_cameraManagerPrimary, &CameraManager::metadataReceived, this,
@@ -200,32 +257,6 @@ void MainWindowController::connectSignals() {
             &MainWindowController::onSendExit);
   }
 
-  // RPi UI -> Controller
-  if (m_ui.btnRpiConnect) {
-    connect(m_ui.btnRpiConnect, &QPushButton::clicked, this,
-            &MainWindowController::onRpiConnect);
-  }
-  if (m_ui.btnRpiDisconnect) {
-    connect(m_ui.btnRpiDisconnect, &QPushButton::clicked, this,
-            &MainWindowController::onRpiDisconnect);
-  }
-  if (m_ui.btnBarrierUp) {
-    connect(m_ui.btnBarrierUp, &QPushButton::clicked, this,
-            &MainWindowController::onRpiBarrierUp);
-  }
-  if (m_ui.btnBarrierDown) {
-    connect(m_ui.btnBarrierDown, &QPushButton::clicked, this,
-            &MainWindowController::onRpiBarrierDown);
-  }
-  if (m_ui.btnLedOn) {
-    connect(m_ui.btnLedOn, &QPushButton::clicked, this,
-            &MainWindowController::onRpiLedOn);
-  }
-  if (m_ui.btnLedOff) {
-    connect(m_ui.btnLedOff, &QPushButton::clicked, this,
-            &MainWindowController::onRpiLedOff);
-  }
-
   // Telegram API -> Controller
   connect(m_telegramApi, &TelegramBotAPI::logMessage, this,
           &MainWindowController::onTelegramLog);
@@ -236,20 +267,9 @@ void MainWindowController::connectSignals() {
   connect(m_telegramApi, &TelegramBotAPI::adminSummoned, this,
           &MainWindowController::onAdminSummoned);
 
-  // RPi Client -> Controller
-  connect(m_rpiClient, &RpiTcpClient::connectedChanged, this,
-          &MainWindowController::onRpiConnectedChanged);
-  connect(m_rpiClient, &RpiTcpClient::parkingStatusUpdated, this,
-          &MainWindowController::onRpiParkingStatusUpdated);
-  connect(m_rpiClient, &RpiTcpClient::ackReceived, this,
-          &MainWindowController::onRpiAckReceived);
-  connect(m_rpiClient, &RpiTcpClient::errReceived, this,
-          &MainWindowController::onRpiErrReceived);
-  connect(m_rpiClient, &RpiTcpClient::logMessage, this,
-          &MainWindowController::onRpiLogMessage);
-
-  onRpiConnectedChanged(false);
-  onRpiParkingStatusUpdated(false, false, -1, -1);
+  if (m_rpiPanelController) {
+    m_rpiPanelController->connectSignals();
+  }
 
   // ParkingService -> Controller (로그 이벤트)
   connect(m_parkingServicePrimary, &ParkingService::logMessage, this,
@@ -261,100 +281,16 @@ void MainWindowController::connectSignals() {
             onLogMessage(QString("[B] %1").arg(msg));
           });
 
-  // Parking DB Panel
-  if (m_ui.btnRefreshLogs) {
-    connect(m_ui.btnRefreshLogs, &QPushButton::clicked, this,
-            &MainWindowController::onRefreshParkingLogs);
+  if (m_dbPanelController) {
+    m_dbPanelController->connectSignals();
+    m_dbPanelController->refreshAll();
   }
-  if (m_ui.btnSearchPlate) {
-    connect(m_ui.btnSearchPlate, &QPushButton::clicked, this,
-            &MainWindowController::onSearchParkingLogs);
-  }
-  if (m_ui.btnForcePlate) {
-    connect(m_ui.btnForcePlate, &QPushButton::clicked, this,
-            &MainWindowController::onForcePlate);
-  }
-  if (m_ui.btnEditPlate) {
-    connect(m_ui.btnEditPlate, &QPushButton::clicked, this,
-            &MainWindowController::onEditPlate);
-  }
-
-  // New DB CRUD Connections
-  if (m_ui.btnRefreshUsers) {
-    connect(m_ui.btnRefreshUsers, &QPushButton::clicked, this,
-            &MainWindowController::refreshUserTable);
-  }
-  if (m_ui.btnDeleteUser) {
-    connect(m_ui.btnDeleteUser, &QPushButton::clicked, this,
-            &MainWindowController::deleteUser);
-  }
-  if (m_ui.btnRefreshHwLogs) {
-    connect(m_ui.btnRefreshHwLogs, &QPushButton::clicked, this,
-            &MainWindowController::refreshHwLogs);
-  }
-  if (m_ui.btnClearHwLogs) {
-    connect(m_ui.btnClearHwLogs, &QPushButton::clicked, this,
-            &MainWindowController::clearHwLogs);
-  }
-  if (m_ui.btnRefreshVehicles) {
-    connect(m_ui.btnRefreshVehicles, &QPushButton::clicked, this,
-            &MainWindowController::refreshVehicleTable);
-  }
-  if (m_ui.btnDeleteVehicle) {
-    connect(m_ui.btnDeleteVehicle, &QPushButton::clicked, this,
-            &MainWindowController::deleteVehicle);
-  }
-  if (m_ui.btnRefreshZone) {
-    connect(m_ui.btnRefreshZone, &QPushButton::clicked, this,
-            &MainWindowController::refreshZoneTable);
-  }
-
-  // 초기 데이터 로드
-  onRefreshParkingLogs();
-  refreshUserTable();
-  refreshHwLogs();
-  refreshVehicleTable();
-  refreshZoneTableAllChannels();
 }
 
-void MainWindowController::refreshZoneTable() { refreshZoneTableAllChannels(); }
-
 void MainWindowController::refreshZoneTableAllChannels() {
-  if (!m_ui.zoneTable)
-    return;
-
-  m_ui.zoneTable->setRowCount(0);
-  auto appendRows = [this](const QVector<QJsonObject> &records) {
-    for (const QJsonObject &record : records) {
-      int row = m_ui.zoneTable->rowCount();
-      m_ui.zoneTable->insertRow(row);
-
-      m_ui.zoneTable->setItem(
-          row, 0, new QTableWidgetItem(record["camera_key"].toString()));
-      m_ui.zoneTable->setItem(
-          row, 1, new QTableWidgetItem(record["rod_id"].toString()));
-      m_ui.zoneTable->setItem(
-          row, 2, new QTableWidgetItem(record["rod_name"].toString()));
-
-      QString purpose = record["rod_purpose"].toString();
-      // 한글 변환 (일반구역/지정구역)
-      QString displayPurpose = purpose;
-      if (purpose == "General")
-        displayPurpose = "일반구역";
-      else if (purpose == "Reserved")
-        displayPurpose = "지정구역";
-
-      m_ui.zoneTable->setItem(row, 3, new QTableWidgetItem(displayPurpose));
-      m_ui.zoneTable->setItem(
-          row, 4, new QTableWidgetItem(record["created_at"].toString()));
-    }
-  };
-
-  appendRows(m_roiServicePrimary.records());
-  appendRows(m_roiServiceSecondary.records());
-
-  onLogMessage(QString("주차구역 현황 갱신 완료 (%1건)")
-                   .arg(m_roiServicePrimary.count() + m_roiServiceSecondary.count()));
+  if (m_dbPanelController) {
+    m_dbPanelController->refreshZoneTable();
+  }
 }
 
 void MainWindowController::initRoiDb() { initRoiDbForChannels(); }
@@ -466,7 +402,7 @@ void MainWindowController::playCctv() {
   const bool primaryReady =
       refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
                                         m_selectedCameraKeyPrimary,
-                                        &m_selectedCameraKeyPrimary);
+                                        &m_selectedCameraKeyPrimary, true);
   if (!primaryReady) {
     onLogMessage("[Camera] 연결 설정이 올바르지 않습니다.");
     return;
@@ -484,7 +420,7 @@ void MainWindowController::playCctv() {
   const bool secondaryReady =
       refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
                                         m_selectedCameraKeySecondary,
-                                        &m_selectedCameraKeySecondary);
+                                        &m_selectedCameraKeySecondary, false);
   if (!secondaryReady) {
     onLogMessage(QString("[Camera] '%1' 연결 설정이 올바르지 않아 B 채널은 중지됩니다.")
                      .arg(m_selectedCameraKeySecondary));
@@ -598,12 +534,12 @@ void MainWindowController::onRoiTargetChanged(int index) {
 
 bool MainWindowController::refreshCameraConnectionFromConfig(
     CameraManager *cameraManager, const QString &cameraKey,
-    QString *resolvedKey) {
+    QString *resolvedKey, bool reloadConfig) {
   if (!cameraManager) {
     return false;
   }
 
-  if (!Config::instance().load()) {
+  if (reloadConfig && !Config::instance().load()) {
     onLogMessage("Warning: could not reload config; using existing values.");
   }
 
@@ -1050,74 +986,14 @@ void MainWindowController::onMetadataReceivedPrimary(
                                              cfg.sourceHeight(), pruneMs);
   }
 
-  // === ReID Table Update (ID 기반 누적 관리) ===
   if (m_ui.reidTable && m_roiTarget == RoiTarget::Primary &&
       m_parkingServicePrimary) {
-    m_ui.reidTable->setRowCount(0); // Clear
-
-    // 현재 시스템이 추적 중인 모든 객체 목록 가져오기 (실시간 감지 객체 포함)
-    const QList<VehicleState> vsList = m_parkingServicePrimary->activeVehicles();
-
-    // ID 순서대로 정렬 (선택 사항, 사용자 편의성)
-    QList<VehicleState> sortedVs = vsList;
-    std::sort(sortedVs.begin(), sortedVs.end(),
-              [](const VehicleState &a, const VehicleState &b) {
-                return a.objectId < b.objectId;
-              });
-
-    // 현재 시각 가져오기 (Stale 체크용)
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    int staleMs =
+    const int staleMs =
         m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
-
-    for (const VehicleState &vs : sortedVs) {
-      if (vs.objectId < 0)
-        continue;
-
-      // 현재 프레임에서 감지되었는지 확인 (마지막 감지 시각 기준)
-      bool isStale = (nowMs - vs.lastSeenMs) > staleMs;
-
-      // Stale 객체 표시 여부 체크
-      if (isStale && m_ui.chkShowStaleObjects &&
-          !m_ui.chkShowStaleObjects->isChecked()) {
-        continue;
-      }
-
-      int row = m_ui.reidTable->rowCount();
-      m_ui.reidTable->insertRow(row);
-
-      QColor textColor = isStale ? Qt::gray : Qt::black;
-
-      // Col 0: ID
-      auto *idItem = new QTableWidgetItem(QString::number(vs.objectId));
-      idItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 0, idItem);
-
-      // Col 1: Type
-      auto *typeItem = new QTableWidgetItem(vs.type);
-      typeItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 1, typeItem);
-
-      // Col 2: Plate
-      auto *plateItem = new QTableWidgetItem(vs.plateNumber);
-      plateItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 2, plateItem);
-
-      // Col 3: Score (소수점 2자리)
-      auto *scoreItem = new QTableWidgetItem(QString::number(vs.score, 'f', 2));
-      scoreItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 3, scoreItem);
-
-      // Col 4: BBox
-      const QRectF &rect = vs.boundingBox;
-      auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
-                                                .arg(rect.x(), 0, 'f', 1)
-                                                .arg(rect.y(), 0, 'f', 1)
-                                                .arg(rect.width(), 0, 'f', 1)
-                                                .arg(rect.height(), 0, 'f', 1));
-      bboxItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 4, bboxItem);
-    }
+    const bool showStaleObjects =
+        !m_ui.chkShowStaleObjects || m_ui.chkShowStaleObjects->isChecked();
+    populateReidTable(m_ui.reidTable, m_parkingServicePrimary->activeVehicles(),
+                      staleMs, showStaleObjects);
   }
 }
 
@@ -1140,57 +1016,13 @@ void MainWindowController::onMetadataReceivedSecondary(
 
   if (m_ui.reidTable && m_roiTarget == RoiTarget::Secondary &&
       m_parkingServiceSecondary) {
-    m_ui.reidTable->setRowCount(0);
-    const QList<VehicleState> vsList = m_parkingServiceSecondary->activeVehicles();
-    QList<VehicleState> sortedVs = vsList;
-    std::sort(sortedVs.begin(), sortedVs.end(),
-              [](const VehicleState &a, const VehicleState &b) {
-                return a.objectId < b.objectId;
-              });
-
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    int staleMs =
+    const int staleMs =
         m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
-
-    for (const VehicleState &vs : sortedVs) {
-      if (vs.objectId < 0)
-        continue;
-
-      bool isStale = (nowMs - vs.lastSeenMs) > staleMs;
-      if (isStale && m_ui.chkShowStaleObjects &&
-          !m_ui.chkShowStaleObjects->isChecked()) {
-        continue;
-      }
-
-      int row = m_ui.reidTable->rowCount();
-      m_ui.reidTable->insertRow(row);
-
-      QColor textColor = isStale ? Qt::gray : Qt::black;
-      auto *idItem = new QTableWidgetItem(QString::number(vs.objectId));
-      idItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 0, idItem);
-
-      auto *typeItem = new QTableWidgetItem(vs.type);
-      typeItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 1, typeItem);
-
-      auto *plateItem = new QTableWidgetItem(vs.plateNumber);
-      plateItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 2, plateItem);
-
-      auto *scoreItem = new QTableWidgetItem(QString::number(vs.score, 'f', 2));
-      scoreItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 3, scoreItem);
-
-      const QRectF &rect = vs.boundingBox;
-      auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
-                                                .arg(rect.x(), 0, 'f', 1)
-                                                .arg(rect.y(), 0, 'f', 1)
-                                                .arg(rect.width(), 0, 'f', 1)
-                                                .arg(rect.height(), 0, 'f', 1));
-      bboxItem->setForeground(textColor);
-      m_ui.reidTable->setItem(row, 4, bboxItem);
-    }
+    const bool showStaleObjects =
+        !m_ui.chkShowStaleObjects || m_ui.chkShowStaleObjects->isChecked();
+    populateReidTable(m_ui.reidTable,
+                      m_parkingServiceSecondary->activeVehicles(), staleMs,
+                      showStaleObjects);
   }
 }
 
@@ -1315,7 +1147,9 @@ void MainWindowController::onUsersUpdated(int count) {
   }
 
   // DB 탭의 사용자 테이블도 함께 갱신
-  refreshUserTable();
+  if (m_dbPanelController) {
+    m_dbPanelController->refreshUserTable();
+  }
 }
 
 void MainWindowController::onPaymentConfirmed(const QString &plate,
@@ -1337,102 +1171,61 @@ void MainWindowController::onPaymentConfirmed(const QString &plate,
 
 // ── Parking DB Panel Slots ──────────────────────────────────────────
 
-static void populateParkingTable(QTableWidget *table,
-                                 const QVector<QJsonObject> &logs) {
+static void populateReidTable(QTableWidget *table,
+                              const QList<VehicleState> &vehicleStates,
+                              int staleTimeoutMs, bool showStaleObjects) {
   if (!table) {
     return;
   }
-  table->setRowCount(logs.size());
-  for (int i = 0; i < logs.size(); ++i) {
-    const QJsonObject &row = logs[i];
-    table->setItem(i, 0,
-                   new QTableWidgetItem(QString::number(row["id"].toInt())));
-    table->setItem(i, 1, new QTableWidgetItem(row["plate_number"].toString()));
-    table->setItem(
-        i, 2,
-        new QTableWidgetItem(QString::number(row["roi_index"].toInt() + 1)));
-    table->setItem(i, 3, new QTableWidgetItem(row["entry_time"].toString()));
-    table->setItem(i, 4, new QTableWidgetItem(row["exit_time"].toString()));
-  }
-}
 
-void MainWindowController::onRefreshParkingLogs() {
-  ParkingService *service = parkingServiceForTarget(m_roiTarget);
-  if (!service) {
-    return;
-  }
-  const QVector<QJsonObject> logs = service->recentLogs(100);
-  populateParkingTable(m_ui.parkingLogTable, logs);
-  if (m_ui.logView) {
-    m_ui.logView->append(
-        QString("[DB][%1] 전체 새로고침: %2건 표시")
-            .arg(service->cameraKey())
-            .arg(logs.size()));
-  }
-}
+  table->setRowCount(0);
 
-void MainWindowController::onSearchParkingLogs() {
-  if (!m_ui.plateSearchInput) {
-    return;
-  }
-  const QString keyword = m_ui.plateSearchInput->text().trimmed();
-  if (keyword.isEmpty()) {
-    onRefreshParkingLogs();
-    return;
-  }
-  ParkingService *service = parkingServiceForTarget(m_roiTarget);
-  if (!service) {
-    return;
-  }
-  const QVector<QJsonObject> logs = service->searchByPlate(keyword);
-  populateParkingTable(m_ui.parkingLogTable, logs);
-  if (m_ui.logView) {
-    m_ui.logView->append(
-        QString("[DB][%1] '%2' 검색 결과: %3건")
-            .arg(service->cameraKey(), keyword)
-            .arg(logs.size()));
-  }
-}
+  QList<VehicleState> sortedVs = vehicleStates;
+  std::sort(sortedVs.begin(), sortedVs.end(),
+            [](const VehicleState &a, const VehicleState &b) {
+              return a.objectId < b.objectId;
+            });
 
-void MainWindowController::onForcePlate() {
-  if (!m_ui.forceObjectIdInput || !m_ui.forceTypeInput ||
-      !m_ui.forcePlateInput || !m_ui.forceScoreInput || !m_ui.forceBBoxInput) {
-    return;
-  }
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  for (const VehicleState &vs : sortedVs) {
+    if (vs.objectId < 0) {
+      continue;
+    }
 
-  const int objectId = m_ui.forceObjectIdInput->value();
-  const QString type = m_ui.forceTypeInput->text().trimmed();
-  const QString plate = m_ui.forcePlateInput->text().trimmed();
-  const double score = m_ui.forceScoreInput->value();
-  QString bboxStr = m_ui.forceBBoxInput->text().trimmed();
+    const bool isStale = (nowMs - vs.lastSeenMs) > staleTimeoutMs;
+    if (isStale && !showStaleObjects) {
+      continue;
+    }
 
-  // Parse BBox "x y w h"
-  // Supports "x:10 y:20..." format or "10 20 100 100"
-  // Just simple space parsing
-  bboxStr.remove("x:");
-  bboxStr.remove("y:");
-  bboxStr.remove("w:");
-  bboxStr.remove("h:");
-  QStringList parts =
-      bboxStr.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    const int row = table->rowCount();
+    table->insertRow(row);
 
-  QRectF bbox(0, 0, 0, 0);
-  if (parts.size() >= 4) {
-    bbox.setX(parts[0].toDouble());
-    bbox.setY(parts[1].toDouble());
-    bbox.setWidth(parts[2].toDouble());
-    bbox.setHeight(parts[3].toDouble());
-  }
+    const QColor textColor = isStale ? Qt::gray : Qt::black;
 
-  ParkingService *service = parkingServiceForTarget(m_roiTarget);
-  if (!service) {
-    return;
-  }
-  service->forceObjectData(objectId, type, plate, score, bbox);
+    auto *idItem = new QTableWidgetItem(QString::number(vs.objectId));
+    idItem->setForeground(textColor);
+    table->setItem(row, 0, idItem);
 
-  if (m_ui.logView) {
-    m_ui.logView->append(
-        QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId));
+    auto *typeItem = new QTableWidgetItem(vs.type);
+    typeItem->setForeground(textColor);
+    table->setItem(row, 1, typeItem);
+
+    auto *plateItem = new QTableWidgetItem(vs.plateNumber);
+    plateItem->setForeground(textColor);
+    table->setItem(row, 2, plateItem);
+
+    auto *scoreItem = new QTableWidgetItem(QString::number(vs.score, 'f', 2));
+    scoreItem->setForeground(textColor);
+    table->setItem(row, 3, scoreItem);
+
+    const QRectF &rect = vs.boundingBox;
+    auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
+                                              .arg(rect.x(), 0, 'f', 1)
+                                              .arg(rect.y(), 0, 'f', 1)
+                                              .arg(rect.width(), 0, 'f', 1)
+                                              .arg(rect.height(), 0, 'f', 1));
+    bboxItem->setForeground(textColor);
+    table->setItem(row, 4, bboxItem);
   }
 }
 
@@ -1469,271 +1262,6 @@ void MainWindowController::onReidTableCellClicked(int row, int column) {
   QTableWidgetItem *bboxItem = m_ui.reidTable->item(row, 4);
   if (bboxItem && m_ui.forceBBoxInput) {
     m_ui.forceBBoxInput->setText(bboxItem->text());
-  }
-}
-
-void MainWindowController::onEditPlate() {
-  if (!m_ui.parkingLogTable || !m_ui.editPlateInput) {
-    return;
-  }
-  const int currentRow = m_ui.parkingLogTable->currentRow();
-  if (currentRow < 0) {
-    if (m_ui.logView) {
-      m_ui.logView->append("[DB] 수정할 레코드를 먼저 선택해주세요.");
-    }
-    return;
-  }
-  const QString newPlate = m_ui.editPlateInput->text().trimmed();
-  if (newPlate.isEmpty()) {
-    if (m_ui.logView) {
-      m_ui.logView->append("[DB] 새 번호판을 입력해주세요.");
-    }
-    return;
-  }
-  QTableWidgetItem *idItem = m_ui.parkingLogTable->item(currentRow, 0);
-  if (!idItem) {
-    return;
-  }
-  const int recordId = idItem->text().toInt();
-  ParkingService *service = parkingServiceForTarget(m_roiTarget);
-  if (service && service->updatePlate(recordId, newPlate)) {
-    if (m_ui.logView) {
-      m_ui.logView->append(QString("[DB] 번호판 수정 완료: ID=%1 → %2")
-                               .arg(recordId)
-                               .arg(newPlate));
-    }
-    onRefreshParkingLogs();
-  } else {
-    if (m_ui.logView) {
-      m_ui.logView->append(
-          QString("[DB] 번호판 수정 실패: ID=%1").arg(recordId));
-    }
-  }
-}
-
-void MainWindowController::onRpiConnect() {
-  if (!m_rpiClient) {
-    return;
-  }
-
-  const QString host =
-      m_ui.rpiHostEdit ? m_ui.rpiHostEdit->text().trimmed() : QString();
-  const int port = m_ui.rpiPortSpin ? m_ui.rpiPortSpin->value() : 5000;
-  const bool useMock = host.compare("mock", Qt::CaseInsensitive) == 0;
-
-  m_rpiClient->setMockMode(useMock);
-  m_rpiClient->setServer(host.isEmpty() ? QStringLiteral("127.0.0.1") : host,
-                         static_cast<quint16>(port));
-  m_rpiClient->connectToServer();
-}
-
-void MainWindowController::onRpiDisconnect() {
-  if (m_rpiClient) {
-    m_rpiClient->disconnectFromServer();
-  }
-}
-
-void MainWindowController::onRpiBarrierUp() {
-  if (!m_rpiClient || !m_rpiClient->sendBarrierUp()) {
-    onRpiLogMessage("[RPI] Barrier up command failed");
-  }
-}
-
-void MainWindowController::onRpiBarrierDown() {
-  if (!m_rpiClient || !m_rpiClient->sendBarrierDown()) {
-    onRpiLogMessage("[RPI] Barrier down command failed");
-  }
-}
-
-void MainWindowController::refreshParkingLogs() { onRefreshParkingLogs(); }
-
-void MainWindowController::deleteParkingLog() {
-  if (!m_ui.parkingLogTable)
-    return;
-  int row = m_ui.parkingLogTable->currentRow();
-  if (row < 0)
-    return;
-  int id = m_ui.parkingLogTable->item(row, 0)->text().toInt();
-
-  ParkingRepository repo;
-  QString error;
-  if (repo.deleteLog(id, &error)) {
-    onLogMessage(QString("[DB] 주차 기록 삭제 완료: ID=%1").arg(id));
-    onRefreshParkingLogs();
-  } else {
-    onLogMessage(QString("[DB] 주차 기록 삭제 실패: %1").arg(error));
-  }
-}
-
-void MainWindowController::refreshUserTable() {
-  if (!m_ui.userDbTable)
-    return;
-  UserRepository repo;
-  QString error;
-  QVector<QJsonObject> users = repo.getAllUsersFull(&error);
-
-  m_ui.userDbTable->setRowCount(0);
-  for (int i = 0; i < users.size(); ++i) {
-    const QJsonObject &u = users[i];
-    m_ui.userDbTable->insertRow(i);
-    m_ui.userDbTable->setItem(i, 0,
-                              new QTableWidgetItem(u["chat_id"].toString()));
-    m_ui.userDbTable->setItem(
-        i, 1, new QTableWidgetItem(u["plate_number"].toString()));
-    m_ui.userDbTable->setItem(i, 2, new QTableWidgetItem(u["name"].toString()));
-    m_ui.userDbTable->setItem(i, 3,
-                              new QTableWidgetItem(u["phone"].toString()));
-    m_ui.userDbTable->setItem(i, 4,
-                              new QTableWidgetItem(u["created_at"].toString()));
-  }
-}
-
-void MainWindowController::deleteUser() {
-  if (!m_ui.userDbTable)
-    return;
-  int row = m_ui.userDbTable->currentRow();
-  if (row < 0)
-    return;
-  QString chatId = m_ui.userDbTable->item(row, 0)->text();
-
-  UserRepository repo;
-  QString error;
-  if (repo.deleteUser(chatId, &error)) {
-    onLogMessage(QString("[DB] 사용자 삭제 완료: ChatID=%1").arg(chatId));
-    refreshUserTable();
-  } else {
-    onLogMessage(QString("[DB] 사용자 삭제 실패: %1").arg(error));
-  }
-}
-
-void MainWindowController::refreshHwLogs() {
-  if (!m_ui.hwLogTable)
-    return;
-  HardwareLogRepository repo;
-  QString error;
-  QVector<QJsonObject> logs = repo.getAllLogs(&error);
-
-  m_ui.hwLogTable->setRowCount(0);
-  for (int i = 0; i < logs.size(); ++i) {
-    const QJsonObject &l = logs[i];
-    m_ui.hwLogTable->insertRow(i);
-    m_ui.hwLogTable->setItem(
-        i, 0, new QTableWidgetItem(QString::number(l["log_id"].toInt())));
-    m_ui.hwLogTable->setItem(i, 1,
-                             new QTableWidgetItem(l["zone_id"].toString()));
-    m_ui.hwLogTable->setItem(i, 2,
-                             new QTableWidgetItem(l["device_type"].toString()));
-    m_ui.hwLogTable->setItem(i, 3,
-                             new QTableWidgetItem(l["action"].toString()));
-    m_ui.hwLogTable->setItem(i, 4,
-                             new QTableWidgetItem(l["timestamp"].toString()));
-  }
-}
-
-void MainWindowController::clearHwLogs() {
-  HardwareLogRepository repo;
-  QString error;
-  if (repo.clearLogs(&error)) {
-    onLogMessage("[DB] 장치 로그 초기화 완료");
-    refreshHwLogs();
-  } else {
-    onLogMessage(QString("[DB] 장치 로그 초기화 실패: %1").arg(error));
-  }
-}
-
-void MainWindowController::refreshVehicleTable() {
-  if (!m_ui.vehicleTable)
-    return;
-  VehicleRepository repo;
-  QString error;
-  QVector<QJsonObject> vehicles = repo.getAllVehicles(&error);
-
-  m_ui.vehicleTable->setRowCount(0);
-  for (int i = 0; i < vehicles.size(); ++i) {
-    const QJsonObject &v = vehicles[i];
-    m_ui.vehicleTable->insertRow(i);
-    m_ui.vehicleTable->setItem(
-        i, 0, new QTableWidgetItem(v["plate_number"].toString()));
-    m_ui.vehicleTable->setItem(i, 1,
-                               new QTableWidgetItem(v["car_type"].toString()));
-    m_ui.vehicleTable->setItem(i, 2,
-                               new QTableWidgetItem(v["car_color"].toString()));
-    m_ui.vehicleTable->setItem(
-        i, 3, new QTableWidgetItem(v["is_assigned"].toBool() ? "Yes" : "No"));
-    m_ui.vehicleTable->setItem(
-        i, 4, new QTableWidgetItem(v["updated_at"].toString()));
-  }
-}
-
-void MainWindowController::deleteVehicle() {
-  if (!m_ui.vehicleTable)
-    return;
-  int row = m_ui.vehicleTable->currentRow();
-  if (row < 0)
-    return;
-  QString plate = m_ui.vehicleTable->item(row, 0)->text();
-
-  VehicleRepository repo;
-  QString error;
-  if (repo.deleteVehicle(plate, &error)) {
-    onLogMessage(QString("[DB] 차량 정보 삭제 완료: %1").arg(plate));
-    refreshVehicleTable();
-  } else {
-    onLogMessage(QString("[DB] 차량 정보 삭제 실패: %1").arg(error));
-  }
-}
-
-void MainWindowController::onRpiLedOn() {
-  if (!m_rpiClient || !m_rpiClient->sendLedOn()) {
-    onRpiLogMessage("[RPI] LED on command failed");
-  }
-}
-
-void MainWindowController::onRpiLedOff() {
-  if (!m_rpiClient || !m_rpiClient->sendLedOff()) {
-    onRpiLogMessage("[RPI] LED off command failed");
-  }
-}
-
-void MainWindowController::onRpiConnectedChanged(bool connected) {
-  if (m_ui.rpiConnectionStatusLabel) {
-    m_ui.rpiConnectionStatusLabel->setText(connected ? "Connected"
-                                                     : "Disconnected");
-  }
-}
-
-void MainWindowController::onRpiParkingStatusUpdated(bool vehicleDetected,
-                                                     bool ledOn, int irRaw,
-                                                     int servoAngle) {
-  if (m_ui.rpiVehicleStatusLabel) {
-    m_ui.rpiVehicleStatusLabel->setText(vehicleDetected ? "Detected" : "Clear");
-  }
-  if (m_ui.rpiLedStatusLabel) {
-    m_ui.rpiLedStatusLabel->setText(ledOn ? "ON" : "OFF");
-  }
-  if (m_ui.rpiIrRawLabel) {
-    m_ui.rpiIrRawLabel->setText(irRaw >= 0 ? QString::number(irRaw) : "-");
-  }
-  if (m_ui.rpiServoAngleLabel) {
-    m_ui.rpiServoAngleLabel->setText(
-        servoAngle >= 0 ? QString("%1 deg").arg(servoAngle) : "-");
-  }
-}
-
-void MainWindowController::onRpiAckReceived(const QString &messageId) {
-  onRpiLogMessage(QString("[RPI] Ack: %1").arg(messageId));
-}
-
-void MainWindowController::onRpiErrReceived(const QString &messageId,
-                                            const QString &code,
-                                            const QString &message) {
-  onRpiLogMessage(QString("[RPI] Error: id=%1 code=%2 message=%3")
-                      .arg(messageId, code, message));
-}
-
-void MainWindowController::onRpiLogMessage(const QString &message) {
-  if (m_ui.logView) {
-    m_ui.logView->append(message);
   }
 }
 

@@ -310,7 +310,8 @@ ParkingRepository::getAllLogs(const QString &cameraKey,
   return results;
 }
 
-bool ParkingRepository::deleteLog(int id, QString *errorMessage) {
+bool ParkingRepository::deleteLog(const QString &cameraKey, int id,
+                                  QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
 
   if (!db.isOpen()) {
@@ -320,12 +321,21 @@ bool ParkingRepository::deleteLog(int id, QString *errorMessage) {
   }
 
   QSqlQuery query(db);
-  query.prepare("DELETE FROM parking_logs WHERE id = :id");
+  query.prepare("DELETE FROM parking_logs WHERE id = :id AND camera_key = "
+                ":camera_key");
   query.bindValue(":id", id);
+  query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
 
   if (!query.exec()) {
     if (errorMessage)
       *errorMessage = query.lastError().text();
+    return false;
+  }
+  if (query.numRowsAffected() <= 0) {
+    if (errorMessage) {
+      *errorMessage =
+          QStringLiteral("No parking log found for the selected camera scope.");
+    }
     return false;
   }
   return true;

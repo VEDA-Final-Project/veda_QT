@@ -1,4 +1,5 @@
 #include "config.h"
+#include "util/rtspurl.h"
 #include <algorithm>
 #include <QCoreApplication>
 #include <QDebug>
@@ -201,11 +202,8 @@ QString Config::cameraProfile(const QString &cameraKey) const
  */
 QString Config::rtspUrl(const QString &cameraKey) const
 {
-    return QString("rtsp://%1:%2@%3/%4")
-    .arg(cameraUsername(cameraKey),
-         cameraPassword(cameraKey),
-         cameraIp(cameraKey),
-         cameraProfile(cameraKey));
+    return buildRtspUrl(cameraIp(cameraKey), cameraUsername(cameraKey),
+                        cameraPassword(cameraKey), cameraProfile(cameraKey));
 }
 
 /* =========================

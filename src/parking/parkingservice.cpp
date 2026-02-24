@@ -30,12 +30,11 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   QList<VehicleState> newEntries =
       m_tracker.update(objects, frameWidth, frameHeight, nowMs);
 
-  // 2. 새로 진입한 차량에 대해 OCR 요청
+  // 2. 새로 진입한 차량 이벤트 로깅
   for (const VehicleState &vs : newEntries) {
     if (!vs.ocrRequested) {
-      emit ocrRequested(vs.objectId);
       emit logMessage(
-          QString("[Parking] Vehicle ID:%1 entered ROI #%2 — OCR requested")
+          QString("[Parking] Vehicle ID:%1 entered ROI #%2")
               .arg(vs.objectId)
               .arg(vs.occupiedRoiIndex + 1));
     }
@@ -74,6 +73,10 @@ QVector<QJsonObject> ParkingService::searchByPlate(const QString &plate) const {
 
 bool ParkingService::updatePlate(int recordId, const QString &newPlate) {
   return m_repository.updatePlate(m_cameraKey, recordId, newPlate);
+}
+
+bool ParkingService::deleteLog(int recordId, QString *errorMessage) {
+  return m_repository.deleteLog(m_cameraKey, recordId, errorMessage);
 }
 
 void ParkingService::forceObjectData(int objectId, const QString &type,

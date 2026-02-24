@@ -70,7 +70,8 @@ public:
   /**
    * @brief 주차 기록 삭제
    */
-  bool deleteLog(int id, QString *errorMessage = nullptr);
+  bool deleteLog(const QString &cameraKey, int id,
+                 QString *errorMessage = nullptr);
 
 private:
   bool ensureSchema(QString *errorMessage = nullptr);
