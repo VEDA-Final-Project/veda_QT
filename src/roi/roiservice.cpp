@@ -5,16 +5,26 @@
 #include <QRegularExpression>
 #include <QtGlobal>
 
-RoiService::InitResult RoiService::init() {
+namespace {
+const QString kDefaultCameraKey = QStringLiteral("camera");
+
+QString normalizedCameraKey(const QString &cameraKey) {
+  const QString trimmed = cameraKey.trimmed();
+  return trimmed.isEmpty() ? kDefaultCameraKey : trimmed;
+}
+} // namespace
+
+RoiService::InitResult RoiService::init(const QString &cameraKey) {
   InitResult result;
   QString dbError;
+  m_cameraKey = normalizedCameraKey(cameraKey);
   // 통합 DB 사용, 경로 인자 제거
   if (!m_repository.init(&dbError)) {
     result.error = dbError;
     return result;
   }
 
-  m_records = m_repository.loadAll(&dbError);
+  m_records = m_repository.loadByCameraKey(m_cameraKey, &dbError);
   if (!dbError.isEmpty()) {
     result.error = dbError;
     return result;
@@ -100,8 +110,9 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
   }
 
   ++m_roiSequence;
-  const QString rodId =
-      QString("rod-%1").arg(m_roiSequence, 3, 10, QLatin1Char('0'));
+  const QString rodId = QString("rod-%1-%2")
+                            .arg(m_cameraKey)
+                            .arg(m_roiSequence, 3, 10, QLatin1Char('0'));
   const QRect bbox = polygon.boundingRect();
   const QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
   const QString finalPurpose =
@@ -110,6 +121,7 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
   QJsonObject roiData{
       {"rod_id", rodId},
       {"rod_name", name},
+      {"camera_key", m_cameraKey},
       {"rod_enable", true},
       {"rod_purpose", finalPurpose},
       {"rod_points", points},
@@ -158,6 +170,7 @@ RoiService::DeleteResult RoiService::removeAt(int index) {
 const QVector<QJsonObject> &RoiService::records() const { return m_records; }
 
 int RoiService::count() const { return m_records.size(); }
+QString RoiService::cameraKey() const { return m_cameraKey; }
 
 QList<QPolygonF>
 RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records) {
@@ -184,15 +197,14 @@ RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records) {
 
 void RoiService::recomputeSequenceFromRecords() {
   m_roiSequence = 0;
+  static const QRegularExpression trailingDigitsRe(QStringLiteral("(\\d+)$"));
   for (const QJsonObject &record : m_records) {
     const QString rodId = record["rod_id"].toString();
-    if (!rodId.startsWith("rod-")) {
+    const QRegularExpressionMatch match = trailingDigitsRe.match(rodId);
+    if (!match.hasMatch()) {
       continue;
     }
-    bool ok = false;
-    const int seq = rodId.mid(4).toInt(&ok);
-    if (ok) {
-      m_roiSequence = qMax(m_roiSequence, seq);
-    }
+    const int seq = match.captured(1).toInt();
+    m_roiSequence = qMax(m_roiSequence, seq);
   }
 }

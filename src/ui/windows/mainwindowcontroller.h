@@ -8,6 +8,7 @@
 #include "roi/roiservice.h"
 #include "rpi/rpitcpclient.h"
 #include <QComboBox>
+#include <QElapsedTimer>
 #include <QJsonObject>
 #include <QObject>
 #include <QPushButton>
@@ -21,7 +22,6 @@ class QSpinBox;
 class QLabel;
 class VideoWidget;
 class QTableWidget;
-class QTableWidget;
 class QCheckBox;
 class QDoubleSpinBox;
 
@@ -30,7 +30,12 @@ class MainWindowController : public QObject {
 
 public:
   struct UiRefs {
-    VideoWidget *videoWidget = nullptr;
+    VideoWidget *videoWidgetPrimary = nullptr;
+    VideoWidget *videoWidgetSecondary = nullptr;
+    QComboBox *viewModeCombo = nullptr;
+    QComboBox *cameraPrimarySelectorCombo = nullptr;
+    QComboBox *cameraSecondarySelectorCombo = nullptr;
+    QComboBox *roiTargetCombo = nullptr;
     QLineEdit *roiNameEdit = nullptr;
     QComboBox *roiPurposeCombo = nullptr;
     QComboBox *roiSelectorCombo = nullptr;
@@ -112,14 +117,23 @@ public slots:
   void playCctv();
   void updateObjectFilter(const QSet<QString> &disabledTypes);
   void onLogMessage(const QString &msg);
-  void onOcrResult(int objectId, const QString &result);
+  void onOcrResultPrimary(int objectId, const QString &result);
+  void onOcrResultSecondary(int objectId, const QString &result);
   void onStartRoiDraw();
   void onCompleteRoiDraw();   // Renamed from onFinishRoiDraw
   void onDeleteSelectedRoi(); // Renamed from onDeleteRoi
   void onRoiChanged(const QRect &roi);
   void onRoiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
-  void onMetadataReceived(const QList<ObjectInfo> &objects);
-  void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
+  void onRoiTargetChanged(int index);
+  void onViewModeChanged(int index);
+  void onCameraPrimarySelectionChanged(int index);
+  void onCameraSecondarySelectionChanged(int index);
+  void onMetadataReceivedPrimary(const QList<ObjectInfo> &objects);
+  void onMetadataReceivedSecondary(const QList<ObjectInfo> &objects);
+  void onFrameCapturedPrimary(QSharedPointer<cv::Mat> framePtr,
+                              qint64 timestampMs);
+  void onFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
+                                qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
 
   // Telegram Slots
@@ -163,16 +177,44 @@ public slots:
   void refreshZoneTable();
 
 private:
+  enum class ViewMode { Single = 0, Dual = 1 };
+  enum class RoiTarget { Primary = 0, Secondary = 1 };
+
+  void refreshCameraSelectors();
+  void initRoiDbForChannels();
+  void reloadRoiForTarget(RoiTarget target, bool writeLog = true);
+  void refreshRoiSelectorForTarget();
+  void refreshZoneTableAllChannels();
+  void applyViewModeUiState();
+  bool refreshCameraConnectionFromConfig(CameraManager *cameraManager,
+                                         const QString &cameraKey,
+                                         QString *resolvedKey = nullptr);
+  VideoWidget *videoWidgetForTarget(RoiTarget target) const;
+  RoiService *roiServiceForTarget(RoiTarget target);
+  const RoiService *roiServiceForTarget(RoiTarget target) const;
+  ParkingService *parkingServiceForTarget(RoiTarget target);
+  QString cameraKeyForTarget(RoiTarget target) const;
+
   UiRefs m_ui;
-  CameraManager *m_cameraManager = nullptr;
-  PlateOcrCoordinator *m_ocrCoordinator = nullptr;
+  ViewMode m_viewMode = ViewMode::Single;
+  RoiTarget m_roiTarget = RoiTarget::Primary;
+  QString m_selectedCameraKeyPrimary = QStringLiteral("camera");
+  QString m_selectedCameraKeySecondary = QStringLiteral("camera2");
+  CameraManager *m_cameraManagerPrimary = nullptr;
+  CameraManager *m_cameraManagerSecondary = nullptr;
+  PlateOcrCoordinator *m_ocrCoordinatorPrimary = nullptr;
+  PlateOcrCoordinator *m_ocrCoordinatorSecondary = nullptr;
   TelegramBotAPI *m_telegramApi = nullptr;
   RpiTcpClient *m_rpiClient = nullptr;
-  CameraSessionService m_cameraSession;
-  RoiService m_roiService;
-  ParkingService *m_parkingService = nullptr;
+  CameraSessionService m_cameraSessionPrimary;
+  CameraSessionService m_cameraSessionSecondary;
+  RoiService m_roiServicePrimary;
+  RoiService m_roiServiceSecondary;
+  ParkingService *m_parkingServicePrimary = nullptr;
+  ParkingService *m_parkingServiceSecondary = nullptr;
   LogDeduplicator m_logDeduplicator;
-  QElapsedTimer m_renderTimer;
+  QElapsedTimer m_renderTimerPrimary;
+  QElapsedTimer m_renderTimerSecondary;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

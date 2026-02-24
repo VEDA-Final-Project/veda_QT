@@ -19,25 +19,39 @@
 #include <QPushButton>
 #include <QRectF>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTableWidget> // User Table
+#include <algorithm>
 
 MainWindowController::MainWindowController(const UiRefs &uiRefs,
                                            QObject *parent)
     : QObject(parent), m_ui(uiRefs) {
   // 컨트롤러가 하위 서비스의 수명을 소유한다.
   // (QObject parent 관계로 MainWindow 종료 시 함께 정리됨)
-  m_cameraManager = new CameraManager(this);
-  m_ocrCoordinator = new PlateOcrCoordinator(this);
+  m_cameraManagerPrimary = new CameraManager(this);
+  m_cameraManagerSecondary = new CameraManager(this);
+  m_ocrCoordinatorPrimary = new PlateOcrCoordinator(this);
+  m_ocrCoordinatorSecondary = new PlateOcrCoordinator(this);
   m_telegramApi = new TelegramBotAPI(this);
   m_rpiClient = new RpiTcpClient(this);
   m_rpiClient->setBarrierAngles(90, 0);
-  m_parkingService = new ParkingService(this);
+  m_parkingServicePrimary = new ParkingService(this);
+  m_parkingServiceSecondary = new ParkingService(this);
 
   // 세션 서비스는 "카메라 제어 + 메타데이터 지연 동기화"를 묶는 파사드 역할.
-  m_cameraSession.setCameraManager(m_cameraManager);
-  m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
+  m_cameraSessionPrimary.setCameraManager(m_cameraManagerPrimary);
+  m_cameraSessionSecondary.setCameraManager(m_cameraManagerSecondary);
+  const int delayMs = Config::instance().defaultDelayMs();
+  m_cameraSessionPrimary.setDelayMs(delayMs);
+  m_cameraSessionSecondary.setDelayMs(delayMs);
+  refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
+                                    m_selectedCameraKeyPrimary,
+                                    &m_selectedCameraKeyPrimary);
+  refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
+                                    m_selectedCameraKeySecondary,
+                                    &m_selectedCameraKeySecondary);
 
   // 통합 DB 초기화 (veda.db)
   const QString dbPath =
@@ -45,18 +59,34 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   DatabaseContext::init(dbPath);
 
   // Parking 서비스 초기화 (DB Context 사용)
-  QString parkingError;
-  if (!m_parkingService->init(&parkingError)) {
-    qWarning() << "[Parking] Service init failed:" << parkingError;
+  QString parkingErrorPrimary;
+  if (!m_parkingServicePrimary->init(&parkingErrorPrimary)) {
+    qWarning() << "[Parking][A] Service init failed:" << parkingErrorPrimary;
+  }
+  QString parkingErrorSecondary;
+  if (!m_parkingServiceSecondary->init(&parkingErrorSecondary)) {
+    qWarning() << "[Parking][B] Service init failed:" << parkingErrorSecondary;
   }
   m_rpiClient->init();
-  m_parkingService->setTelegramApi(m_telegramApi);
+  m_parkingServicePrimary->setTelegramApi(m_telegramApi);
+  m_parkingServiceSecondary->setTelegramApi(m_telegramApi);
 
   // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.
-  initRoiDb();
+  refreshCameraSelectors();
+  if (m_parkingServicePrimary) {
+    m_parkingServicePrimary->setCameraKey(m_selectedCameraKeyPrimary);
+  }
+  if (m_parkingServiceSecondary) {
+    m_parkingServiceSecondary->setCameraKey(m_selectedCameraKeySecondary);
+  }
+  initRoiDbForChannels();
+  refreshRoiSelectorForTarget();
+  refreshZoneTableAllChannels();
+  applyViewModeUiState();
   connectSignals();
 
-  m_renderTimer.start();
+  m_renderTimerPrimary.start();
+  m_renderTimerSecondary.start();
 }
 
 void MainWindowController::shutdown() {
@@ -70,7 +100,8 @@ void MainWindowController::shutdown() {
       m_ui.logView->append(summary);
     }
   }
-  m_cameraSession.stop();
+  m_cameraSessionPrimary.stop();
+  m_cameraSessionSecondary.stop();
   if (m_rpiClient) {
     m_rpiClient->disconnectFromServer();
   }
@@ -102,24 +133,62 @@ void MainWindowController::connectSignals() {
     connect(m_ui.btnDeleteRoi, &QPushButton::clicked, this,
             &MainWindowController::onDeleteSelectedRoi);
   }
-  if (m_ui.videoWidget) {
-    connect(m_ui.videoWidget, &VideoWidget::roiChanged, this,
+  if (m_ui.roiTargetCombo) {
+    connect(m_ui.roiTargetCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindowController::onRoiTargetChanged);
+  }
+  if (m_ui.viewModeCombo) {
+    connect(m_ui.viewModeCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindowController::onViewModeChanged);
+  }
+  if (m_ui.cameraPrimarySelectorCombo) {
+    connect(m_ui.cameraPrimarySelectorCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindowController::onCameraPrimarySelectionChanged);
+  }
+  if (m_ui.cameraSecondarySelectorCombo) {
+    connect(m_ui.cameraSecondarySelectorCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindowController::onCameraSecondarySelectionChanged);
+  }
+  if (m_ui.videoWidgetPrimary) {
+    connect(m_ui.videoWidgetPrimary, &VideoWidget::roiChanged, this,
             &MainWindowController::onRoiChanged);
-    connect(m_ui.videoWidget, &VideoWidget::roiPolygonChanged, this,
+    connect(m_ui.videoWidgetPrimary, &VideoWidget::roiPolygonChanged, this,
             &MainWindowController::onRoiPolygonChanged);
-    connect(m_ui.videoWidget, &VideoWidget::ocrRequested, m_ocrCoordinator,
+    connect(m_ui.videoWidgetPrimary, &VideoWidget::ocrRequested,
+            m_ocrCoordinatorPrimary,
+            &PlateOcrCoordinator::requestOcr);
+  }
+  if (m_ui.videoWidgetSecondary) {
+    connect(m_ui.videoWidgetSecondary, &VideoWidget::roiChanged, this,
+            &MainWindowController::onRoiChanged);
+    connect(m_ui.videoWidgetSecondary, &VideoWidget::roiPolygonChanged, this,
+            &MainWindowController::onRoiPolygonChanged);
+    connect(m_ui.videoWidgetSecondary, &VideoWidget::ocrRequested,
+            m_ocrCoordinatorSecondary,
             &PlateOcrCoordinator::requestOcr);
   }
 
   // 백엔드 이벤트(Camera/OCR) -> Controller 슬롯 연결
-  connect(m_cameraManager, &CameraManager::metadataReceived, this,
-          &MainWindowController::onMetadataReceived);
-  connect(m_cameraManager, &CameraManager::frameCaptured, this,
-          &MainWindowController::onFrameCaptured);
-  connect(m_cameraManager, &CameraManager::logMessage, this,
+  connect(m_cameraManagerPrimary, &CameraManager::metadataReceived, this,
+          &MainWindowController::onMetadataReceivedPrimary);
+  connect(m_cameraManagerPrimary, &CameraManager::frameCaptured, this,
+          &MainWindowController::onFrameCapturedPrimary);
+  connect(m_cameraManagerPrimary, &CameraManager::logMessage, this,
           &MainWindowController::onLogMessage);
-  connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
-          &MainWindowController::onOcrResult);
+  connect(m_cameraManagerSecondary, &CameraManager::metadataReceived, this,
+          &MainWindowController::onMetadataReceivedSecondary);
+  connect(m_cameraManagerSecondary, &CameraManager::frameCaptured, this,
+          &MainWindowController::onFrameCapturedSecondary);
+  connect(m_cameraManagerSecondary, &CameraManager::logMessage, this,
+          &MainWindowController::onLogMessage);
+  connect(m_ocrCoordinatorPrimary, &PlateOcrCoordinator::ocrReady, this,
+          &MainWindowController::onOcrResultPrimary);
+  connect(m_ocrCoordinatorSecondary, &PlateOcrCoordinator::ocrReady, this,
+          &MainWindowController::onOcrResultSecondary);
 
   // Telegram UI -> Controller
   if (m_ui.btnSendEntry) {
@@ -183,8 +252,14 @@ void MainWindowController::connectSignals() {
   onRpiParkingStatusUpdated(false, false, -1, -1);
 
   // ParkingService -> Controller (로그 이벤트)
-  connect(m_parkingService, &ParkingService::logMessage, this,
-          &MainWindowController::onLogMessage);
+  connect(m_parkingServicePrimary, &ParkingService::logMessage, this,
+          [this](const QString &msg) {
+            onLogMessage(QString("[A] %1").arg(msg));
+          });
+  connect(m_parkingServiceSecondary, &ParkingService::logMessage, this,
+          [this](const QString &msg) {
+            onLogMessage(QString("[B] %1").arg(msg));
+          });
 
   // Parking DB Panel
   if (m_ui.btnRefreshLogs) {
@@ -239,69 +314,111 @@ void MainWindowController::connectSignals() {
   refreshUserTable();
   refreshHwLogs();
   refreshVehicleTable();
-  refreshZoneTable();
+  refreshZoneTableAllChannels();
 }
 
-void MainWindowController::refreshZoneTable() {
+void MainWindowController::refreshZoneTable() { refreshZoneTableAllChannels(); }
+
+void MainWindowController::refreshZoneTableAllChannels() {
   if (!m_ui.zoneTable)
     return;
 
   m_ui.zoneTable->setRowCount(0);
-  const QVector<QJsonObject> &records = m_roiService.records();
+  auto appendRows = [this](const QVector<QJsonObject> &records) {
+    for (const QJsonObject &record : records) {
+      int row = m_ui.zoneTable->rowCount();
+      m_ui.zoneTable->insertRow(row);
 
-  for (const QJsonObject &record : records) {
-    int row = m_ui.zoneTable->rowCount();
-    m_ui.zoneTable->insertRow(row);
+      m_ui.zoneTable->setItem(
+          row, 0, new QTableWidgetItem(record["camera_key"].toString()));
+      m_ui.zoneTable->setItem(
+          row, 1, new QTableWidgetItem(record["rod_id"].toString()));
+      m_ui.zoneTable->setItem(
+          row, 2, new QTableWidgetItem(record["rod_name"].toString()));
 
-    m_ui.zoneTable->setItem(row, 0,
-                            new QTableWidgetItem(record["rod_id"].toString()));
-    m_ui.zoneTable->setItem(
-        row, 1, new QTableWidgetItem(record["rod_name"].toString()));
+      QString purpose = record["rod_purpose"].toString();
+      // 한글 변환 (일반구역/지정구역)
+      QString displayPurpose = purpose;
+      if (purpose == "General")
+        displayPurpose = "일반구역";
+      else if (purpose == "Reserved")
+        displayPurpose = "지정구역";
 
-    QString purpose = record["rod_purpose"].toString();
-    // 한글 변환 (일반구역/지정구역)
-    QString displayPurpose = purpose;
-    if (purpose == "General")
-      displayPurpose = "일반구역";
-    else if (purpose == "Reserved")
-      displayPurpose = "지정구역";
+      m_ui.zoneTable->setItem(row, 3, new QTableWidgetItem(displayPurpose));
+      m_ui.zoneTable->setItem(
+          row, 4, new QTableWidgetItem(record["created_at"].toString()));
+    }
+  };
 
-    m_ui.zoneTable->setItem(row, 2, new QTableWidgetItem(displayPurpose));
-    m_ui.zoneTable->setItem(
-        row, 3, new QTableWidgetItem(record["created_at"].toString()));
-  }
+  appendRows(m_roiServicePrimary.records());
+  appendRows(m_roiServiceSecondary.records());
 
-  onLogMessage(QString("주차구역 현황 갱신 완료 (%1건)").arg(records.size()));
+  onLogMessage(QString("주차구역 현황 갱신 완료 (%1건)")
+                   .arg(m_roiServicePrimary.count() + m_roiServiceSecondary.count()));
 }
 
-void MainWindowController::initRoiDb() {
-  // 통합 DB 사용 (인자 없음)
-  const RoiService::InitResult initResult = m_roiService.init();
+void MainWindowController::initRoiDb() { initRoiDbForChannels(); }
+
+void MainWindowController::initRoiDbForChannels() {
+  reloadRoiForTarget(RoiTarget::Primary, false);
+  reloadRoiForTarget(RoiTarget::Secondary, false);
+}
+
+void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
+  RoiService *service = roiServiceForTarget(target);
+  VideoWidget *widget = videoWidgetForTarget(target);
+  if (!service || !widget) {
+    return;
+  }
+
+  const QString cameraKey = cameraKeyForTarget(target);
+  const RoiService::InitResult initResult = service->init(cameraKey);
   if (!initResult.ok) {
-    if (m_ui.logView) {
+    if (m_ui.logView && writeLog) {
       m_ui.logView->append(
-          QString("[ROI][DB] 초기화 실패: %1").arg(initResult.error));
+          QString("[ROI][DB] %1 초기화 실패: %2")
+              .arg(target == RoiTarget::Primary ? "A" : "B", initResult.error));
     }
     return;
   }
 
-  if (m_ui.videoWidget) {
-    // DB에는 정규화 좌표(0~1)로 저장되어 있으므로
-    // 첫 프레임 렌더 시 실제 픽셀 좌표로 복원하도록 큐에 적재한다.
-    QStringList roiLabels;
-    const QVector<QJsonObject> &records = m_roiService.records();
-    roiLabels.reserve(records.size());
-    for (const QJsonObject &record : records) {
-      roiLabels.append(record["rod_name"].toString().trimmed());
-    }
-    m_ui.videoWidget->queueNormalizedRoiPolygons(initResult.normalizedPolygons,
-                                                 roiLabels);
+  // 기존 ROI 초기화 후 카메라별 ROI 로드
+  widget->setUserRoi(QRect());
+  QStringList roiLabels;
+  const QVector<QJsonObject> &records = service->records();
+  roiLabels.reserve(records.size());
+  for (const QJsonObject &record : records) {
+    roiLabels.append(record["rod_name"].toString().trimmed());
+  }
+  widget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
+
+  if (m_ui.logView && writeLog) {
+    m_ui.logView->append(QString("[ROI][DB] %1 채널 '%2' ROI %3개 로드 완료")
+                             .arg(target == RoiTarget::Primary ? "A" : "B",
+                                  cameraKey)
+                             .arg(initResult.loadedCount));
+  }
+}
+
+void MainWindowController::refreshRoiSelectorForTarget() {
+  if (!m_ui.roiSelectorCombo) {
+    return;
+  }
+  m_ui.roiSelectorCombo->clear();
+  m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
+
+  const RoiService *service = roiServiceForTarget(m_roiTarget);
+  if (!service) {
+    return;
   }
 
-  refreshRoiSelector();
-  if (m_ui.logView && initResult.loadedCount > 0) {
-    m_ui.logView->append(
-        QString("[ROI][DB] %1개 ROI 로드 완료").arg(initResult.loadedCount));
+  const QVector<QJsonObject> &records = service->records();
+  for (int i = 0; i < records.size(); ++i) {
+    const QJsonObject &record = records[i];
+    const QString name =
+        record["rod_name"].toString(QString("rod_%1").arg(i + 1));
+    const QString purpose = record["rod_purpose"].toString();
+    m_ui.roiSelectorCombo->addItem(QString("%1 | %2").arg(name, purpose), i);
   }
 }
 
@@ -316,31 +433,368 @@ void MainWindowController::appendRoiStructuredLog(const QJsonObject &roiData) {
 }
 
 void MainWindowController::refreshRoiSelector() {
-  if (!m_ui.roiSelectorCombo) {
-    return;
-  }
-  m_ui.roiSelectorCombo->clear();
-  m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
+  refreshRoiSelectorForTarget();
+}
 
-  const QVector<QJsonObject> &records = m_roiService.records();
-  for (int i = 0; i < records.size(); ++i) {
-    const QJsonObject &record = records[i];
-    const QString name =
-        record["rod_name"].toString(QString("rod_%1").arg(i + 1));
-    const QString purpose = record["rod_purpose"].toString();
-    m_ui.roiSelectorCombo->addItem(QString("%1 | %2").arg(name, purpose), i);
-  }
+VideoWidget *MainWindowController::videoWidgetForTarget(RoiTarget target) const {
+  return (target == RoiTarget::Primary) ? m_ui.videoWidgetPrimary
+                                        : m_ui.videoWidgetSecondary;
+}
+
+RoiService *MainWindowController::roiServiceForTarget(RoiTarget target) {
+  return (target == RoiTarget::Primary) ? &m_roiServicePrimary
+                                        : &m_roiServiceSecondary;
+}
+
+const RoiService *
+MainWindowController::roiServiceForTarget(RoiTarget target) const {
+  return (target == RoiTarget::Primary) ? &m_roiServicePrimary
+                                        : &m_roiServiceSecondary;
+}
+
+ParkingService *MainWindowController::parkingServiceForTarget(RoiTarget target) {
+  return (target == RoiTarget::Primary) ? m_parkingServicePrimary
+                                        : m_parkingServiceSecondary;
+}
+
+QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
+  return (target == RoiTarget::Primary) ? m_selectedCameraKeyPrimary
+                                        : m_selectedCameraKeySecondary;
 }
 
 void MainWindowController::playCctv() {
-  // 실행 중이면 재시작, 아니면 시작 (토글이 아닌 "재생/재연결" 동작)
-  m_cameraSession.playOrRestart();
+  const bool primaryReady =
+      refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
+                                        m_selectedCameraKeyPrimary,
+                                        &m_selectedCameraKeyPrimary);
+  if (!primaryReady) {
+    onLogMessage("[Camera] 연결 설정이 올바르지 않습니다.");
+    return;
+  }
+  if (m_parkingServicePrimary) {
+    m_parkingServicePrimary->setCameraKey(m_selectedCameraKeyPrimary);
+  }
+  m_cameraSessionPrimary.playOrRestart();
+
+  if (m_viewMode == ViewMode::Single) {
+    m_cameraSessionSecondary.stop();
+    return;
+  }
+
+  const bool secondaryReady =
+      refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
+                                        m_selectedCameraKeySecondary,
+                                        &m_selectedCameraKeySecondary);
+  if (!secondaryReady) {
+    onLogMessage(QString("[Camera] '%1' 연결 설정이 올바르지 않아 B 채널은 중지됩니다.")
+                     .arg(m_selectedCameraKeySecondary));
+    m_cameraSessionSecondary.stop();
+    return;
+  }
+  if (m_parkingServiceSecondary) {
+    m_parkingServiceSecondary->setCameraKey(m_selectedCameraKeySecondary);
+  }
+
+  m_cameraSessionSecondary.playOrRestart();
+}
+
+void MainWindowController::refreshCameraSelectors() {
+  if (!Config::instance().load()) {
+    onLogMessage("Warning: could not reload config; using existing values.");
+  }
+
+  QStringList cameraKeys = Config::instance().cameraKeys();
+  if (cameraKeys.isEmpty()) {
+    cameraKeys << QStringLiteral("camera");
+  }
+
+  auto bindSelector = [&cameraKeys](QComboBox *combo, QString *selectedKey) {
+    if (!combo || !selectedKey) {
+      return;
+    }
+
+    QSignalBlocker blocker(combo);
+    combo->clear();
+    for (const QString &cameraKey : cameraKeys) {
+      combo->addItem(cameraKey, cameraKey);
+    }
+
+    int selectIndex = combo->findData(*selectedKey);
+    if (selectIndex < 0) {
+      selectIndex = 0;
+      *selectedKey = combo->itemData(0).toString();
+    }
+    combo->setCurrentIndex(selectIndex);
+  };
+
+  if (m_selectedCameraKeyPrimary.trimmed().isEmpty()) {
+    m_selectedCameraKeyPrimary = QStringLiteral("camera");
+  }
+  bindSelector(m_ui.cameraPrimarySelectorCombo, &m_selectedCameraKeyPrimary);
+
+  if (m_selectedCameraKeySecondary.trimmed().isEmpty()) {
+    m_selectedCameraKeySecondary = QStringLiteral("camera2");
+  }
+  if (!cameraKeys.contains(m_selectedCameraKeySecondary)) {
+    for (const QString &cameraKey : cameraKeys) {
+      if (cameraKey != m_selectedCameraKeyPrimary) {
+        m_selectedCameraKeySecondary = cameraKey;
+        break;
+      }
+    }
+  }
+  bindSelector(m_ui.cameraSecondarySelectorCombo, &m_selectedCameraKeySecondary);
+}
+
+void MainWindowController::applyViewModeUiState() {
+  if (m_ui.viewModeCombo) {
+    QSignalBlocker blocker(m_ui.viewModeCombo);
+    m_ui.viewModeCombo->setCurrentIndex(m_viewMode == ViewMode::Dual ? 1 : 0);
+  }
+
+  const bool dualMode = (m_viewMode == ViewMode::Dual);
+  if (m_ui.cameraSecondarySelectorCombo) {
+    m_ui.cameraSecondarySelectorCombo->setEnabled(dualMode);
+  }
+  if (m_ui.videoWidgetSecondary) {
+    m_ui.videoWidgetSecondary->setVisible(dualMode);
+  }
+  if (m_ui.roiTargetCombo) {
+    {
+      QSignalBlocker blocker(m_ui.roiTargetCombo);
+      m_ui.roiTargetCombo->setCurrentIndex(m_roiTarget == RoiTarget::Secondary
+                                               ? 1
+                                               : 0);
+    }
+    m_ui.roiTargetCombo->setEnabled(dualMode);
+    if (!dualMode && m_ui.roiTargetCombo->currentIndex() != 0) {
+      QSignalBlocker blocker(m_ui.roiTargetCombo);
+      m_ui.roiTargetCombo->setCurrentIndex(0);
+      m_roiTarget = RoiTarget::Primary;
+      refreshRoiSelectorForTarget();
+    }
+  }
+}
+
+void MainWindowController::onRoiTargetChanged(int index) {
+  const RoiTarget newTarget =
+      (index == 1) ? RoiTarget::Secondary : RoiTarget::Primary;
+  if (m_viewMode == ViewMode::Single && newTarget == RoiTarget::Secondary) {
+    if (m_ui.roiTargetCombo) {
+      QSignalBlocker blocker(m_ui.roiTargetCombo);
+      m_ui.roiTargetCombo->setCurrentIndex(0);
+    }
+    m_roiTarget = RoiTarget::Primary;
+    refreshRoiSelectorForTarget();
+    return;
+  }
+
+  m_roiTarget = newTarget;
+  refreshRoiSelectorForTarget();
+  onLogMessage(QString("[ROI] 편집 대상 변경: %1")
+                   .arg(m_roiTarget == RoiTarget::Primary ? "카메라 A"
+                                                          : "카메라 B"));
+}
+
+bool MainWindowController::refreshCameraConnectionFromConfig(
+    CameraManager *cameraManager, const QString &cameraKey,
+    QString *resolvedKey) {
+  if (!cameraManager) {
+    return false;
+  }
+
+  if (!Config::instance().load()) {
+    onLogMessage("Warning: could not reload config; using existing values.");
+  }
+
+  const auto &cfg = Config::instance();
+  const QString selectedKey =
+      cameraKey.trimmed().isEmpty() ? QStringLiteral("camera")
+                                    : cameraKey.trimmed();
+  CameraConnectionInfo connectionInfo;
+  connectionInfo.cameraId = selectedKey;
+  connectionInfo.ip = cfg.cameraIp(selectedKey).trimmed();
+  connectionInfo.username = cfg.cameraUsername(selectedKey).trimmed();
+  connectionInfo.password = cfg.cameraPassword(selectedKey);
+  connectionInfo.profile = cfg.cameraProfile(selectedKey).trimmed();
+  if (connectionInfo.profile.isEmpty()) {
+    connectionInfo.profile = QStringLiteral("profile2/media.smp");
+  }
+  if (!connectionInfo.isValid()) {
+    onLogMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
+                     .arg(selectedKey));
+    return false;
+  }
+  cameraManager->setConnectionInfo(connectionInfo);
+  if (resolvedKey) {
+    *resolvedKey = selectedKey;
+  }
+  return true;
+}
+
+void MainWindowController::onViewModeChanged(int index) {
+  const ViewMode newMode = (index == 1) ? ViewMode::Dual : ViewMode::Single;
+  if (m_viewMode == newMode) {
+    applyViewModeUiState();
+    return;
+  }
+
+  if (newMode == ViewMode::Dual &&
+      m_selectedCameraKeyPrimary == m_selectedCameraKeySecondary) {
+    if (!Config::instance().load()) {
+      onLogMessage("Warning: could not reload config; using existing values.");
+    }
+    const QStringList cameraKeys = Config::instance().cameraKeys();
+    QString alternateCameraKey;
+    for (const QString &cameraKey : cameraKeys) {
+      if (cameraKey != m_selectedCameraKeyPrimary) {
+        alternateCameraKey = cameraKey;
+        break;
+      }
+    }
+
+    if (alternateCameraKey.isEmpty()) {
+      onLogMessage(
+          "[Camera] 듀얼 모드에는 서로 다른 카메라 2개 설정이 필요합니다.");
+      m_viewMode = ViewMode::Single;
+      applyViewModeUiState();
+      return;
+    }
+
+    m_selectedCameraKeySecondary = alternateCameraKey;
+    if (m_ui.cameraSecondarySelectorCombo) {
+      QSignalBlocker blocker(m_ui.cameraSecondarySelectorCombo);
+      const int comboIndex =
+          m_ui.cameraSecondarySelectorCombo->findData(alternateCameraKey);
+      if (comboIndex >= 0) {
+        m_ui.cameraSecondarySelectorCombo->setCurrentIndex(comboIndex);
+      }
+    }
+    if (m_parkingServiceSecondary) {
+      m_parkingServiceSecondary->setCameraKey(m_selectedCameraKeySecondary);
+    }
+    reloadRoiForTarget(RoiTarget::Secondary, false);
+    refreshZoneTableAllChannels();
+    if (m_roiTarget == RoiTarget::Secondary) {
+      refreshRoiSelectorForTarget();
+    }
+    onLogMessage(QString("[Camera] B 채널 자동 변경: %1")
+                     .arg(m_selectedCameraKeySecondary));
+  }
+
+  m_viewMode = newMode;
+  applyViewModeUiState();
+  onLogMessage(QString("[Camera] 뷰 모드 변경: %1")
+                   .arg(m_viewMode == ViewMode::Dual ? "2채널 동시"
+                                                     : "1채널"));
+
+  const bool wasRunningPrimary =
+      m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning();
+  const bool wasRunningSecondary =
+      m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning();
+
+  if (wasRunningPrimary || wasRunningSecondary) {
+    playCctv();
+  } else if (m_viewMode == ViewMode::Single) {
+    m_cameraSessionSecondary.stop();
+  }
+}
+
+void MainWindowController::onCameraPrimarySelectionChanged(int index) {
+  if (!m_ui.cameraPrimarySelectorCombo || index < 0) {
+    return;
+  }
+
+  const QString previousKey = m_selectedCameraKeyPrimary;
+  const QString selectedKey =
+      m_ui.cameraPrimarySelectorCombo->itemData(index).toString();
+  if (selectedKey.isEmpty() || selectedKey == m_selectedCameraKeyPrimary) {
+    return;
+  }
+  if (m_viewMode == ViewMode::Dual &&
+      selectedKey == m_selectedCameraKeySecondary) {
+    onLogMessage(
+        "[Camera] A/B 채널은 서로 다른 카메라를 선택해야 합니다.");
+    QSignalBlocker blocker(m_ui.cameraPrimarySelectorCombo);
+    const int previousIndex = m_ui.cameraPrimarySelectorCombo->findData(previousKey);
+    if (previousIndex >= 0) {
+      m_ui.cameraPrimarySelectorCombo->setCurrentIndex(previousIndex);
+    }
+    return;
+  }
+  m_selectedCameraKeyPrimary = selectedKey;
+  if (m_parkingServicePrimary) {
+    m_parkingServicePrimary->setCameraKey(m_selectedCameraKeyPrimary);
+  }
+  onLogMessage(
+      QString("[Camera] A 채널 변경: %1").arg(m_selectedCameraKeyPrimary));
+  reloadRoiForTarget(RoiTarget::Primary);
+  refreshZoneTableAllChannels();
+  if (m_roiTarget == RoiTarget::Primary) {
+    refreshRoiSelectorForTarget();
+  }
+
+  if (m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning() &&
+      refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
+                                        m_selectedCameraKeyPrimary,
+                                        &m_selectedCameraKeyPrimary)) {
+    m_cameraSessionPrimary.playOrRestart();
+  }
+}
+
+void MainWindowController::onCameraSecondarySelectionChanged(int index) {
+  if (!m_ui.cameraSecondarySelectorCombo || index < 0) {
+    return;
+  }
+
+  const QString previousKey = m_selectedCameraKeySecondary;
+  const QString selectedKey =
+      m_ui.cameraSecondarySelectorCombo->itemData(index).toString();
+  if (selectedKey.isEmpty() || selectedKey == m_selectedCameraKeySecondary) {
+    return;
+  }
+  if (m_viewMode == ViewMode::Dual &&
+      selectedKey == m_selectedCameraKeyPrimary) {
+    onLogMessage(
+        "[Camera] A/B 채널은 서로 다른 카메라를 선택해야 합니다.");
+    QSignalBlocker blocker(m_ui.cameraSecondarySelectorCombo);
+    const int previousIndex =
+        m_ui.cameraSecondarySelectorCombo->findData(previousKey);
+    if (previousIndex >= 0) {
+      m_ui.cameraSecondarySelectorCombo->setCurrentIndex(previousIndex);
+    }
+    return;
+  }
+  m_selectedCameraKeySecondary = selectedKey;
+  if (m_parkingServiceSecondary) {
+    m_parkingServiceSecondary->setCameraKey(m_selectedCameraKeySecondary);
+  }
+  onLogMessage(
+      QString("[Camera] B 채널 변경: %1").arg(m_selectedCameraKeySecondary));
+  reloadRoiForTarget(RoiTarget::Secondary);
+  refreshZoneTableAllChannels();
+  if (m_roiTarget == RoiTarget::Secondary) {
+    refreshRoiSelectorForTarget();
+  }
+
+  if (m_viewMode != ViewMode::Dual) {
+    return;
+  }
+  if (m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning() &&
+      refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
+                                        m_selectedCameraKeySecondary,
+                                        &m_selectedCameraKeySecondary)) {
+    m_cameraSessionSecondary.playOrRestart();
+  }
 }
 
 void MainWindowController::updateObjectFilter(
     const QSet<QString> &disabledTypes) {
-  if (m_cameraManager) {
-    m_cameraManager->setDisabledObjectTypes(disabledTypes);
+  if (m_cameraManagerPrimary) {
+    m_cameraManagerPrimary->setDisabledObjectTypes(disabledTypes);
+  }
+  if (m_cameraManagerSecondary) {
+    m_cameraManagerSecondary->setDisabledObjectTypes(disabledTypes);
   }
 }
 
@@ -377,12 +831,13 @@ void MainWindowController::onLogMessage(const QString &msg) {
   }
 }
 
-void MainWindowController::onOcrResult(int objectId, const QString &result) {
+void MainWindowController::onOcrResultPrimary(int objectId,
+                                              const QString &result) {
   if (!m_ui.logView) {
     return;
   }
   const QString msg =
-      QString("[OCR] ID:%1 Result:%2").arg(objectId).arg(result);
+      QString("[OCR][A] ID:%1 Result:%2").arg(objectId).arg(result);
   qDebug() << msg;
 
   // 번호판 인식 로그 필터링
@@ -392,30 +847,55 @@ void MainWindowController::onOcrResult(int objectId, const QString &result) {
   m_ui.logView->append(msg);
 
   // OCR 결과를 ParkingService에 전달하여 DB 기록 + 알림 처리
-  m_parkingService->processOcrResult(objectId, result);
+  if (m_parkingServicePrimary) {
+    m_parkingServicePrimary->processOcrResult(objectId, result);
+  }
+}
+
+void MainWindowController::onOcrResultSecondary(int objectId,
+                                                const QString &result) {
+  if (!m_ui.logView) {
+    return;
+  }
+  const QString msg =
+      QString("[OCR][B] ID:%1 Result:%2").arg(objectId).arg(result);
+  qDebug() << msg;
+
+  if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
+    return;
+  }
+  m_ui.logView->append(msg);
+
+  if (m_parkingServiceSecondary) {
+    m_parkingServiceSecondary->processOcrResult(objectId, result);
+  }
 }
 
 void MainWindowController::onStartRoiDraw() {
-  if (!m_ui.videoWidget || !m_ui.logView) {
+  VideoWidget *targetWidget = videoWidgetForTarget(m_roiTarget);
+  if (!targetWidget || !m_ui.logView) {
     return;
   }
-  m_ui.videoWidget->startRoiDrawing();
+  targetWidget->startRoiDrawing();
   m_ui.logView->append(
-      "[ROI] Draw mode: left-click points, then press 'ROI 완료'.");
+      QString("[ROI] Draw mode (%1): left-click points, then press 'ROI 완료'.")
+          .arg(m_roiTarget == RoiTarget::Primary ? "카메라 A" : "카메라 B"));
 }
 
 void MainWindowController::onCompleteRoiDraw() {
-  if (!m_ui.videoWidget || !m_ui.logView) {
+  VideoWidget *targetWidget = videoWidgetForTarget(m_roiTarget);
+  RoiService *targetService = roiServiceForTarget(m_roiTarget);
+  if (!targetWidget || !targetService || !m_ui.logView) {
     return;
   }
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
   QString nameError;
-  if (!m_roiService.isValidName(typedName, &nameError)) {
+  if (!targetService->isValidName(typedName, &nameError)) {
     m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError));
     return;
   }
-  if (m_roiService.isDuplicateName(typedName)) {
+  if (targetService->isDuplicateName(typedName)) {
     m_ui.logView->append(
         QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.")
             .arg(typedName));
@@ -424,43 +904,46 @@ void MainWindowController::onCompleteRoiDraw() {
 
   // 실제 폴리곤 완료는 VideoWidget에서 처리되고,
   // 성공 시 roiPolygonChanged 시그널이 다시 컨트롤러로 올라온다.
-  if (!m_ui.videoWidget->completeRoiDrawing()) {
+  if (!targetWidget->completeRoiDrawing()) {
     m_ui.logView->append("[ROI] 완료 실패: 최소 3개 점이 필요합니다.");
   }
 }
 
 void MainWindowController::onDeleteSelectedRoi() {
-  if (!m_ui.roiSelectorCombo || !m_ui.videoWidget || !m_ui.logView) {
+  VideoWidget *targetWidget = videoWidgetForTarget(m_roiTarget);
+  RoiService *targetService = roiServiceForTarget(m_roiTarget);
+  if (!m_ui.roiSelectorCombo || !targetWidget || !targetService ||
+      !m_ui.logView) {
     return;
   }
   // 콤보박스에서 현재 선택된 인덱스 확인
-  int idx = m_ui.roiSelectorCombo->currentIndex();
-  if (idx < 0) {
+  if (m_ui.roiSelectorCombo->currentIndex() < 0) {
     return;
   }
   const int recordIndex = m_ui.roiSelectorCombo->currentData().toInt();
-  if (recordIndex < 0 || recordIndex >= m_roiService.count()) {
+  if (recordIndex < 0 || recordIndex >= targetService->count()) {
     m_ui.logView->append("[ROI] 삭제 실패: ROI를 선택해주세요.");
     return;
   }
 
   const RoiService::DeleteResult deleteResult =
-      m_roiService.removeAt(recordIndex);
+      targetService->removeAt(recordIndex);
   if (!deleteResult.ok) {
     m_ui.logView->append(
         QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
     return;
   }
-  if (!m_ui.videoWidget->removeRoiAt(recordIndex)) {
+  if (!targetWidget->removeRoiAt(recordIndex)) {
     m_ui.logView->append(
         "[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
     return;
   }
 
-  refreshRoiSelector();
+  refreshRoiSelectorForTarget();
+  refreshZoneTableAllChannels();
   int nextRecordIndex = recordIndex;
-  if (nextRecordIndex >= m_roiService.count()) {
-    nextRecordIndex = m_roiService.count() - 1;
+  if (nextRecordIndex >= targetService->count()) {
+    nextRecordIndex = targetService->count() - 1;
   }
   const int comboIndex = (nextRecordIndex >= 0)
                              ? m_ui.roiSelectorCombo->findData(nextRecordIndex)
@@ -476,7 +959,12 @@ void MainWindowController::onRoiChanged(const QRect &roi) {
   if (!m_ui.logView) {
     return;
   }
-  m_ui.logView->append(QString("[ROI] bbox x:%1 y:%2 w:%3 h:%4")
+  const VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
+  const QString channel =
+      (sourceWidget == m_ui.videoWidgetSecondary) ? QStringLiteral("B")
+                                                  : QStringLiteral("A");
+  m_ui.logView->append(QString("[ROI][%1] bbox x:%2 y:%3 w:%4 h:%5")
+                           .arg(channel)
                            .arg(roi.x())
                            .arg(roi.y())
                            .arg(roi.width())
@@ -498,53 +986,77 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   const QString purpose =
       m_ui.roiPurposeCombo ? m_ui.roiPurposeCombo->currentText() : QString();
 
-  const RoiService::CreateResult createResult =
-      m_roiService.createFromPolygon(polygon, frameSize, typedName, purpose);
-  if (!createResult.ok) {
-    // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
-    if (m_ui.videoWidget && m_ui.videoWidget->roiCount() > 0) {
-      m_ui.videoWidget->removeRoiAt(m_ui.videoWidget->roiCount() - 1);
-    }
-    m_ui.logView->append(
-        QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
-    refreshRoiSelector();
+  VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
+  RoiTarget target = m_roiTarget;
+  if (sourceWidget == m_ui.videoWidgetSecondary) {
+    target = RoiTarget::Secondary;
+  } else if (sourceWidget == m_ui.videoWidgetPrimary) {
+    target = RoiTarget::Primary;
+  }
+
+  RoiService *targetService = roiServiceForTarget(target);
+  VideoWidget *targetWidget = videoWidgetForTarget(target);
+  if (!targetService || !targetWidget) {
     return;
   }
 
-  refreshRoiSelector();
-  if (m_ui.roiSelectorCombo) {
+  const RoiService::CreateResult createResult =
+      targetService->createFromPolygon(polygon, frameSize, typedName, purpose);
+  if (!createResult.ok) {
+    // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
+    if (targetWidget->roiCount() > 0) {
+      targetWidget->removeRoiAt(targetWidget->roiCount() - 1);
+    }
+    m_ui.logView->append(
+        QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
+    if (target == m_roiTarget) {
+      refreshRoiSelectorForTarget();
+    }
+    return;
+  }
+
+  if (target == m_roiTarget) {
+    refreshRoiSelectorForTarget();
+  }
+  refreshZoneTableAllChannels();
+  if (target == m_roiTarget && m_ui.roiSelectorCombo) {
     m_ui.roiSelectorCombo->setCurrentIndex(m_ui.roiSelectorCombo->count() - 1);
   }
-  if (m_ui.videoWidget) {
-    const int recordIndex = m_roiService.count() - 1;
-    m_ui.videoWidget->setRoiLabelAt(
+  if (targetWidget) {
+    const int recordIndex = targetService->count() - 1;
+    targetWidget->setRoiLabelAt(
         recordIndex, createResult.record["rod_name"].toString().trimmed());
   }
   appendRoiStructuredLog(createResult.record);
 }
 
-void MainWindowController::onMetadataReceived(
+void MainWindowController::onMetadataReceivedPrimary(
     const QList<ObjectInfo> &objects) {
   // 메타데이터는 즉시 렌더하지 않고 타임스탬프와 함께 큐에 넣는다.
   // 프레임 도착 시점에 지연값(delay)을 반영해 꺼내 쓰기 위함.
-  m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
+  m_cameraSessionPrimary.pushMetadata(objects,
+                                      QDateTime::currentMSecsSinceEpoch());
 
   // ParkingService에도 메타데이터를 전달하여 입출차 감지 수행
   // 매 프레임마다 ROI 폴리곤을 동기화 (DB 로드/사용자 그리기 반영)
-  if (m_ui.videoWidget) {
-    m_parkingService->updateRoiPolygons(m_ui.videoWidget->roiPolygons());
+  if (m_ui.videoWidgetPrimary && m_parkingServicePrimary) {
+    m_parkingServicePrimary->updateRoiPolygons(
+        m_ui.videoWidgetPrimary->roiPolygons());
   }
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
-  m_parkingService->processMetadata(objects, cfg.effectiveWidth(),
-                                    cfg.sourceHeight(), pruneMs);
+  if (m_parkingServicePrimary) {
+    m_parkingServicePrimary->processMetadata(objects, cfg.effectiveWidth(),
+                                             cfg.sourceHeight(), pruneMs);
+  }
 
   // === ReID Table Update (ID 기반 누적 관리) ===
-  if (m_ui.reidTable) {
+  if (m_ui.reidTable && m_roiTarget == RoiTarget::Primary &&
+      m_parkingServicePrimary) {
     m_ui.reidTable->setRowCount(0); // Clear
 
     // 현재 시스템이 추적 중인 모든 객체 목록 가져오기 (실시간 감지 객체 포함)
-    const QList<VehicleState> vsList = m_parkingService->activeVehicles();
+    const QList<VehicleState> vsList = m_parkingServicePrimary->activeVehicles();
 
     // ID 순서대로 정렬 (선택 사항, 사용자 편의성)
     QList<VehicleState> sortedVs = vsList;
@@ -609,9 +1121,82 @@ void MainWindowController::onMetadataReceived(
   }
 }
 
-void MainWindowController::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
-                                           qint64 timestampMs) {
-  if (!m_ui.videoWidget || !framePtr || framePtr->empty()) {
+void MainWindowController::onMetadataReceivedSecondary(
+    const QList<ObjectInfo> &objects) {
+  m_cameraSessionSecondary.pushMetadata(objects,
+                                        QDateTime::currentMSecsSinceEpoch());
+
+  if (m_ui.videoWidgetSecondary && m_parkingServiceSecondary) {
+    m_parkingServiceSecondary->updateRoiPolygons(
+        m_ui.videoWidgetSecondary->roiPolygons());
+  }
+
+  const auto &cfg = Config::instance();
+  int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
+  if (m_parkingServiceSecondary) {
+    m_parkingServiceSecondary->processMetadata(objects, cfg.effectiveWidth(),
+                                               cfg.sourceHeight(), pruneMs);
+  }
+
+  if (m_ui.reidTable && m_roiTarget == RoiTarget::Secondary &&
+      m_parkingServiceSecondary) {
+    m_ui.reidTable->setRowCount(0);
+    const QList<VehicleState> vsList = m_parkingServiceSecondary->activeVehicles();
+    QList<VehicleState> sortedVs = vsList;
+    std::sort(sortedVs.begin(), sortedVs.end(),
+              [](const VehicleState &a, const VehicleState &b) {
+                return a.objectId < b.objectId;
+              });
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    int staleMs =
+        m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
+
+    for (const VehicleState &vs : sortedVs) {
+      if (vs.objectId < 0)
+        continue;
+
+      bool isStale = (nowMs - vs.lastSeenMs) > staleMs;
+      if (isStale && m_ui.chkShowStaleObjects &&
+          !m_ui.chkShowStaleObjects->isChecked()) {
+        continue;
+      }
+
+      int row = m_ui.reidTable->rowCount();
+      m_ui.reidTable->insertRow(row);
+
+      QColor textColor = isStale ? Qt::gray : Qt::black;
+      auto *idItem = new QTableWidgetItem(QString::number(vs.objectId));
+      idItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 0, idItem);
+
+      auto *typeItem = new QTableWidgetItem(vs.type);
+      typeItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 1, typeItem);
+
+      auto *plateItem = new QTableWidgetItem(vs.plateNumber);
+      plateItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 2, plateItem);
+
+      auto *scoreItem = new QTableWidgetItem(QString::number(vs.score, 'f', 2));
+      scoreItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 3, scoreItem);
+
+      const QRectF &rect = vs.boundingBox;
+      auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
+                                                .arg(rect.x(), 0, 'f', 1)
+                                                .arg(rect.y(), 0, 'f', 1)
+                                                .arg(rect.width(), 0, 'f', 1)
+                                                .arg(rect.height(), 0, 'f', 1));
+      bboxItem->setForeground(textColor);
+      m_ui.reidTable->setItem(row, 4, bboxItem);
+    }
+  }
+}
+
+void MainWindowController::onFrameCapturedPrimary(
+    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
+  if (!m_ui.videoWidgetPrimary || !framePtr || framePtr->empty()) {
     return;
   }
 
@@ -628,10 +1213,10 @@ void MainWindowController::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   // 2. Render Throttling (UI 렌더링 부하 방지)
   // 약 30~33fps 수준인 30ms로 제한하여 부하와 부드러움의 타협점 적용
-  if (m_renderTimer.isValid() && m_renderTimer.elapsed() < 30) {
+  if (m_renderTimerPrimary.isValid() && m_renderTimerPrimary.elapsed() < 30) {
     return;
   }
-  m_renderTimer.restart();
+  m_renderTimerPrimary.restart();
 
   // === 렌더링할 프레임에만 BGR → RGB 색상 변환 수행 ===
   // 비디오 스레드에서 모든 프레임에 변환하면 불필요한 CPU 소모가 발생하므로,
@@ -646,12 +1231,38 @@ void MainWindowController::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   // 프레임 갱신 직전에 "현재 시각 기준으로 준비된 메타데이터"만 소비한다.
   // 이렇게 해야 박스/객체 정보와 비디오 프레임이 더 자연스럽게 맞는다.
-  m_ui.videoWidget->updateMetadata(m_cameraSession.consumeReadyMetadata(nowMs));
+  m_ui.videoWidgetPrimary->updateMetadata(
+      m_cameraSessionPrimary.consumeReadyMetadata(nowMs));
 
   // QImage 참조 전달.
   // 내부에서 scaled 되거나 사용(복사)된 후 qimg 스코프 종료 시 framePtr.reset()
   // 실행됨.
-  m_ui.videoWidget->updateFrame(qimg);
+  m_ui.videoWidgetPrimary->updateFrame(qimg);
+}
+
+void MainWindowController::onFrameCapturedSecondary(
+    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
+  if (!m_ui.videoWidgetSecondary || !framePtr || framePtr->empty()) {
+    return;
+  }
+
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if ((nowMs - timestampMs) > 60) {
+    return;
+  }
+  if (m_renderTimerSecondary.isValid() &&
+      m_renderTimerSecondary.elapsed() < 30) {
+    return;
+  }
+  m_renderTimerSecondary.restart();
+
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+
+  m_ui.videoWidgetSecondary->updateMetadata(
+      m_cameraSessionSecondary.consumeReadyMetadata(nowMs));
+  m_ui.videoWidgetSecondary->updateFrame(qimg);
 }
 
 void MainWindowController::onSendEntry() {
@@ -746,11 +1357,17 @@ static void populateParkingTable(QTableWidget *table,
 }
 
 void MainWindowController::onRefreshParkingLogs() {
-  const QVector<QJsonObject> logs = m_parkingService->recentLogs(100);
+  ParkingService *service = parkingServiceForTarget(m_roiTarget);
+  if (!service) {
+    return;
+  }
+  const QVector<QJsonObject> logs = service->recentLogs(100);
   populateParkingTable(m_ui.parkingLogTable, logs);
   if (m_ui.logView) {
     m_ui.logView->append(
-        QString("[DB] 전체 새로고침: %1건 표시").arg(logs.size()));
+        QString("[DB][%1] 전체 새로고침: %2건 표시")
+            .arg(service->cameraKey())
+            .arg(logs.size()));
   }
 }
 
@@ -763,11 +1380,17 @@ void MainWindowController::onSearchParkingLogs() {
     onRefreshParkingLogs();
     return;
   }
-  const QVector<QJsonObject> logs = m_parkingService->searchByPlate(keyword);
+  ParkingService *service = parkingServiceForTarget(m_roiTarget);
+  if (!service) {
+    return;
+  }
+  const QVector<QJsonObject> logs = service->searchByPlate(keyword);
   populateParkingTable(m_ui.parkingLogTable, logs);
   if (m_ui.logView) {
     m_ui.logView->append(
-        QString("[DB] '%1' 검색 결과: %2건").arg(keyword).arg(logs.size()));
+        QString("[DB][%1] '%2' 검색 결과: %3건")
+            .arg(service->cameraKey(), keyword)
+            .arg(logs.size()));
   }
 }
 
@@ -801,7 +1424,11 @@ void MainWindowController::onForcePlate() {
     bbox.setHeight(parts[3].toDouble());
   }
 
-  m_parkingService->forceObjectData(objectId, type, plate, score, bbox);
+  ParkingService *service = parkingServiceForTarget(m_roiTarget);
+  if (!service) {
+    return;
+  }
+  service->forceObjectData(objectId, type, plate, score, bbox);
 
   if (m_ui.logView) {
     m_ui.logView->append(
@@ -810,6 +1437,7 @@ void MainWindowController::onForcePlate() {
 }
 
 void MainWindowController::onReidTableCellClicked(int row, int column) {
+  Q_UNUSED(column);
   if (!m_ui.reidTable)
     return;
 
@@ -867,7 +1495,8 @@ void MainWindowController::onEditPlate() {
     return;
   }
   const int recordId = idItem->text().toInt();
-  if (m_parkingService->updatePlate(recordId, newPlate)) {
+  ParkingService *service = parkingServiceForTarget(m_roiTarget);
+  if (service && service->updatePlate(recordId, newPlate)) {
     if (m_ui.logView) {
       m_ui.logView->append(QString("[DB] 번호판 수정 완료: ID=%1 → %2")
                                .arg(recordId)

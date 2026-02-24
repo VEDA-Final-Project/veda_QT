@@ -24,8 +24,9 @@ public:
    * @brief 입차 기록 생성
    * @return 생성된 레코드의 ID (실패 시 -1)
    */
-  int insertEntry(const QString &plateNumber, int roiIndex,
-                  const QDateTime &entryTime, QString *errorMessage = nullptr);
+  int insertEntry(const QString &cameraKey, const QString &plateNumber,
+                  int roiIndex, const QDateTime &entryTime,
+                  QString *errorMessage = nullptr);
 
   /**
    * @brief 출차 기록 업데이트
@@ -37,31 +38,34 @@ public:
    * @brief 번호판으로 현재 입차 중인 레코드 조회
    * @return 입차 중인 레코드 (없으면 빈 QJsonObject)
    */
-  QJsonObject findActiveByPlate(const QString &plateNumber,
+  QJsonObject findActiveByPlate(const QString &cameraKey,
+                                const QString &plateNumber,
                                 QString *errorMessage = nullptr) const;
 
   /**
    * @brief 최근 N건의 입출차 기록 조회
    */
-  QList<QJsonObject> recentLogs(int limit = 50,
+  QList<QJsonObject> recentLogs(const QString &cameraKey, int limit = 50,
                                 QString *errorMessage = nullptr) const;
 
   /**
    * @brief 번호판으로 기록 검색 (부분 일치)
    */
-  QList<QJsonObject> searchByPlate(const QString &plate,
+  QList<QJsonObject> searchByPlate(const QString &cameraKey,
+                                   const QString &plate,
                                    QString *errorMessage = nullptr) const;
 
   /**
    * @brief 특정 레코드의 번호판 수정
    */
-  bool updatePlate(int recordId, const QString &newPlate,
+  bool updatePlate(const QString &cameraKey, int recordId, const QString &newPlate,
                    QString *errorMessage = nullptr);
 
   /**
    * @brief 전체 주차 기록 조회
    */
-  QList<QJsonObject> getAllLogs(QString *errorMessage = nullptr) const;
+  QList<QJsonObject> getAllLogs(const QString &cameraKey,
+                                QString *errorMessage = nullptr) const;
 
   /**
    * @brief 주차 기록 삭제

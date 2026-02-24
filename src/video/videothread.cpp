@@ -65,7 +65,12 @@ void VideoThread::run() {
 
   // === RTSP 스트림 열기 ===
   if (!m_cap.open(url.toStdString(), cv::CAP_FFMPEG)) {
-    qDebug() << "Error: Cannot open stream" << url;
+    QString safeUrl = url;
+    const int atPos = safeUrl.indexOf('@');
+    if (safeUrl.startsWith(QStringLiteral("rtsp://")) && atPos > 0) {
+      safeUrl = QStringLiteral("rtsp://***:***") + safeUrl.mid(atPos);
+    }
+    emit logMessage(QString("Error: Cannot open stream: %1").arg(safeUrl));
     return;
   }
 
@@ -87,11 +92,11 @@ void VideoThread::run() {
       if (lastReadErrorLogMs == 0 ||
           (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
         if (suppressedReadErrors > 0) {
-          qDebug() << "Error: Cannot read frame (repeated"
-                   << suppressedReadErrors << "times)";
+          emit logMessage(QString("Error: Cannot read frame (repeated %1 times)")
+                              .arg(suppressedReadErrors));
           suppressedReadErrors = 0;
         } else {
-          qDebug() << "Error: Cannot read frame";
+          emit logMessage(QStringLiteral("Error: Cannot read frame"));
         }
         lastReadErrorLogMs = nowMs;
       } else {

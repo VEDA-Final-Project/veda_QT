@@ -31,7 +31,12 @@ protected:
 private:
   void setupUi();
 
-  VideoWidget *m_videoWidget = nullptr;
+  VideoWidget *m_videoWidgetPrimary = nullptr;
+  VideoWidget *m_videoWidgetSecondary = nullptr;
+  QComboBox *m_viewModeCombo = nullptr;
+  QComboBox *m_cameraPrimarySelectorCombo = nullptr;
+  QComboBox *m_cameraSecondarySelectorCombo = nullptr;
+  QComboBox *m_roiTargetCombo = nullptr;
   QLineEdit *m_roiNameEdit = nullptr;
   QComboBox *m_roiPurposeCombo = nullptr;
   QComboBox *m_roiSelectorCombo = nullptr;
