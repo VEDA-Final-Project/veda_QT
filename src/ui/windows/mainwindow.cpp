@@ -146,6 +146,39 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             &MainWindowController::onReidTableCellClicked);
   }
 
+  // === 객체 필터 체크박스 연결 ===
+  auto updateFilter = [this]() {
+    if (!m_controller)
+      return;
+    QSet<QString> disabled;
+    if (!m_chkVehicle->isChecked()) {
+      // 한화 카메라는 차종별로 타입을 보냄 (Vehical은 펌웨어 오타)
+      disabled.insert("Vehicle");
+      disabled.insert("Vehical");
+      disabled.insert("Car");
+      disabled.insert("Bus");
+      disabled.insert("Truck");
+      disabled.insert("Motorcycle");
+      disabled.insert("Bicycle");
+    }
+    if (!m_chkPerson->isChecked())
+      disabled.insert("Human");
+    if (!m_chkFace->isChecked())
+      disabled.insert("Face");
+    if (!m_chkPlate->isChecked())
+      disabled.insert("LicensePlate");
+    if (!m_chkOther->isChecked())
+      disabled.insert("Other");
+    m_controller->updateObjectFilter(disabled);
+  };
+  connect(m_chkVehicle, &QCheckBox::toggled, this, updateFilter);
+  connect(m_chkPerson, &QCheckBox::toggled, this, updateFilter);
+  connect(m_chkFace, &QCheckBox::toggled, this, updateFilter);
+  connect(m_chkPlate, &QCheckBox::toggled, this, updateFilter);
+  connect(m_chkOther, &QCheckBox::toggled, this, updateFilter);
+  // 초기값 적용 (기타 기본 체크 해제)
+  updateFilter();
+
   // 초기 창 크기 설정
   resize(1000, 700);
 }
@@ -230,6 +263,30 @@ void MainWindow::setupUi() {
 
   cctvLayout->addLayout(btnLayout);
   cctvLayout->addWidget(m_videoWidget);
+
+  // === 객체 감지 필터 체크박스 ===
+  QHBoxLayout *filterLayout = new QHBoxLayout();
+  filterLayout->addWidget(new QLabel(QString::fromUtf8("객체 필터:"), this));
+
+  m_chkVehicle = new QCheckBox(QString::fromUtf8("차량"), this);
+  m_chkVehicle->setChecked(true);
+  m_chkPerson = new QCheckBox(QString::fromUtf8("사람"), this);
+  m_chkPerson->setChecked(true);
+  m_chkFace = new QCheckBox(QString::fromUtf8("얼굴"), this);
+  m_chkFace->setChecked(true);
+  m_chkPlate = new QCheckBox(QString::fromUtf8("번호판"), this);
+  m_chkPlate->setChecked(true);
+  m_chkOther = new QCheckBox(QString::fromUtf8("기타"), this);
+  m_chkOther->setChecked(false);
+
+  filterLayout->addWidget(m_chkVehicle);
+  filterLayout->addWidget(m_chkPerson);
+  filterLayout->addWidget(m_chkFace);
+  filterLayout->addWidget(m_chkPlate);
+  filterLayout->addWidget(m_chkOther);
+  filterLayout->addStretch();
+
+  cctvLayout->addLayout(filterLayout);
 
   // ======================
   // Tab 2: 텔레그램 테스트

@@ -106,12 +106,11 @@ void VideoThread::run() {
     if (frame.empty())
       continue;
 
-    // === QSharedPointer 기반 Zero-Copy 전송 준비 ===
-    // OpenCV 버퍼 재사용 문제를 피하기 위해 매번 힙에 할당하여 소유권을
-    // 전달합니다.
-    QSharedPointer<cv::Mat> sharedFrame(new cv::Mat());
-    frame.copyTo(*sharedFrame); // OpenCV 내부에서는 clone/copyTo를 통해 안전한
-                                // 데이터 복제 수행
+    // === Zero-Copy 전송: clone()으로 독립 데이터 확보 ===
+    // OpenCV의 frame 버퍼 재사용을 유지하면서, UI에 넘길 독립 복사본을
+    // 생성합니다. BGR → RGB 색상 변환은 UI 스레드에서 렌더링할 프레임에만
+    // 수행합니다. (불필요한 변환 방지)
+    auto sharedFrame = QSharedPointer<cv::Mat>::create(frame.clone());
 
     // === 프레임 전달 (UI 등 외부로) ===
     emit frameCaptured(sharedFrame, QDateTime::currentMSecsSinceEpoch());

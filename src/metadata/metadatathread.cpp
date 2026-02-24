@@ -54,6 +54,11 @@ void MetadataThread::setConnectionInfo(const QString &ip, const QString &user,
   }
 }
 
+void MetadataThread::setDisabledTypes(const QSet<QString> &types) {
+  QMutexLocker locker(&m_mutex);
+  m_disabledTypes = types;
+}
+
 /**
  * @brief 메타데이터 스레드 종료 요청
  * - 이벤트 루프 종료 → run() 정리 단계로 이동
@@ -256,6 +261,18 @@ void MetadataThread::parseFrame(const QString &frameXml) {
     QRegularExpression typeRe("<tt:Type[^>]*>([^<]+)</tt:Type>");
     QRegularExpressionMatch typeMatch = typeRe.match(objectContent);
     info.type = typeMatch.hasMatch() ? typeMatch.captured(1) : "Unknown";
+
+    // [DEBUG] 실제 타입명 확인 (추후 삭제)
+    qDebug() << "[MetaType] ID:" << info.id << "Type:" << info.type;
+
+    // === 비활성화된 객체 타입 필터링 ===
+    // UI 체크박스에서 체크 해제된 타입은 건너뜁니다.
+    {
+      QMutexLocker locker(&m_mutex);
+      if (m_disabledTypes.contains(info.type)) {
+        continue;
+      }
+    }
 
     // === 신뢰도(Score) 파싱 ===
     // Likelihood="0.95" 또는 Confidence="0.95" 등 검색

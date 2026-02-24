@@ -96,6 +96,13 @@ private:
   QTableWidget *m_zoneTable = nullptr;
   QPushButton *m_btnRefreshZone = nullptr;
 
+  // Object Type Filter Checkboxes
+  QCheckBox *m_chkVehicle = nullptr;
+  QCheckBox *m_chkPerson = nullptr;
+  QCheckBox *m_chkFace = nullptr;
+  QCheckBox *m_chkPlate = nullptr;
+  QCheckBox *m_chkOther = nullptr;
+
   // Log Filter
   QCheckBox *m_chkShowPlateLogs = nullptr;
 

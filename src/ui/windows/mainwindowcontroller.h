@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QPushButton>
+#include <QSet>
 #include <QTextEdit>
 
 #include "telegram/telegrambotapi.h"
@@ -109,6 +110,7 @@ public slots:
   void appendRoiStructuredLog(const QJsonObject &roiData);
   void refreshRoiSelector();
   void playCctv();
+  void updateObjectFilter(const QSet<QString> &disabledTypes);
   void onLogMessage(const QString &msg);
   void onOcrResult(int objectId, const QString &result);
   void onStartRoiDraw();

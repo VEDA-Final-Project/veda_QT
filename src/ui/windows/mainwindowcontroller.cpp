@@ -337,6 +337,13 @@ void MainWindowController::playCctv() {
   m_cameraSession.playOrRestart();
 }
 
+void MainWindowController::updateObjectFilter(
+    const QSet<QString> &disabledTypes) {
+  if (m_cameraManager) {
+    m_cameraManager->setDisabledObjectTypes(disabledTypes);
+  }
+}
+
 void MainWindowController::onLogMessage(const QString &msg) {
   if (!m_ui.logView) {
     return;
@@ -626,13 +633,14 @@ void MainWindowController::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
   }
   m_renderTimer.restart();
 
-  // === 화면을 그릴 때만 BGR -> RGB 색상 변환 수행 ===
+  // === 렌더링할 프레임에만 BGR → RGB 색상 변환 수행 ===
+  // 비디오 스레드에서 모든 프레임에 변환하면 불필요한 CPU 소모가 발생하므로,
+  // Throttle/Stale 판정을 통과한 프레임(초당 ~33개)에만 변환을 적용합니다.
   cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
 
   // === Zero-Copy QImage 래핑 ===
-  // OpenCV 버퍼 데이터를 복사하지 않고 단순히 쳐다만 보는(shallow copy) QImage
-  // 객체를 생성합니다. framePtr가 이 스코프를 벗어나기 전까진 메모리가
-  // 유지되므로 안전하게 위젯에 넘길 수 있습니다.
+  // BGR→RGB 변환 완료 후, OpenCV 버퍼 데이터를 복사하지 않고
+  // 쳐다만 보는(shallow copy) QImage 객체를 생성합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
 

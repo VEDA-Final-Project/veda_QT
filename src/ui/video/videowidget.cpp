@@ -1,9 +1,9 @@
 #include "videowidget.h"
 #include <QDebug>
+#include <QPainter>
 #include <QtGlobal>
 
-VideoWidget::VideoWidget(QWidget *parent) : QLabel(parent) {
-  setAlignment(Qt::AlignCenter);
+VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent) {
   setStyleSheet("background-color: black;");
   setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 }
@@ -151,11 +151,22 @@ void VideoWidget::renderFrame(const QImage &frame) {
     emit ocrRequested(req.objectId, req.crop);
   }
 
-  setPixmap(QPixmap::fromImage(composed));
+  // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
+  m_currentFrame = composed;
+  update(); // paintEvent 트리거
 }
 
 void VideoWidget::paintEvent(QPaintEvent *event) {
-  QLabel::paintEvent(event);
+  QWidget::paintEvent(event);
+
+  if (!m_currentFrame.isNull()) {
+    QPainter p(this);
+    // 위젯 중앙에 QImage를 직접 그립니다 (QPixmap 변환 비용 0)
+    const int x = (width() - m_currentFrame.width()) / 2;
+    const int y = (height() - m_currentFrame.height()) / 2;
+    p.drawImage(x, y, m_currentFrame);
+  }
+
   m_roiState.paintDrawingOverlay(this, m_lastFrameSize);
 }
 
@@ -164,7 +175,7 @@ void VideoWidget::mousePressEvent(QMouseEvent *event) {
     update();
     return;
   }
-  QLabel::mousePressEvent(event);
+  QWidget::mousePressEvent(event);
 }
 
 void VideoWidget::mouseMoveEvent(QMouseEvent *event) {
@@ -172,13 +183,13 @@ void VideoWidget::mouseMoveEvent(QMouseEvent *event) {
     update();
     return;
   }
-  QLabel::mouseMoveEvent(event);
+  QWidget::mouseMoveEvent(event);
 }
 
 void VideoWidget::mouseReleaseEvent(QMouseEvent *event) {
-  QLabel::mouseReleaseEvent(event);
+  QWidget::mouseReleaseEvent(event);
 }
 
 void VideoWidget::mouseDoubleClickEvent(QMouseEvent *event) {
-  QLabel::mouseDoubleClickEvent(event);
+  QWidget::mouseDoubleClickEvent(event);
 }
