@@ -262,9 +262,6 @@ void MetadataThread::parseFrame(const QString &frameXml) {
     QRegularExpressionMatch typeMatch = typeRe.match(objectContent);
     info.type = typeMatch.hasMatch() ? typeMatch.captured(1) : "Unknown";
 
-    // [DEBUG] 실제 타입명 확인 (추후 삭제)
-    qDebug() << "[MetaType] ID:" << info.id << "Type:" << info.type;
-
     // === 비활성화된 객체 타입 필터링 ===
     // UI 체크박스에서 체크 해제된 타입은 건너뜁니다.
     {

@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
+#include <QtGlobal>
 #include <opencv2/imgproc.hpp>
 
 namespace {
@@ -18,6 +19,46 @@ QRegion roiRegionOnFrame(const QRect &frameRect,
         QRegion(polygon, Qt::WindingFill).intersected(frameRegion));
   }
   return region;
+}
+
+QList<QPolygon> scaleRoiPolygons(const QList<QPolygon> &roiPolygons,
+                                 const QSize &sourceSize,
+                                 const QSize &targetSize) {
+  QList<QPolygon> scaledPolygons;
+  if (sourceSize.isEmpty() || targetSize.isEmpty()) {
+    return scaledPolygons;
+  }
+
+  scaledPolygons.reserve(roiPolygons.size());
+  const double sx =
+      static_cast<double>(targetSize.width()) / sourceSize.width();
+  const double sy =
+      static_cast<double>(targetSize.height()) / sourceSize.height();
+  const int maxX = qMax(0, targetSize.width() - 1);
+  const int maxY = qMax(0, targetSize.height() - 1);
+
+  for (const QPolygon &polygon : roiPolygons) {
+    if (polygon.size() < 3) {
+      continue;
+    }
+
+    QPolygon scaledPolygon;
+    scaledPolygon.reserve(polygon.size());
+    for (const QPoint &pt : polygon) {
+      const int x =
+          qBound(0, static_cast<int>(pt.x() * sx), maxX);
+      const int y =
+          qBound(0, static_cast<int>(pt.y() * sy), maxY);
+      scaledPolygon << QPoint(x, y);
+    }
+
+    if (scaledPolygon.size() >= 3 &&
+        !scaledPolygon.boundingRect().isEmpty()) {
+      scaledPolygons.append(scaledPolygon);
+    }
+  }
+
+  return scaledPolygons;
 }
 
 // ROI 영역의 픽셀 면적 계산
@@ -72,11 +113,15 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   font.setBold(true);
   painter.setFont(font);
 
+  const QList<QPolygon> scaledRoiPolygons =
+      scaleRoiPolygons(roiPolygons, frame.size(), scaledFrame.size());
+
   const auto &cfg = Config::instance();
   const double sourceHeight = static_cast<double>(cfg.sourceHeight());
   const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
   const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
-  const QRegion roiRegion = roiRegionOnFrame(scaledFrame.rect(), roiPolygons);
+  const QRegion roiRegion =
+      roiRegionOnFrame(scaledFrame.rect(), scaledRoiPolygons);
   const bool hasActiveRoi = roiEnabled && !roiRegion.isEmpty();
 
   struct RenderCandidate {
@@ -124,8 +169,8 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   const bool shouldFilterByRoi = hasActiveRoi && hasAnyRoiMatch;
 
   if (hasActiveRoi) {
-    for (int i = 0; i < roiPolygons.size(); ++i) {
-      const QPolygon &polygon = roiPolygons[i];
+    for (int i = 0; i < scaledRoiPolygons.size(); ++i) {
+      const QPolygon &polygon = scaledRoiPolygons[i];
       if (polygon.size() < 3) {
         continue;
       }
