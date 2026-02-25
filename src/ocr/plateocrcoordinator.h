@@ -3,6 +3,7 @@
 
 #include "ocr/ocrmanager.h"
 #include <QFutureWatcher>
+#include <QHash>
 #include <QImage>
 #include <QObject>
 #include <QQueue>
@@ -32,12 +33,26 @@ private:
     QImage crop;
   };
 
+  struct ObjectOcrState
+  {
+    QQueue<QString> recentVotes;
+    QString lastGood;
+    qint64 lastGoodMs = 0;
+    QString lastEmitted;
+    qint64 lastSeenMs = 0;
+  };
+
+  QString resolveStableResult(int objectId, const OcrResult &rawResult,
+                              qint64 nowMs, QString *debugReason);
+  static QString majorityVote(const QQueue<QString> &votes, int *countOut);
+  void pruneStateCache(qint64 nowMs);
   void startNext();
 
   OcrManager m_ocrManager;
-  QFutureWatcher<QString> m_watcher;
+  QFutureWatcher<OcrResult> m_watcher;
   QQueue<PendingOcr> m_pending;
   QSet<int> m_inflightObjectIds;
+  QHash<int, ObjectOcrState> m_objectStates;
   int m_runningObjectId = -1;
   bool m_shuttingDown = false;
 };
