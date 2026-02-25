@@ -1,4 +1,5 @@
 #include "videowidget.h"
+#include <QDateTime>
 #include <QDebug>
 #include <QPainter>
 #include <QtGlobal>
@@ -6,6 +7,18 @@
 VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent) {
   setStyleSheet("background-color: black;");
   setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+  setMouseTracking(true);
+  setFocusPolicy(Qt::StrongFocus);
+}
+
+void VideoWidget::setShowFps(bool show) {
+  m_showFps = show;
+  if (!show) {
+    m_fpsHistory1s.clear();
+    m_fpsHistory.clear();
+    m_currentFps = 0.0;
+    emit avgFpsUpdated(0.0);
+  }
 }
 
 void VideoWidget::setUserRoi(const QRect &roi) {
@@ -142,10 +155,34 @@ void VideoWidget::renderFrame(const QImage &frame) {
     m_roiLabels.resize(roiCount);
   }
 
+  // --- FPS Calculation ---
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  m_fpsHistory1s.enqueue(nowMs);
+  m_fpsHistory.enqueue(nowMs);
+
+  while (!m_fpsHistory1s.isEmpty() && nowMs - m_fpsHistory1s.head() > 1000) {
+    m_fpsHistory1s.dequeue();
+  }
+  while (!m_fpsHistory.isEmpty() && nowMs - m_fpsHistory.head() > 60000) {
+    m_fpsHistory.dequeue();
+  }
+
+  m_currentFps = static_cast<double>(m_fpsHistory1s.size());
+  double avgFps = m_fpsHistory.size() / 60.0;
+  if (!m_fpsHistory.isEmpty() && (nowMs - m_fpsHistory.head()) < 60000) {
+    double elapsedSecs = (nowMs - m_fpsHistory.head()) / 1000.0;
+    if (elapsedSecs > 0) {
+      avgFps = m_fpsHistory.size() / elapsedSecs;
+    }
+  }
+  emit avgFpsUpdated(avgFps);
+  // -----------------------
+
   QList<OcrRequest> ocrRequests;
   const QImage composed = m_frameRenderer.compose(
       frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
-      m_roiState.roiEnabled(), &ocrRequests);
+      m_roiState.roiEnabled() && !m_roiState.isDrawing(), m_showFps,
+      static_cast<int>(m_currentFps), &ocrRequests);
 
   for (const OcrRequest &req : ocrRequests) {
     emit ocrRequested(req.objectId, req.crop);

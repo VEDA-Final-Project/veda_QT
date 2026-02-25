@@ -2,36 +2,30 @@
 #include <QDebug>
 #include <QtGlobal>
 
-void RoiInteractionState::setUserRoi(const QRect &roi)
-{
+void RoiInteractionState::setUserRoi(const QRect &roi) {
   m_userRoiPolygons.clear();
   addUserRoi(roi);
 }
 
-void RoiInteractionState::addUserRoi(const QRect &roi)
-{
+void RoiInteractionState::addUserRoi(const QRect &roi) {
   const QRect normalized = roi.normalized();
-  if (normalized.isEmpty())
-  {
+  if (normalized.isEmpty()) {
     return;
   }
 
   QPolygon polygon;
-  polygon << normalized.topLeft() << normalized.topRight() << normalized.bottomRight()
-          << normalized.bottomLeft();
+  polygon << normalized.topLeft() << normalized.topRight()
+          << normalized.bottomRight() << normalized.bottomLeft();
   addUserRoiPolygon(polygon);
 }
 
-void RoiInteractionState::addUserRoiPolygon(const QPolygon &polygon)
-{
-  if (polygon.size() < 3)
-  {
+void RoiInteractionState::addUserRoiPolygon(const QPolygon &polygon) {
+  if (polygon.size() < 3) {
     return;
   }
 
   const QRect bounds = polygon.boundingRect().normalized();
-  if (bounds.isEmpty())
-  {
+  if (bounds.isEmpty()) {
     return;
   }
 
@@ -41,10 +35,8 @@ void RoiInteractionState::addUserRoiPolygon(const QPolygon &polygon)
            << "bounds=" << bounds << "count=" << m_userRoiPolygons.size();
 }
 
-bool RoiInteractionState::removeRoiAt(int index)
-{
-  if (index < 0 || index >= m_userRoiPolygons.size())
-  {
+bool RoiInteractionState::removeRoiAt(int index) {
+  if (index < 0 || index >= m_userRoiPolygons.size()) {
     return false;
   }
   m_userRoiPolygons.removeAt(index);
@@ -52,29 +44,22 @@ bool RoiInteractionState::removeRoiAt(int index)
   return true;
 }
 
-int RoiInteractionState::roiCount() const
-{
-  return m_userRoiPolygons.size();
-}
+int RoiInteractionState::roiCount() const { return m_userRoiPolygons.size(); }
 
-void RoiInteractionState::startDrawing()
-{
+void RoiInteractionState::startDrawing() {
   m_drawingMode = true;
   m_drawingPolygonPoints.clear();
   m_hasHoverPoint = false;
 }
 
-RoiFinishResult RoiInteractionState::finishDrawing()
-{
+RoiFinishResult RoiInteractionState::finishDrawing() {
   RoiFinishResult result;
 
-  if (!m_drawingMode)
-  {
+  if (!m_drawingMode) {
     return result;
   }
 
-  if (m_drawingPolygonPoints.size() >= 3)
-  {
+  if (m_drawingPolygonPoints.size() >= 3) {
     QPolygon polygon(m_drawingPolygonPoints);
     addUserRoiPolygon(polygon);
     result.completed = true;
@@ -88,60 +73,54 @@ RoiFinishResult RoiInteractionState::finishDrawing()
   return result;
 }
 
-bool RoiInteractionState::handleMousePress(QMouseEvent *event, const QSize &widgetSize,
-                                           const QSize &frameSize)
-{
-  if (!m_drawingMode || frameSize.isEmpty() || event->button() != Qt::LeftButton)
-  {
+bool RoiInteractionState::handleMousePress(QMouseEvent *event,
+                                           const QSize &widgetSize,
+                                           const QSize &frameSize) {
+  if (!m_drawingMode || frameSize.isEmpty() ||
+      event->button() != Qt::LeftButton) {
     return false;
   }
 
   const QRect pixRect = displayedPixmapRect(widgetSize, frameSize);
   const QPoint widgetPoint = event->position().toPoint();
-  if (!pixRect.contains(widgetPoint))
-  {
+  if (!pixRect.contains(widgetPoint)) {
     return false;
   }
 
-  const QPoint framePoint = mapWidgetToFrame(widgetPoint, widgetSize, frameSize);
+  const QPoint framePoint =
+      mapWidgetToFrame(widgetPoint, widgetSize, frameSize);
   m_drawingPolygonPoints.append(framePoint);
   m_hoverFramePoint = framePoint;
   m_hasHoverPoint = true;
   return true;
 }
 
-bool RoiInteractionState::handleMouseMove(QMouseEvent *event, const QSize &widgetSize,
-                                          const QSize &frameSize)
-{
-  if (!m_drawingMode || frameSize.isEmpty())
-  {
+bool RoiInteractionState::handleMouseMove(QMouseEvent *event,
+                                          const QSize &widgetSize,
+                                          const QSize &frameSize) {
+  if (!m_drawingMode || frameSize.isEmpty()) {
     return false;
   }
 
   const QRect pixRect = displayedPixmapRect(widgetSize, frameSize);
   const QPoint widgetPoint = event->position().toPoint();
-  if (pixRect.contains(widgetPoint))
-  {
+  if (pixRect.contains(widgetPoint)) {
     m_hoverFramePoint = mapWidgetToFrame(widgetPoint, widgetSize, frameSize);
     m_hasHoverPoint = true;
-  }
-  else
-  {
+  } else {
     m_hasHoverPoint = false;
   }
   return true;
 }
 
-void RoiInteractionState::paintDrawingOverlay(QWidget *widget, const QSize &frameSize) const
-{
-  if (!m_drawingMode || frameSize.isEmpty())
-  {
+void RoiInteractionState::paintDrawingOverlay(QWidget *widget,
+                                              const QSize &frameSize) const {
+  if (!m_drawingMode || frameSize.isEmpty()) {
     return;
   }
 
   const QRect pixRect = displayedPixmapRect(widget->size(), frameSize);
-  if (pixRect.isEmpty())
-  {
+  if (pixRect.isEmpty()) {
     return;
   }
 
@@ -159,49 +138,42 @@ void RoiInteractionState::paintDrawingOverlay(QWidget *widget, const QSize &fram
 
   QVector<QPoint> widgetPoints;
   widgetPoints.reserve(m_drawingPolygonPoints.size());
-  for (const QPoint &pt : m_drawingPolygonPoints)
-  {
+  for (const QPoint &pt : m_drawingPolygonPoints) {
     widgetPoints.append(toWidget(pt));
   }
 
-  for (int i = 1; i < widgetPoints.size(); ++i)
-  {
+  for (int i = 1; i < widgetPoints.size(); ++i) {
     painter.drawLine(widgetPoints[i - 1], widgetPoints[i]);
   }
 
-  if (!widgetPoints.isEmpty() && m_hasHoverPoint)
-  {
+  if (!widgetPoints.isEmpty() && m_hasHoverPoint) {
     painter.drawLine(widgetPoints.last(), toWidget(m_hoverFramePoint));
   }
 
-  if (widgetPoints.size() >= 3)
-  {
-    const QPoint lastPoint = (m_hasHoverPoint ? toWidget(m_hoverFramePoint) : widgetPoints.last());
+  if (widgetPoints.size() >= 3) {
+    const QPoint lastPoint =
+        (m_hasHoverPoint ? toWidget(m_hoverFramePoint) : widgetPoints.last());
     painter.drawLine(lastPoint, widgetPoints.first());
   }
 
   painter.setPen(QPen(Qt::yellow, 2));
   painter.setBrush(Qt::yellow);
-  for (const QPoint &pt : widgetPoints)
-  {
+  for (const QPoint &pt : widgetPoints) {
     painter.drawEllipse(pt, 3, 3);
   }
 }
 
-const QList<QPolygon> &RoiInteractionState::roiPolygons() const
-{
+const QList<QPolygon> &RoiInteractionState::roiPolygons() const {
   return m_userRoiPolygons;
 }
 
-bool RoiInteractionState::roiEnabled() const
-{
-  return m_roiEnabled;
-}
+bool RoiInteractionState::roiEnabled() const { return m_roiEnabled; }
 
-QRect RoiInteractionState::displayedPixmapRect(const QSize &widgetSize, const QSize &frameSize) const
-{
-  if (frameSize.isEmpty())
-  {
+bool RoiInteractionState::isDrawing() const { return m_drawingMode; }
+
+QRect RoiInteractionState::displayedPixmapRect(const QSize &widgetSize,
+                                               const QSize &frameSize) const {
+  if (frameSize.isEmpty()) {
     return QRect();
   }
   const QSize scaledSize = frameSize.scaled(widgetSize, Qt::KeepAspectRatio);
@@ -210,25 +182,27 @@ QRect RoiInteractionState::displayedPixmapRect(const QSize &widgetSize, const QS
   return QRect(x, y, scaledSize.width(), scaledSize.height());
 }
 
-QPoint RoiInteractionState::mapWidgetToFrame(const QPoint &widgetPoint, const QSize &widgetSize,
-                                             const QSize &frameSize) const
-{
-  if (frameSize.isEmpty())
-  {
+QPoint RoiInteractionState::mapWidgetToFrame(const QPoint &widgetPoint,
+                                             const QSize &widgetSize,
+                                             const QSize &frameSize) const {
+  if (frameSize.isEmpty()) {
     return QPoint();
   }
   const QRect pixRect = displayedPixmapRect(widgetSize, frameSize);
-  if (pixRect.isEmpty())
-  {
+  if (pixRect.isEmpty()) {
     return QPoint();
   }
 
   const int clampedX = qBound(pixRect.left(), widgetPoint.x(), pixRect.right());
   const int clampedY = qBound(pixRect.top(), widgetPoint.y(), pixRect.bottom());
-  const double nx = static_cast<double>(clampedX - pixRect.left()) / pixRect.width();
-  const double ny = static_cast<double>(clampedY - pixRect.top()) / pixRect.height();
+  const double nx =
+      static_cast<double>(clampedX - pixRect.left()) / pixRect.width();
+  const double ny =
+      static_cast<double>(clampedY - pixRect.top()) / pixRect.height();
 
-  const int frameX = qBound(0, static_cast<int>(nx * frameSize.width()), frameSize.width() - 1);
-  const int frameY = qBound(0, static_cast<int>(ny * frameSize.height()), frameSize.height() - 1);
+  const int frameX = qBound(0, static_cast<int>(nx * frameSize.width()),
+                            frameSize.width() - 1);
+  const int frameY = qBound(0, static_cast<int>(ny * frameSize.height()),
+                            frameSize.height() - 1);
   return QPoint(frameX, frameY);
 }

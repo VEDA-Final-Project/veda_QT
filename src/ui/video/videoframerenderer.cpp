@@ -45,15 +45,12 @@ QList<QPolygon> scaleRoiPolygons(const QList<QPolygon> &roiPolygons,
     QPolygon scaledPolygon;
     scaledPolygon.reserve(polygon.size());
     for (const QPoint &pt : polygon) {
-      const int x =
-          qBound(0, static_cast<int>(pt.x() * sx), maxX);
-      const int y =
-          qBound(0, static_cast<int>(pt.y() * sy), maxY);
+      const int x = qBound(0, static_cast<int>(pt.x() * sx), maxX);
+      const int y = qBound(0, static_cast<int>(pt.y() * sy), maxY);
       scaledPolygon << QPoint(x, y);
     }
 
-    if (scaledPolygon.size() >= 3 &&
-        !scaledPolygon.boundingRect().isEmpty()) {
+    if (scaledPolygon.size() >= 3 && !scaledPolygon.boundingRect().isEmpty()) {
       scaledPolygons.append(scaledPolygon);
     }
   }
@@ -75,7 +72,8 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
-                                   bool roiEnabled,
+                                   bool roiEnabled, bool showFps,
+                                   int currentFps,
                                    QList<OcrRequest> *ocrRequests) const {
   if (targetSize.isEmpty()) {
     return frame;
@@ -222,12 +220,8 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   }
 
   for (const RenderCandidate &candidate : candidates) {
-    // 필터링 규칙 적용 (ROI가 비활성화거나, 대상이 ROI 안에 있거나 타겟이
-    // 없거나)
-    if (shouldFilterByRoi && !candidate.intersectsRoi) {
-      // Skip drawing and OCR if it's strictly outside active ROI targets
-      continue;
-    }
+    // 사용자의 요청에 따라 ROI 점유 상태와 무관하게 모든 객체(바운딩 박스)를
+    // 항상 그립니다.
 
     const ObjectInfo &obj = candidate.obj;
     const QRect &uRect = candidate.scaledRect;
@@ -259,6 +253,23 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   if (objects.isEmpty()) {
     painter.setPen(Qt::yellow);
     painter.drawText(10, 30, "Waiting for AI Data...");
+  }
+
+  if (showFps) {
+    QString fpsText = QString("FPS: %1").arg(currentFps);
+    QFont fpsFont = painter.font();
+    fpsFont.setPointSize(16);
+    fpsFont.setBold(true);
+    painter.setFont(fpsFont);
+
+    const int margin = 10;
+    QRect textRect = painter.fontMetrics().boundingRect(fpsText);
+    textRect.moveTo(scaledFrame.width() - textRect.width() - margin, margin);
+    textRect.adjust(-4, -2, 4, 2);
+
+    painter.fillRect(textRect, QColor(0, 0, 0, 150));
+    painter.setPen(QColor(0, 255, 0)); // Green text
+    painter.drawText(textRect, Qt::AlignCenter, fpsText);
   }
 
   painter.end();

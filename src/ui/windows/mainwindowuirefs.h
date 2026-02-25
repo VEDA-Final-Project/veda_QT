@@ -66,6 +66,8 @@ struct MainWindowUiRefs {
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;
   QCheckBox *chkShowPlateLogs = nullptr;
+  QCheckBox *chkShowFps = nullptr;
+  QLabel *lblAvgFps = nullptr;
   QTableWidget *reidTable = nullptr;
   QSpinBox *staleTimeoutInput = nullptr;
   QSpinBox *pruneTimeoutInput = nullptr;

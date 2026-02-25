@@ -114,6 +114,8 @@ private:
 
   // Log Filter
   QCheckBox *m_chkShowPlateLogs = nullptr;
+  QCheckBox *m_chkShowFps = nullptr;
+  QLabel *m_lblAvgFps = nullptr;
 
   QTableWidget *m_reidTable = nullptr;
   QSpinBox *m_staleTimeoutInput = nullptr;
