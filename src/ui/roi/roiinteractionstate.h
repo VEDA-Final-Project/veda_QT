@@ -10,15 +10,13 @@
 #include <QVector>
 #include <QWidget>
 
-struct RoiFinishResult
-{
+struct RoiFinishResult {
   bool completed = false;
   QRect boundingRect;
   QPolygon polygon;
 };
 
-class RoiInteractionState
-{
+class RoiInteractionState {
 public:
   void setUserRoi(const QRect &roi);
   void addUserRoi(const QRect &roi);
@@ -28,15 +26,19 @@ public:
   void startDrawing();
   RoiFinishResult finishDrawing();
 
-  bool handleMousePress(QMouseEvent *event, const QSize &widgetSize, const QSize &frameSize);
-  bool handleMouseMove(QMouseEvent *event, const QSize &widgetSize, const QSize &frameSize);
+  bool handleMousePress(QMouseEvent *event, const QSize &widgetSize,
+                        const QSize &frameSize);
+  bool handleMouseMove(QMouseEvent *event, const QSize &widgetSize,
+                       const QSize &frameSize);
   void paintDrawingOverlay(QWidget *widget, const QSize &frameSize) const;
 
   const QList<QPolygon> &roiPolygons() const;
   bool roiEnabled() const;
+  bool isDrawing() const;
 
 private:
-  QRect displayedPixmapRect(const QSize &widgetSize, const QSize &frameSize) const;
+  QRect displayedPixmapRect(const QSize &widgetSize,
+                            const QSize &frameSize) const;
   QPoint mapWidgetToFrame(const QPoint &widgetPoint, const QSize &widgetSize,
                           const QSize &frameSize) const;
 

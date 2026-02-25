@@ -130,7 +130,9 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbContext.secondaryZoneRecordsProvider = [this]() {
     return m_roiServiceSecondary.records();
   };
-  dbContext.logMessage = [this](const QString &message) { onLogMessage(message); };
+  dbContext.logMessage = [this](const QString &message) {
+    onLogMessage(message);
+  };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
 
   initRoiDbForChannels();
@@ -212,8 +214,14 @@ void MainWindowController::connectSignals() {
     connect(m_ui.videoWidgetPrimary, &VideoWidget::roiPolygonChanged, this,
             &MainWindowController::onRoiPolygonChanged);
     connect(m_ui.videoWidgetPrimary, &VideoWidget::ocrRequested,
-            m_ocrCoordinatorPrimary,
-            &PlateOcrCoordinator::requestOcr);
+            m_ocrCoordinatorPrimary, &PlateOcrCoordinator::requestOcr);
+    connect(m_ui.videoWidgetPrimary, &VideoWidget::avgFpsUpdated, this,
+            [this](double fps) {
+              if (m_ui.lblAvgFps) {
+                m_ui.lblAvgFps->setText(
+                    QString("최근 1분 평균 FPS: %1").arg(fps, 0, 'f', 1));
+              }
+            });
   }
   if (m_ui.videoWidgetSecondary) {
     connect(m_ui.videoWidgetSecondary, &VideoWidget::roiChanged, this,
@@ -221,12 +229,19 @@ void MainWindowController::connectSignals() {
     connect(m_ui.videoWidgetSecondary, &VideoWidget::roiPolygonChanged, this,
             &MainWindowController::onRoiPolygonChanged);
     connect(m_ui.videoWidgetSecondary, &VideoWidget::ocrRequested,
-            m_ocrCoordinatorSecondary,
-            &PlateOcrCoordinator::requestOcr);
+            m_ocrCoordinatorSecondary, &PlateOcrCoordinator::requestOcr);
   }
   if (m_ui.reidTable) {
     connect(m_ui.reidTable, &QTableWidget::cellClicked, this,
             &MainWindowController::onReidTableCellClicked);
+  }
+  if (m_ui.chkShowFps) {
+    connect(m_ui.chkShowFps, &QCheckBox::toggled, this, [this](bool checked) {
+      if (m_ui.videoWidgetPrimary)
+        m_ui.videoWidgetPrimary->setShowFps(checked);
+      if (m_ui.videoWidgetSecondary)
+        m_ui.videoWidgetSecondary->setShowFps(checked);
+    });
   }
 
   // 백엔드 이벤트(Camera/OCR) -> Controller 슬롯 연결
@@ -272,14 +287,12 @@ void MainWindowController::connectSignals() {
   }
 
   // ParkingService -> Controller (로그 이벤트)
-  connect(m_parkingServicePrimary, &ParkingService::logMessage, this,
-          [this](const QString &msg) {
-            onLogMessage(QString("[A] %1").arg(msg));
-          });
-  connect(m_parkingServiceSecondary, &ParkingService::logMessage, this,
-          [this](const QString &msg) {
-            onLogMessage(QString("[B] %1").arg(msg));
-          });
+  connect(
+      m_parkingServicePrimary, &ParkingService::logMessage, this,
+      [this](const QString &msg) { onLogMessage(QString("[A] %1").arg(msg)); });
+  connect(
+      m_parkingServiceSecondary, &ParkingService::logMessage, this,
+      [this](const QString &msg) { onLogMessage(QString("[B] %1").arg(msg)); });
 
   if (m_dbPanelController) {
     m_dbPanelController->connectSignals();
@@ -329,10 +342,10 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
   widget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
 
   if (m_ui.logView && writeLog) {
-    m_ui.logView->append(QString("[ROI][DB] %1 채널 '%2' ROI %3개 로드 완료")
-                             .arg(target == RoiTarget::Primary ? "A" : "B",
-                                  cameraKey)
-                             .arg(initResult.loadedCount));
+    m_ui.logView->append(
+        QString("[ROI][DB] %1 채널 '%2' ROI %3개 로드 완료")
+            .arg(target == RoiTarget::Primary ? "A" : "B", cameraKey)
+            .arg(initResult.loadedCount));
   }
 }
 
@@ -372,7 +385,8 @@ void MainWindowController::refreshRoiSelector() {
   refreshRoiSelectorForTarget();
 }
 
-VideoWidget *MainWindowController::videoWidgetForTarget(RoiTarget target) const {
+VideoWidget *
+MainWindowController::videoWidgetForTarget(RoiTarget target) const {
   return (target == RoiTarget::Primary) ? m_ui.videoWidgetPrimary
                                         : m_ui.videoWidgetSecondary;
 }
@@ -388,7 +402,8 @@ MainWindowController::roiServiceForTarget(RoiTarget target) const {
                                         : &m_roiServiceSecondary;
 }
 
-ParkingService *MainWindowController::parkingServiceForTarget(RoiTarget target) {
+ParkingService *
+MainWindowController::parkingServiceForTarget(RoiTarget target) {
   return (target == RoiTarget::Primary) ? m_parkingServicePrimary
                                         : m_parkingServiceSecondary;
 }
@@ -399,10 +414,9 @@ QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
 }
 
 void MainWindowController::playCctv() {
-  const bool primaryReady =
-      refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
-                                        m_selectedCameraKeyPrimary,
-                                        &m_selectedCameraKeyPrimary, true);
+  const bool primaryReady = refreshCameraConnectionFromConfig(
+      m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+      &m_selectedCameraKeyPrimary, true);
   if (!primaryReady) {
     onLogMessage("[Camera] 연결 설정이 올바르지 않습니다.");
     return;
@@ -417,13 +431,13 @@ void MainWindowController::playCctv() {
     return;
   }
 
-  const bool secondaryReady =
-      refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
-                                        m_selectedCameraKeySecondary,
-                                        &m_selectedCameraKeySecondary, false);
+  const bool secondaryReady = refreshCameraConnectionFromConfig(
+      m_cameraManagerSecondary, m_selectedCameraKeySecondary,
+      &m_selectedCameraKeySecondary, false);
   if (!secondaryReady) {
-    onLogMessage(QString("[Camera] '%1' 연결 설정이 올바르지 않아 B 채널은 중지됩니다.")
-                     .arg(m_selectedCameraKeySecondary));
+    onLogMessage(
+        QString("[Camera] '%1' 연결 설정이 올바르지 않아 B 채널은 중지됩니다.")
+            .arg(m_selectedCameraKeySecondary));
     m_cameraSessionSecondary.stop();
     return;
   }
@@ -479,7 +493,8 @@ void MainWindowController::refreshCameraSelectors() {
       }
     }
   }
-  bindSelector(m_ui.cameraSecondarySelectorCombo, &m_selectedCameraKeySecondary);
+  bindSelector(m_ui.cameraSecondarySelectorCombo,
+               &m_selectedCameraKeySecondary);
 }
 
 void MainWindowController::applyViewModeUiState() {
@@ -498,9 +513,8 @@ void MainWindowController::applyViewModeUiState() {
   if (m_ui.roiTargetCombo) {
     {
       QSignalBlocker blocker(m_ui.roiTargetCombo);
-      m_ui.roiTargetCombo->setCurrentIndex(m_roiTarget == RoiTarget::Secondary
-                                               ? 1
-                                               : 0);
+      m_ui.roiTargetCombo->setCurrentIndex(
+          m_roiTarget == RoiTarget::Secondary ? 1 : 0);
     }
     m_ui.roiTargetCombo->setEnabled(dualMode);
     if (!dualMode && m_ui.roiTargetCombo->currentIndex() != 0) {
@@ -527,9 +541,9 @@ void MainWindowController::onRoiTargetChanged(int index) {
 
   m_roiTarget = newTarget;
   refreshRoiSelectorForTarget();
-  onLogMessage(QString("[ROI] 편집 대상 변경: %1")
-                   .arg(m_roiTarget == RoiTarget::Primary ? "카메라 A"
-                                                          : "카메라 B"));
+  onLogMessage(
+      QString("[ROI] 편집 대상 변경: %1")
+          .arg(m_roiTarget == RoiTarget::Primary ? "카메라 A" : "카메라 B"));
 }
 
 bool MainWindowController::refreshCameraConnectionFromConfig(
@@ -544,9 +558,9 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
   }
 
   const auto &cfg = Config::instance();
-  const QString selectedKey =
-      cameraKey.trimmed().isEmpty() ? QStringLiteral("camera")
-                                    : cameraKey.trimmed();
+  const QString selectedKey = cameraKey.trimmed().isEmpty()
+                                  ? QStringLiteral("camera")
+                                  : cameraKey.trimmed();
   CameraConnectionInfo connectionInfo;
   connectionInfo.cameraId = selectedKey;
   connectionInfo.ip = cfg.cameraIp(selectedKey).trimmed();
@@ -621,8 +635,7 @@ void MainWindowController::onViewModeChanged(int index) {
   m_viewMode = newMode;
   applyViewModeUiState();
   onLogMessage(QString("[Camera] 뷰 모드 변경: %1")
-                   .arg(m_viewMode == ViewMode::Dual ? "2채널 동시"
-                                                     : "1채널"));
+                   .arg(m_viewMode == ViewMode::Dual ? "2채널 동시" : "1채널"));
 
   const bool wasRunningPrimary =
       m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning();
@@ -649,10 +662,10 @@ void MainWindowController::onCameraPrimarySelectionChanged(int index) {
   }
   if (m_viewMode == ViewMode::Dual &&
       selectedKey == m_selectedCameraKeySecondary) {
-    onLogMessage(
-        "[Camera] A/B 채널은 서로 다른 카메라를 선택해야 합니다.");
+    onLogMessage("[Camera] A/B 채널은 서로 다른 카메라를 선택해야 합니다.");
     QSignalBlocker blocker(m_ui.cameraPrimarySelectorCombo);
-    const int previousIndex = m_ui.cameraPrimarySelectorCombo->findData(previousKey);
+    const int previousIndex =
+        m_ui.cameraPrimarySelectorCombo->findData(previousKey);
     if (previousIndex >= 0) {
       m_ui.cameraPrimarySelectorCombo->setCurrentIndex(previousIndex);
     }
@@ -691,8 +704,7 @@ void MainWindowController::onCameraSecondarySelectionChanged(int index) {
   }
   if (m_viewMode == ViewMode::Dual &&
       selectedKey == m_selectedCameraKeyPrimary) {
-    onLogMessage(
-        "[Camera] A/B 채널은 서로 다른 카메라를 선택해야 합니다.");
+    onLogMessage("[Camera] A/B 채널은 서로 다른 카메라를 선택해야 합니다.");
     QSignalBlocker blocker(m_ui.cameraSecondarySelectorCombo);
     const int previousIndex =
         m_ui.cameraSecondarySelectorCombo->findData(previousKey);
@@ -896,9 +908,9 @@ void MainWindowController::onRoiChanged(const QRect &roi) {
     return;
   }
   const VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
-  const QString channel =
-      (sourceWidget == m_ui.videoWidgetSecondary) ? QStringLiteral("B")
-                                                  : QStringLiteral("A");
+  const QString channel = (sourceWidget == m_ui.videoWidgetSecondary)
+                              ? QStringLiteral("B")
+                              : QStringLiteral("A");
   m_ui.logView->append(QString("[ROI][%1] bbox x:%2 y:%3 w:%4 h:%5")
                            .arg(channel)
                            .arg(roi.x())

@@ -9,9 +9,11 @@
 #include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPolygonF>
+#include <QQueue>
 #include <QSize>
 #include <QStringList>
 #include <QWidget>
+
 
 /**
  * @brief 비디오 렌더링 위젯
@@ -42,11 +44,13 @@ public:
 public slots:
   void updateFrame(const QImage &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
+  void setShowFps(bool show);
 
 signals:
   void ocrRequested(int objectId, const QImage &crop);
   void roiChanged(const QRect &roi);
   void roiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
+  void avgFpsUpdated(double avgFps);
 
 private:
   void paintEvent(QPaintEvent *event) override;
@@ -64,6 +68,11 @@ private:
   QStringList m_pendingRoiLabels;
   QStringList m_roiLabels;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
+
+  bool m_showFps = false;
+  double m_currentFps = 0.0;
+  QQueue<qint64> m_fpsHistory1s;
+  QQueue<qint64> m_fpsHistory;
 };
 
 #endif // VIDEOWIDGET_H
