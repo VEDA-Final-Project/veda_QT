@@ -31,13 +31,14 @@ public:
     QString removedName;
   };
 
-  InitResult init();
+  InitResult init(const QString &cameraKey = QStringLiteral("camera"));
   bool isValidName(const QString &name, QString *errorMessage) const;
   bool isDuplicateName(const QString &name) const;
   CreateResult createFromPolygon(const QPolygon &polygon,
                                  const QSize &frameSize, const QString &name,
                                  const QString &purpose);
   DeleteResult removeAt(int index);
+  QString cameraKey() const;
 
   const QVector<QJsonObject> &records() const;
   int count() const;
@@ -48,6 +49,7 @@ private:
   void recomputeSequenceFromRecords();
 
   RoiRepository m_repository;
+  QString m_cameraKey = QStringLiteral("camera");
   int m_roiSequence = 0;
   QVector<QJsonObject> m_records;
 };

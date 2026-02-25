@@ -1,18 +1,20 @@
 #include "config/config.h"
+#include "ui/windows/mainwindowcontroller.h"
 #include "ui/windows/mainwindow.h"
 
 #include <QApplication>
 
-int main(int argc, char *argv[])
-{
-    QApplication a(argc, argv);
+int main(int argc, char *argv[]) {
+  QApplication a(argc, argv);
 
-    if (!Config::instance().load())
-    {
-        qWarning() << "Warning: Could not load config file. Using default values.";
-    }
+  if (!Config::instance().load()) {
+    qWarning() << "Warning: Could not load config file. Using default values.";
+  }
 
-    MainWindow w;
-    w.show();
-    return a.exec();
+  MainWindow w;
+  MainWindowController *controller =
+      new MainWindowController(w.controllerUiRefs(), &w);
+  w.attachController(controller);
+  w.show();
+  return a.exec();
 }

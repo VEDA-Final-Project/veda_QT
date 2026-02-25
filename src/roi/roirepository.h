@@ -13,6 +13,8 @@ public:
   // 통합 DB 사용 전제 (경로 인자 제거/무시)
   bool init(QString *errorMessage = nullptr);
   QVector<QJsonObject> loadAll(QString *errorMessage = nullptr) const;
+  QVector<QJsonObject> loadByCameraKey(const QString &cameraKey,
+                                       QString *errorMessage = nullptr) const;
   bool upsert(const QJsonObject &roiData, QString *errorMessage = nullptr);
   bool removeById(const QString &rodId, QString *errorMessage = nullptr);
 

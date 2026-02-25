@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QMutex>
 #include <QSharedPointer>
+#include <QString>
 #include <QThread>
 #include <opencv2/opencv.hpp>
 
@@ -20,6 +21,7 @@ public:
 
 signals:
   void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
+  void logMessage(const QString &msg);
 
 protected:
   void run() override;

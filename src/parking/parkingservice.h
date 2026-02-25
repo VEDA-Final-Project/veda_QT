@@ -4,6 +4,7 @@
 #include "parking/parkingrepository.h"
 #include "parking/vehicletracker.h"
 #include <QObject>
+#include <QString>
 
 class TelegramBotAPI;
 
@@ -31,6 +32,8 @@ public:
    * @brief 외부 텔레그램 API 연결
    */
   void setTelegramApi(TelegramBotAPI *api);
+  void setCameraKey(const QString &cameraKey);
+  QString cameraKey() const;
 
   /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
@@ -62,6 +65,7 @@ public:
    * @brief 특정 레코드의 번호판 수정
    */
   bool updatePlate(int recordId, const QString &newPlate);
+  bool deleteLog(int recordId, QString *errorMessage = nullptr);
 
   /**
    * @brief 수동 번호판 및 객체 정보 강제 지정 (실험용 상세 제어)
@@ -95,17 +99,13 @@ signals:
    */
   void logMessage(const QString &msg);
 
-  /**
-   * @brief OCR 요청 (MainWindowController가 OcrCoordinator로 전달)
-   */
-  void ocrRequested(int objectId);
-
 private:
   void handleNewEntry(const VehicleState &vs);
   void handleDeparture(const VehicleState &vs);
 
   VehicleTracker m_tracker;
   ParkingRepository m_repository;
+  QString m_cameraKey = QStringLiteral("camera");
   TelegramBotAPI *m_telegram = nullptr;
 };
 
