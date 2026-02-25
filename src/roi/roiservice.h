@@ -42,9 +42,10 @@ public:
   const QVector<QJsonObject> &records() const;
   int count() const;
 
-private:
   static QList<QPolygonF>
   toNormalizedPolygons(const QVector<QJsonObject> &records);
+
+private:
   void recomputeSequenceFromRecords();
 
   RoiRepository m_repository;

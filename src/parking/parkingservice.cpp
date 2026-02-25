@@ -11,27 +11,38 @@ bool ParkingService::init(QString *errorMessage) {
 
 void ParkingService::setTelegramApi(TelegramBotAPI *api) { m_telegram = api; }
 
-void ParkingService::updateRoiPolygons(const QList<QPolygon> &polygons) {
+void ParkingService::setRoiService(const RoiService *roiService) {
+  m_roiService = roiService;
+}
+
+void ParkingService::updateRoiPolygons(const QList<QPolygonF> &polygons) {
   m_tracker.setRoiPolygons(polygons);
 }
 
 void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
-                                     int frameWidth, int frameHeight,
-                                     qint64 pruneTimeoutMs) {
+                                     int cropOffsetX, int effectiveWidth,
+                                     int sourceHeight, qint64 pruneTimeoutMs) {
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
   // 1. 차량 추적 업데이트 → 새로 ROI에 진입한 차량 감지
-  QList<VehicleState> newEntries =
-      m_tracker.update(objects, frameWidth, frameHeight, nowMs);
+  QList<VehicleState> newEntries = m_tracker.update(
+      objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
 
   // 2. 새로 진입한 차량에 대해 OCR 요청
   for (const VehicleState &vs : newEntries) {
     if (!vs.ocrRequested) {
       emit ocrRequested(vs.objectId);
+      QString roiName = QString::number(vs.occupiedRoiIndex + 1);
+      if (m_roiService && vs.occupiedRoiIndex >= 0 &&
+          vs.occupiedRoiIndex < m_roiService->count()) {
+        roiName =
+            m_roiService->records()[vs.occupiedRoiIndex]["rod_name"].toString(
+                roiName);
+      }
       emit logMessage(
-          QString("[Parking] Vehicle ID:%1 entered ROI #%2 — OCR requested")
+          QString("[Parking] Vehicle ID:%1 entered ROI '%2' — OCR requested")
               .arg(vs.objectId)
-              .arg(vs.occupiedRoiIndex + 1));
+              .arg(roiName));
     }
   }
 
@@ -120,10 +131,17 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
   int recordId =
       m_repository.insertEntry(vs.plateNumber, vs.occupiedRoiIndex, now);
   if (recordId >= 0) {
+    QString roiName = QString::number(vs.occupiedRoiIndex + 1);
+    if (m_roiService && vs.occupiedRoiIndex >= 0 &&
+        vs.occupiedRoiIndex < m_roiService->count()) {
+      roiName =
+          m_roiService->records()[vs.occupiedRoiIndex]["rod_name"].toString(
+              roiName);
+    }
     emit logMessage(
-        QString("[Parking] Entry recorded: %1 at ROI #%2 (DB ID: %3)")
+        QString("[Parking] Entry recorded: %1 at ROI '%2' (DB ID: %3)")
             .arg(vs.plateNumber)
-            .arg(vs.occupiedRoiIndex + 1)
+            .arg(roiName)
             .arg(recordId));
     emit vehicleEntered(vs.occupiedRoiIndex, vs.plateNumber);
 
@@ -149,9 +167,16 @@ void ParkingService::handleDeparture(const VehicleState &vs) {
     int recordId = active["id"].toInt();
     m_repository.updateExit(recordId, now);
 
-    emit logMessage(QString("[Parking] Exit recorded: %1 from ROI #%2")
+    QString roiName = QString::number(vs.occupiedRoiIndex + 1);
+    if (m_roiService && vs.occupiedRoiIndex >= 0 &&
+        vs.occupiedRoiIndex < m_roiService->count()) {
+      roiName =
+          m_roiService->records()[vs.occupiedRoiIndex]["rod_name"].toString(
+              roiName);
+    }
+    emit logMessage(QString("[Parking] Exit recorded: %1 from ROI '%2'")
                         .arg(vs.plateNumber)
-                        .arg(vs.occupiedRoiIndex + 1));
+                        .arg(roiName));
     emit vehicleDeparted(vs.occupiedRoiIndex, vs.plateNumber);
 
     // TODO: 텔레그램 출차 알림 + 요금 정보 전송

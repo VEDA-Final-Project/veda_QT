@@ -1,16 +1,20 @@
 #include "parking/vehicletracker.h"
 #include <QDateTime>
-#include <QRegion>
+#include <QPainterPath>
+#include <QPolygonF>
 
-void VehicleTracker::setRoiPolygons(const QList<QPolygon> &polygons) {
+void VehicleTracker::setRoiPolygons(const QList<QPolygonF> &polygons) {
   m_roiPolygons = polygons;
 }
 
 QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
-                                           int frameWidth, int frameHeight,
-                                           qint64 nowMs) {
-  Q_UNUSED(frameWidth);
-  Q_UNUSED(frameHeight);
+                                           int cropOffsetX, int effectiveWidth,
+                                           int sourceHeight, qint64 nowMs) {
+  // 방어 코드
+  if (effectiveWidth <= 0)
+    effectiveWidth = 1;
+  if (sourceHeight <= 0)
+    sourceHeight = 1;
 
   QList<VehicleState> newEntries;
 
@@ -57,13 +61,27 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     int prevRoi = vs.occupiedRoiIndex;
     vs.occupiedRoiIndex = -1;
 
+    double maxRatio = 0.0;
+    int bestRoiIndex = -1;
+
     for (int i = 0; i < m_roiPolygons.size(); ++i) {
-      const QRect vehicleRect = obj.rect.toRect();
-      double ratio = computeOccupancyRatio(vehicleRect, m_roiPolygons[i]);
-      if (ratio >= 0.5) {
-        vs.occupiedRoiIndex = i;
-        break;
+      // AI 메타데이터 좌표(obj.rect)를 [0.0, 1.0] 정규화된 좌표로 변환합니다.
+      QRectF normRect((obj.rect.x() - cropOffsetX) /
+                          static_cast<double>(effectiveWidth),
+                      obj.rect.y() / static_cast<double>(sourceHeight),
+                      obj.rect.width() / static_cast<double>(effectiveWidth),
+                      obj.rect.height() / static_cast<double>(sourceHeight));
+
+      double ratio = computeOccupancyRatio(normRect, m_roiPolygons[i]);
+      if (ratio > maxRatio) {
+        maxRatio = ratio;
+        bestRoiIndex = i;
       }
+    }
+
+    // 0.4 이상 겹치면서 가장 많이 겹치는 ROI를 최종 선택 (경계선 이슈 방지)
+    if (maxRatio >= 0.4 && bestRoiIndex >= 0) {
+      vs.occupiedRoiIndex = bestRoiIndex;
     }
 
     // 새로 ROI에 진입한 경우 (이전에 ROI 밖 -> 지금 ROI 안)
@@ -124,26 +142,51 @@ QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs) {
   return departed;
 }
 
-double VehicleTracker::computeOccupancyRatio(const QRect &vehicleRect,
-                                             const QPolygon &roiPolygon) const {
-  const QRegion roiRegion(roiPolygon, Qt::WindingFill);
-  const double roiArea = [&]() {
-    double a = 0.0;
-    for (const QRect &r : roiRegion) {
-      a += static_cast<double>(r.width()) * r.height();
-    }
-    return a;
-  }();
+double
+VehicleTracker::computeOccupancyRatio(const QRectF &vehicleRect,
+                                      const QPolygonF &roiPolygon) const {
+  // 차량 바운딩 박스의 하단 삼각형 생성 (좌하단, 우하단, 중심점)
+  QPolygonF vehicleTriangle;
+  vehicleTriangle << QPointF(vehicleRect.left(), vehicleRect.bottom())
+                  << QPointF(vehicleRect.right(), vehicleRect.bottom())
+                  << QPointF(vehicleRect.center().x(),
+                             vehicleRect.center().y());
 
-  if (roiArea <= 0) {
+  // QPainterPath를 사용하여 정확한 부동소수점 다각형 교집합 계산
+  QPainterPath roiPath;
+  roiPath.addPolygon(roiPolygon);
+
+  QPainterPath vehiclePath;
+  vehiclePath.addPolygon(vehicleTriangle);
+
+  // 차체 하단 삼각형의 총 면적 (단순 삼각형 공식 0.5 * base * height)
+  // base = width, height = half height
+  const double triangleArea =
+      0.5 * vehicleRect.width() * (vehicleRect.height() / 2.0);
+
+  if (triangleArea <= 0) {
     return 0.0;
   }
 
-  const QRegion intersection = roiRegion.intersected(QRegion(vehicleRect));
+  // 교집합 면적 계산 (QPainterPath::intersected 사용)
+  QPainterPath intersection = roiPath.intersected(vehiclePath);
+
+  // QPainterPath의 교집합 면적을 폴리곤 분할을 통해 근사 계산
   double interArea = 0.0;
-  for (const QRect &r : intersection) {
-    interArea += static_cast<double>(r.width()) * r.height();
+  const QList<QPolygonF> polygons = intersection.toSubpathPolygons();
+  for (const QPolygonF &poly : polygons) {
+    // 다각형 면적 공식 (Shoelace formula)
+    double polyArea = 0.0;
+    int n = poly.size();
+    if (n >= 3) {
+      for (int i = 0; i < n; ++i) {
+        int j = (i + 1) % n;
+        polyArea += (poly[i].x() * poly[j].y()) - (poly[j].x() * poly[i].y());
+      }
+      interArea += std::abs(polyArea) / 2.0;
+    }
   }
 
-  return interArea / roiArea;
+  // 차량 하단부가 주차 구역에 포함된 비율 반환
+  return interArea / triangleArea;
 }

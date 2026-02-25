@@ -3,6 +3,7 @@
 
 #include "parking/parkingrepository.h"
 #include "parking/vehicletracker.h"
+#include "roi/roiservice.h"
 #include <QObject>
 
 class TelegramBotAPI;
@@ -33,15 +34,21 @@ public:
   void setTelegramApi(TelegramBotAPI *api);
 
   /**
+   * @brief ROI 서비스 연결 (이름 조회용)
+   */
+  void setRoiService(const RoiService *roiService);
+
+  /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
    */
-  void updateRoiPolygons(const QList<QPolygon> &polygons);
+  void updateRoiPolygons(const QList<QPolygonF> &polygons);
 
   /**
    * @brief 새 메타데이터 프레임 처리 (입출차 판단의 진입점)
    */
-  void processMetadata(const QList<ObjectInfo> &objects, int frameWidth,
-                       int frameHeight, qint64 pruneTimeoutMs = 5000);
+  void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
+                       int effectiveWidth, int sourceHeight,
+                       qint64 pruneTimeoutMs = 5000);
 
   /**
    * @brief OCR 결과 수신 처리
@@ -107,6 +114,7 @@ private:
   VehicleTracker m_tracker;
   ParkingRepository m_repository;
   TelegramBotAPI *m_telegram = nullptr;
+  const RoiService *m_roiService = nullptr;
 };
 
 #endif // PARKINGSERVICE_H

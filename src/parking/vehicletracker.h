@@ -36,18 +36,20 @@ public:
   /**
    * @brief ROI 폴리곤 목록을 설정합니다 (주차 구역 정보).
    */
-  void setRoiPolygons(const QList<QPolygon> &polygons);
+  void setRoiPolygons(const QList<QPolygonF> &polygons);
 
   /**
    * @brief 새로운 메타데이터 프레임을 처리하여 차량 상태를 업데이트합니다.
    * @param objects AI가 감지한 객체 목록
-   * @param frameWidth 프레임 너비 (ROI 매핑 시 필요)
-   * @param frameHeight 프레임 높이
+   * @param cropOffsetX AI 인식 좌표 공간 보정값
+   * @param effectiveWidth 정규화를 위한 프레임 너비
+   * @param sourceHeight 정규화를 위한 프레임 높이
    * @param nowMs 현재 시각 (ms)
    * @return 이번 프레임에서 새로 ROI에 진입한 차량 목록
    */
-  QList<VehicleState> update(const QList<ObjectInfo> &objects, int frameWidth,
-                             int frameHeight, qint64 nowMs);
+  QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
+                             int effectiveWidth, int sourceHeight,
+                             qint64 nowMs);
 
   /**
    * @brief 특정 차량의 OCR 결과를 반영합니다.
@@ -79,11 +81,11 @@ public:
   QList<VehicleState> pruneStale(qint64 nowMs, qint64 timeoutMs = 5000);
 
 private:
-  double computeOccupancyRatio(const QRect &vehicleRect,
-                               const QPolygon &roiPolygon) const;
+  double computeOccupancyRatio(const QRectF &vehicleRect,
+                               const QPolygonF &roiPolygon) const;
 
   QHash<int, VehicleState> m_vehicles;
-  QList<QPolygon> m_roiPolygons;
+  QList<QPolygonF> m_roiPolygons;
 };
 
 #endif // VEHICLETRACKER_H

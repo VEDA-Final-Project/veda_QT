@@ -51,6 +51,7 @@ MainWindowController::MainWindowController(const UiRefs &uiRefs,
   }
   m_rpiClient->init();
   m_parkingService->setTelegramApi(m_telegramApi);
+  m_parkingService->setRoiService(&m_roiService);
 
   // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.
   initRoiDb();
@@ -532,12 +533,14 @@ void MainWindowController::onMetadataReceived(
   // ParkingService에도 메타데이터를 전달하여 입출차 감지 수행
   // 매 프레임마다 ROI 폴리곤을 동기화 (DB 로드/사용자 그리기 반영)
   if (m_ui.videoWidget) {
-    m_parkingService->updateRoiPolygons(m_ui.videoWidget->roiPolygons());
+    m_parkingService->updateRoiPolygons(
+        RoiService::toNormalizedPolygons(m_roiService.records()));
   }
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
-  m_parkingService->processMetadata(objects, cfg.effectiveWidth(),
-                                    cfg.sourceHeight(), pruneMs);
+  m_parkingService->processMetadata(objects, cfg.cropOffsetX(),
+                                    cfg.effectiveWidth(), cfg.sourceHeight(),
+                                    pruneMs);
 
   // === ReID Table Update (ID 기반 누적 관리) ===
   if (m_ui.reidTable) {
