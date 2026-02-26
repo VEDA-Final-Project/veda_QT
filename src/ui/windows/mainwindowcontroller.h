@@ -56,6 +56,12 @@ public slots:
                               qint64 timestampMs);
   void onFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
                                 qint64 timestampMs);
+  void onMetadataReceivedPrimaryOcr(const QList<ObjectInfo> &objects);
+  void onMetadataReceivedSecondaryOcr(const QList<ObjectInfo> &objects);
+  void onFrameCapturedPrimaryOcr(QSharedPointer<cv::Mat> framePtr,
+                                 qint64 timestampMs);
+  void onFrameCapturedSecondaryOcr(QSharedPointer<cv::Mat> framePtr,
+                                   qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
 
   // Telegram Slots
@@ -94,6 +100,8 @@ private:
   QString m_selectedCameraKeySecondary = QStringLiteral("camera2");
   CameraManager *m_cameraManagerPrimary = nullptr;
   CameraManager *m_cameraManagerSecondary = nullptr;
+  CameraManager *m_cameraManagerPrimaryOcr = nullptr;
+  CameraManager *m_cameraManagerSecondaryOcr = nullptr;
   PlateOcrCoordinator *m_ocrCoordinatorPrimary = nullptr;
   PlateOcrCoordinator *m_ocrCoordinatorSecondary = nullptr;
   TelegramBotAPI *m_telegramApi = nullptr;
@@ -101,6 +109,8 @@ private:
   DbPanelController *m_dbPanelController = nullptr;
   CameraSessionService m_cameraSessionPrimary;
   CameraSessionService m_cameraSessionSecondary;
+  CameraSessionService m_cameraSessionPrimaryOcr;
+  CameraSessionService m_cameraSessionSecondaryOcr;
   RoiService m_roiServicePrimary;
   RoiService m_roiServiceSecondary;
   ParkingService *m_parkingServicePrimary = nullptr;
@@ -108,6 +118,8 @@ private:
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerPrimary;
   QElapsedTimer m_renderTimerSecondary;
+  QElapsedTimer m_ocrRenderTimerPrimary;
+  QElapsedTimer m_ocrRenderTimerSecondary;
   QTimer *m_resizeDebounceTimer = nullptr;
   QString m_currentProfilePrimary;
   QString m_currentProfileSecondary;

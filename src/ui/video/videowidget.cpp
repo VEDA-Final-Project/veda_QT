@@ -62,6 +62,10 @@ void VideoWidget::setRoiLabelAt(int index, const QString &label) {
   m_roiLabels[index] = label.trimmed();
 }
 
+void VideoWidget::setOcrRequestEnabled(bool enabled) {
+  m_ocrRequestEnabled = enabled;
+}
+
 bool VideoWidget::removeRoiAt(int index) {
   if (!m_pendingNormalizedRoiPolygons.isEmpty()) {
     if (index < 0 || index >= m_pendingNormalizedRoiPolygons.size()) {
@@ -179,13 +183,16 @@ void VideoWidget::renderFrame(const QImage &frame) {
   // -----------------------
 
   QList<OcrRequest> ocrRequests;
+  QList<OcrRequest> *ocrRequestsOut = m_ocrRequestEnabled ? &ocrRequests : nullptr;
   const QImage composed = m_frameRenderer.compose(
       frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
       m_roiState.roiEnabled() && !m_roiState.isDrawing(), m_showFps,
-      static_cast<int>(m_currentFps), &ocrRequests);
+      static_cast<int>(m_currentFps), ocrRequestsOut);
 
-  for (const OcrRequest &req : ocrRequests) {
-    emit ocrRequested(req.objectId, req.crop);
+  if (m_ocrRequestEnabled) {
+    for (const OcrRequest &req : ocrRequests) {
+      emit ocrRequested(req.objectId, req.crop);
+    }
   }
 
   // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===

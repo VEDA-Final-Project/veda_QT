@@ -35,6 +35,7 @@ public:
   void queueNormalizedRoiPolygons(const QList<QPolygonF> &normalizedPolygons,
                                   const QStringList &labels = QStringList());
   void setRoiLabelAt(int index, const QString &label);
+  void setOcrRequestEnabled(bool enabled);
   bool removeRoiAt(int index);
   int roiCount() const;
   const QList<QPolygon> &roiPolygons() const;
@@ -70,6 +71,7 @@ private:
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
 
   bool m_showFps = false;
+  bool m_ocrRequestEnabled = true;
   double m_currentFps = 0.0;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;

@@ -26,6 +26,7 @@ public:
   QString cameraUsername(const QString &cameraKey = QString()) const;
   QString cameraPassword(const QString &cameraKey = QString()) const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
+  QString cameraOcrProfile(const QString &cameraKey = QString()) const;
   QString rtspUrl(const QString &cameraKey = QString()) const;
 
   // Video
@@ -37,6 +38,7 @@ public:
   // OCR
   QString ocrLanguage() const;
   QString tessdataPath() const;
+  bool ocrDedicatedStreamEnabled() const;
 
   // Sync
   int defaultDelayMs() const;

@@ -188,6 +188,27 @@ QString Config::cameraProfile(const QString &cameraKey) const {
 }
 
 /**
+ * @brief OCR 전용 RTSP 프로파일 경로
+ * - camera.ocrProfile > camera.profile 순으로 사용
+ */
+QString Config::cameraOcrProfile(const QString &cameraKey) const {
+  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+  const QJsonObject selected = cameraObj.isEmpty() ? m_camera : cameraObj;
+
+  const QString ocrProfile = selected["ocrProfile"].toString().trimmed();
+  if (!ocrProfile.isEmpty()) {
+    return ocrProfile;
+  }
+
+  const QString profile = selected["profile"].toString().trimmed();
+  if (!profile.isEmpty()) {
+    return profile;
+  }
+
+  return QStringLiteral("profile2/media.smp");
+}
+
+/**
  * @brief RTSP 접속 URL 생성
  */
 QString Config::rtspUrl(const QString &cameraKey) const {
@@ -243,6 +264,13 @@ QString Config::tessdataPath() const {
     return QString();
   }
   return path;
+}
+
+/**
+ * @brief OCR 전용 스트림 사용 여부
+ */
+bool Config::ocrDedicatedStreamEnabled() const {
+  return m_ocr["dedicatedStreamEnabled"].toBool(false);
 }
 
 /* =========================
