@@ -80,7 +80,7 @@ private:
       CameraManager *cameraManager, const QString &cameraKey,
       QString *resolvedKey = nullptr, const QString &profileSuffix = QString(),
       bool reloadConfig = true);
-  QString getBestProfileForWidth(int width) const;
+  QString getBestProfileForSize(const QSize &size) const;
   VideoWidget *videoWidgetForTarget(RoiTarget target) const;
   RoiService *roiServiceForTarget(RoiTarget target);
   const RoiService *roiServiceForTarget(RoiTarget target) const;

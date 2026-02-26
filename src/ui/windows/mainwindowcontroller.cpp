@@ -172,12 +172,13 @@ void MainWindowController::onVideoWidgetResizedSlot() {
   if (m_viewMode == ViewMode::Single) {
     if (m_ui.videoWidgetPrimary && m_cameraManagerPrimary &&
         m_cameraManagerPrimary->isRunning()) {
-      int width = m_ui.videoWidgetPrimary->width();
-      QString bestProfile = getBestProfileForWidth(width);
+      QSize size = m_ui.videoWidgetPrimary->size();
+      QString bestProfile = getBestProfileForSize(size);
       if (bestProfile != m_currentProfilePrimary) {
         onLogMessage(
-            QString("[Camera] 화면 크기 변경 감지 (A 채널 %1px) -> %2 적용")
-                .arg(width)
+            QString("[Camera] 화면 크기 변경 감지 (A 채널 %1x%2) -> %3 적용")
+                .arg(size.width())
+                .arg(size.height())
                 .arg(bestProfile));
         m_currentProfilePrimary = bestProfile;
         if (refreshCameraConnectionFromConfig(
@@ -190,12 +191,13 @@ void MainWindowController::onVideoWidgetResizedSlot() {
   } else if (m_viewMode == ViewMode::Dual) {
     if (m_ui.videoWidgetPrimary && m_cameraManagerPrimary &&
         m_cameraManagerPrimary->isRunning()) {
-      int widthA = m_ui.videoWidgetPrimary->width();
-      QString bestProfileA = getBestProfileForWidth(widthA);
+      QSize sizeA = m_ui.videoWidgetPrimary->size();
+      QString bestProfileA = getBestProfileForSize(sizeA);
       if (bestProfileA != m_currentProfilePrimary) {
         onLogMessage(
-            QString("[Camera] 화면 크기 변경 감지 (A 채널 %1px) -> %2 적용")
-                .arg(widthA)
+            QString("[Camera] 화면 크기 변경 감지 (A 채널 %1x%2) -> %3 적용")
+                .arg(sizeA.width())
+                .arg(sizeA.height())
                 .arg(bestProfileA));
         m_currentProfilePrimary = bestProfileA;
         if (refreshCameraConnectionFromConfig(
@@ -207,12 +209,13 @@ void MainWindowController::onVideoWidgetResizedSlot() {
     }
     if (m_ui.videoWidgetSecondary && m_cameraManagerSecondary &&
         m_cameraManagerSecondary->isRunning()) {
-      int widthB = m_ui.videoWidgetSecondary->width();
-      QString bestProfileB = getBestProfileForWidth(widthB);
+      QSize sizeB = m_ui.videoWidgetSecondary->size();
+      QString bestProfileB = getBestProfileForSize(sizeB);
       if (bestProfileB != m_currentProfileSecondary) {
         onLogMessage(
-            QString("[Camera] 화면 크기 변경 감지 (B 채널 %1px) -> %2 적용")
-                .arg(widthB)
+            QString("[Camera] 화면 크기 변경 감지 (B 채널 %1x%2) -> %3 적용")
+                .arg(sizeB.width())
+                .arg(sizeB.height())
                 .arg(bestProfileB));
         m_currentProfileSecondary = bestProfileB;
         if (refreshCameraConnectionFromConfig(
@@ -498,7 +501,7 @@ QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
 void MainWindowController::playCctv() {
   QString profileA;
   if (m_ui.videoWidgetPrimary) {
-    profileA = getBestProfileForWidth(m_ui.videoWidgetPrimary->width());
+    profileA = getBestProfileForSize(m_ui.videoWidgetPrimary->size());
     m_currentProfilePrimary = profileA;
   }
 
@@ -521,7 +524,7 @@ void MainWindowController::playCctv() {
 
   QString profileB;
   if (m_ui.videoWidgetSecondary) {
-    profileB = getBestProfileForWidth(m_ui.videoWidgetSecondary->width());
+    profileB = getBestProfileForSize(m_ui.videoWidgetSecondary->size());
     m_currentProfileSecondary = profileB;
   }
 
@@ -682,16 +685,18 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
   return true;
 }
 
-QString MainWindowController::getBestProfileForWidth(int width) const {
-  if (width >= 3840)
+QString MainWindowController::getBestProfileForSize(const QSize &size) const {
+  int effectiveWidth = std::min(size.width(), size.height() * 16 / 9);
+
+  if (effectiveWidth >= 3072)
     return QStringLiteral("profile2/media.smp"); // 3840x2160
-  if (width >= 3072)
+  if (effectiveWidth >= 2560)
     return QStringLiteral("profile3/media.smp"); // 3072x1728
-  if (width >= 2560)
+  if (effectiveWidth >= 1920)
     return QStringLiteral("profile4/media.smp"); // 2560x1440
-  if (width >= 1920)
+  if (effectiveWidth >= 1280)
     return QStringLiteral("profile5/media.smp"); // 1920x1080
-  if (width >= 1280)
+  if (effectiveWidth >= 640)
     return QStringLiteral("profile6/media.smp"); // 1280x720
   return QStringLiteral("profile7/media.smp");   // 640x360
 }
@@ -805,7 +810,7 @@ void MainWindowController::onCameraPrimarySelectionChanged(int index) {
   if (m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning()) {
     QString profile =
         m_ui.videoWidgetPrimary
-            ? getBestProfileForWidth(m_ui.videoWidgetPrimary->width())
+            ? getBestProfileForSize(m_ui.videoWidgetPrimary->size())
             : QString();
     m_currentProfilePrimary = profile;
     if (refreshCameraConnectionFromConfig(
@@ -856,7 +861,7 @@ void MainWindowController::onCameraSecondarySelectionChanged(int index) {
   if (m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning()) {
     QString profile =
         m_ui.videoWidgetSecondary
-            ? getBestProfileForWidth(m_ui.videoWidgetSecondary->width())
+            ? getBestProfileForSize(m_ui.videoWidgetSecondary->size())
             : QString();
     m_currentProfileSecondary = profile;
     if (refreshCameraConnectionFromConfig(
