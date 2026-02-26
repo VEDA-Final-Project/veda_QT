@@ -76,6 +76,7 @@ private:
   bool refreshCameraConnectionFromConfig(CameraManager *cameraManager,
                                          const QString &cameraKey,
                                          QString *resolvedKey = nullptr,
+                                         bool useSubstream = false,
                                          bool reloadConfig = true);
   VideoWidget *videoWidgetForTarget(RoiTarget target) const;
   RoiService *roiServiceForTarget(RoiTarget target);

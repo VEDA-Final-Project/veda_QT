@@ -15,24 +15,32 @@ constexpr unsigned long kForceStopWaitMs = 500;
 CameraManager::CameraManager(QObject *parent) : QObject(parent) {
 
   // === 스레드 생성 (QObject 부모 설정으로 메모리 관리) ===
-  m_videoThread = new VideoThread(this);
-  m_metadataThread = new MetadataThread(this);
+  m_videoThread = nullptr;
+  m_metadataThread = nullptr;
+  createThreads();
+}
 
-  // === VideoThread → CameraManager 시그널 전달 ===
-  // 캡처된 프레임을 그대로 외부(UI 등)로 전달
-  connect(m_videoThread, &VideoThread::frameCaptured, this,
-          &CameraManager::frameCaptured);
-  connect(m_videoThread, &VideoThread::logMessage, this,
-          &CameraManager::logMessage);
+void CameraManager::createThreads() {
+  if (!m_videoThread) {
+    m_videoThread = new VideoThread(this);
+    // === VideoThread → CameraManager 시그널 전달 ===
+    // 캡처된 프레임을 그대로 외부(UI 등)로 전달
+    connect(m_videoThread, &VideoThread::frameCaptured, this,
+            &CameraManager::frameCaptured);
+    connect(m_videoThread, &VideoThread::logMessage, this,
+            &CameraManager::logMessage);
+  }
 
-  // === MetadataThread → CameraManager 시그널 전달 ===
-  // 객체 메타데이터 전달
-  connect(m_metadataThread, &MetadataThread::metadataReceived, this,
-          &CameraManager::metadataReceived);
-
-  // 로그 메시지 전달
-  connect(m_metadataThread, &MetadataThread::logMessage, this,
-          &CameraManager::logMessage);
+  if (!m_metadataThread) {
+    m_metadataThread = new MetadataThread(this);
+    // === MetadataThread → CameraManager 시그널 전달 ===
+    // 객체 메타데이터 전달
+    connect(m_metadataThread, &MetadataThread::metadataReceived, this,
+            &CameraManager::metadataReceived);
+    // 로그 메시지 전달
+    connect(m_metadataThread, &MetadataThread::logMessage, this,
+            &CameraManager::logMessage);
+  }
 }
 
 /**
@@ -58,6 +66,8 @@ void CameraManager::start() {
   if (isRunning())
     return;
 
+  createThreads();
+
   if (!m_connectionInfo.isValid()) {
     emit logMessage("Error: camera connection info is not configured.");
     return;
@@ -68,12 +78,11 @@ void CameraManager::start() {
                    m_connectionInfo.password, m_connectionInfo.profile);
 
   // === 시작 로그 출력 ===
-  emit logMessage(
-      QString("Starting camera[%1] with IP=%2, profile=%3")
-          .arg(m_connectionInfo.cameraId.isEmpty()
-                   ? QStringLiteral("camera-1")
-                   : m_connectionInfo.cameraId,
-               m_connectionInfo.ip, m_connectionInfo.profile));
+  emit logMessage(QString("Starting camera[%1] with IP=%2, profile=%3")
+                      .arg(m_connectionInfo.cameraId.isEmpty()
+                               ? QStringLiteral("camera-1")
+                               : m_connectionInfo.cameraId,
+                           m_connectionInfo.ip, m_connectionInfo.profile));
   emit logMessage(QString("RTSP URL: %1").arg(maskedRtspUrl(url)));
 
   // === 비디오 스트림 시작 ===
@@ -106,7 +115,7 @@ void CameraManager::stop() {
   shutdownTimer.start();
 
   // === 비디오 스레드 종료 ===
-  if (m_videoThread->isRunning()) {
+  if (m_videoThread && m_videoThread->isRunning()) {
     m_videoThread->stop(); // 종료 요청
     if (!m_videoThread->wait(kThreadStopTimeoutMs)) {
       emit logMessage(
@@ -121,7 +130,7 @@ void CameraManager::stop() {
   }
 
   // === 메타데이터 스레드 종료 ===
-  if (m_metadataThread->isRunning()) {
+  if (m_metadataThread && m_metadataThread->isRunning()) {
     m_metadataThread->stop();
     if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
       emit logMessage(QString("Warning: metadata thread stop timeout (%1 ms). "
@@ -134,6 +143,16 @@ void CameraManager::stop() {
     }
   }
 
+  if (m_videoThread) {
+    m_videoThread->deleteLater();
+    m_videoThread = nullptr;
+  }
+
+  if (m_metadataThread) {
+    m_metadataThread->deleteLater();
+    m_metadataThread = nullptr;
+  }
+
   emit logMessage(
       QString("Camera stop completed in %1 ms.").arg(shutdownTimer.elapsed()));
 }
@@ -143,5 +162,7 @@ void CameraManager::stop() {
  * @return 하나라도 실행 중이면 true
  */
 bool CameraManager::isRunning() const {
-  return m_videoThread->isRunning() || m_metadataThread->isRunning();
+  bool videoRunning = m_videoThread && m_videoThread->isRunning();
+  bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
+  return videoRunning || metaRunning;
 }

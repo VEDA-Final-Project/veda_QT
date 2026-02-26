@@ -63,10 +63,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   m_cameraSessionSecondary.setDelayMs(delayMs);
   refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
                                     m_selectedCameraKeyPrimary,
-                                    &m_selectedCameraKeyPrimary, true);
-  refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
-                                    m_selectedCameraKeySecondary,
-                                    &m_selectedCameraKeySecondary, false);
+                                    &m_selectedCameraKeyPrimary, false, true);
+  refreshCameraConnectionFromConfig(
+      m_cameraManagerSecondary, m_selectedCameraKeySecondary,
+      &m_selectedCameraKeySecondary, false, false);
 
   // 통합 DB 초기화 (veda.db)
   const QString dbPath =
@@ -414,9 +414,11 @@ QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
 }
 
 void MainWindowController::playCctv() {
+  const bool useSubstream = (m_viewMode == ViewMode::Dual);
+
   const bool primaryReady = refreshCameraConnectionFromConfig(
       m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
-      &m_selectedCameraKeyPrimary, true);
+      &m_selectedCameraKeyPrimary, useSubstream, true);
   if (!primaryReady) {
     onLogMessage("[Camera] 연결 설정이 올바르지 않습니다.");
     return;
@@ -433,7 +435,7 @@ void MainWindowController::playCctv() {
 
   const bool secondaryReady = refreshCameraConnectionFromConfig(
       m_cameraManagerSecondary, m_selectedCameraKeySecondary,
-      &m_selectedCameraKeySecondary, false);
+      &m_selectedCameraKeySecondary, useSubstream, false);
   if (!secondaryReady) {
     onLogMessage(
         QString("[Camera] '%1' 연결 설정이 올바르지 않아 B 채널은 중지됩니다.")
@@ -548,7 +550,7 @@ void MainWindowController::onRoiTargetChanged(int index) {
 
 bool MainWindowController::refreshCameraConnectionFromConfig(
     CameraManager *cameraManager, const QString &cameraKey,
-    QString *resolvedKey, bool reloadConfig) {
+    QString *resolvedKey, bool useSubstream, bool reloadConfig) {
   if (!cameraManager) {
     return false;
   }
@@ -566,10 +568,20 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
   connectionInfo.ip = cfg.cameraIp(selectedKey).trimmed();
   connectionInfo.username = cfg.cameraUsername(selectedKey).trimmed();
   connectionInfo.password = cfg.cameraPassword(selectedKey);
-  connectionInfo.profile = cfg.cameraProfile(selectedKey).trimmed();
-  if (connectionInfo.profile.isEmpty()) {
-    connectionInfo.profile = QStringLiteral("profile2/media.smp");
+
+  // 듀얼 채널(ViewMode::Dual) 접근 시 저사양 서브스트림 프로파일 할당
+  if (useSubstream) {
+    connectionInfo.profile = cfg.cameraSubProfile(selectedKey).trimmed();
+    if (connectionInfo.profile.isEmpty()) {
+      connectionInfo.profile = QStringLiteral("profile4/media.smp");
+    }
+  } else {
+    connectionInfo.profile = cfg.cameraProfile(selectedKey).trimmed();
+    if (connectionInfo.profile.isEmpty()) {
+      connectionInfo.profile = QStringLiteral("profile2/media.smp");
+    }
   }
+
   if (!connectionInfo.isValid()) {
     onLogMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
                      .arg(selectedKey));
@@ -684,9 +696,9 @@ void MainWindowController::onCameraPrimarySelectionChanged(int index) {
   }
 
   if (m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning() &&
-      refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
-                                        m_selectedCameraKeyPrimary,
-                                        &m_selectedCameraKeyPrimary)) {
+      refreshCameraConnectionFromConfig(
+          m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+          &m_selectedCameraKeyPrimary, (m_viewMode == ViewMode::Dual))) {
     m_cameraSessionPrimary.playOrRestart();
   }
 }
@@ -729,9 +741,9 @@ void MainWindowController::onCameraSecondarySelectionChanged(int index) {
     return;
   }
   if (m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning() &&
-      refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
-                                        m_selectedCameraKeySecondary,
-                                        &m_selectedCameraKeySecondary)) {
+      refreshCameraConnectionFromConfig(
+          m_cameraManagerSecondary, m_selectedCameraKeySecondary,
+          &m_selectedCameraKeySecondary, (m_viewMode == ViewMode::Dual))) {
     m_cameraSessionSecondary.playOrRestart();
   }
 }
@@ -1056,8 +1068,8 @@ void MainWindowController::onFrameCapturedPrimary(
   }
 
   // 2. Render Throttling (UI 렌더링 부하 방지)
-  // 약 30~33fps 수준인 30ms로 제한하여 부하와 부드러움의 타협점 적용
-  if (m_renderTimerPrimary.isValid() && m_renderTimerPrimary.elapsed() < 30) {
+  // 60fps 수준인 16ms로 제한하여 부하와 부드러움의 타협점 적용
+  if (m_renderTimerPrimary.isValid() && m_renderTimerPrimary.elapsed() < 16) {
     return;
   }
   m_renderTimerPrimary.restart();
@@ -1095,7 +1107,7 @@ void MainWindowController::onFrameCapturedSecondary(
     return;
   }
   if (m_renderTimerSecondary.isValid() &&
-      m_renderTimerSecondary.elapsed() < 30) {
+      m_renderTimerSecondary.elapsed() < 16) {
     return;
   }
   m_renderTimerSecondary.restart();
