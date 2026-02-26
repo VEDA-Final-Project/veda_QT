@@ -21,9 +21,9 @@ namespace ocr::postprocess
         "가나다라마거너더러머버서어저고노도로모보소"
         "오조구누두루무부수우주아바사자하허호";
 
-const char kHangulWhitelist[] =
-    "가나다라마거너더러머버서어저고노도로모보소"
-    "오조구누두루무부수우주아바사자하허호";
+    const char kHangulWhitelist[] =
+        "가나다라마거너더러머버서어저고노도로모보소"
+        "오조구누두루무부수우주아바사자하허호";
 
     bool isHangulSyllable(const QChar ch)
     {
@@ -110,8 +110,8 @@ const char kHangulWhitelist[] =
       }
     }
 
-QString probeHangulFromCenter(tesseract::TessBaseAPI *api, const cv::Mat &binary,
-                              const cv::Mat &binaryInv)
+    QString probeHangulFromCenter(tesseract::TessBaseAPI *api, const cv::Mat &binary,
+                                  const cv::Mat &binaryInv)
     {
       if (!api || binary.empty() || binaryInv.empty() ||
           binary.size() != binaryInv.size())
@@ -168,12 +168,12 @@ QString probeHangulFromCenter(tesseract::TessBaseAPI *api, const cv::Mat &binary
         }
       }
 
-  setWhitelist(api, plateWhitelist());
-  api->SetPageSegMode(primaryPageSegMode());
-  return recoveredHangul;
-}
+      setWhitelist(api, plateWhitelist());
+      api->SetPageSegMode(primaryPageSegMode());
+      return recoveredHangul;
+    }
 
-} // namespace
+  } // namespace
 
   const char *plateWhitelist()
   {
@@ -372,10 +372,10 @@ QString probeHangulFromCenter(tesseract::TessBaseAPI *api, const cv::Mat &binary
     return out;
   }
 
-QString recoverPlateUsingCenterHangul(tesseract::TessBaseAPI *api,
-                                      const cv::Mat &binary,
-                                      const cv::Mat &binaryInv,
-                                      const QString &selectedCandidate)
+  QString recoverPlateUsingCenterHangul(tesseract::TessBaseAPI *api,
+                                        const cv::Mat &binary,
+                                        const cv::Mat &binaryInv,
+                                        const QString &selectedCandidate)
   {
     if (selectedCandidate.isEmpty())
     {
@@ -434,7 +434,7 @@ QString recoverPlateUsingCenterHangul(tesseract::TessBaseAPI *api,
       }
     }
 
-  return best;
-}
+    return best;
+  }
 
 } // namespace ocr::postprocess

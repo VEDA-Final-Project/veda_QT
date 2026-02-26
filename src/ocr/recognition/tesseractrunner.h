@@ -9,14 +9,14 @@
 namespace ocr::recognition
 {
 
-postprocess::OcrCandidate runOcrOnBinary(tesseract::TessBaseAPI *api,
-                                         const cv::Mat &binary,
-                                         const QString &sourceTag,
-                                         tesseract::PageSegMode psm);
+    postprocess::OcrCandidate runOcrOnBinary(tesseract::TessBaseAPI *api,
+                                             const cv::Mat &binary,
+                                             const QString &sourceTag,
+                                             tesseract::PageSegMode psm);
 
-std::vector<postprocess::OcrCandidate> collectCandidates(
-    tesseract::TessBaseAPI *api, const cv::Mat &binary, const cv::Mat &binaryInv,
-    const cv::Mat &adaptiveBinary, bool adaptiveUsed);
+    std::vector<postprocess::OcrCandidate> collectCandidates(
+        tesseract::TessBaseAPI *api, const cv::Mat &binary, const cv::Mat &binaryInv,
+        const cv::Mat &adaptiveBinary, bool adaptiveUsed);
 
 } // namespace ocr::recognition
 

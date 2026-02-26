@@ -26,10 +26,10 @@ namespace ocr::postprocess
   QString normalizePlateText(const QString &raw);
   int platePlausibilityScore(const QString &candidate);
   OcrResult chooseBestPlateResult(const std::vector<OcrCandidate> &candidates);
-QString recoverPlateUsingCenterHangul(tesseract::TessBaseAPI *api,
-                                      const cv::Mat &binary,
-                                      const cv::Mat &binaryInv,
-                                      const QString &selectedCandidate);
+  QString recoverPlateUsingCenterHangul(tesseract::TessBaseAPI *api,
+                                        const cv::Mat &binary,
+                                        const cv::Mat &binaryInv,
+                                        const QString &selectedCandidate);
 
 } // namespace ocr::postprocess
 
