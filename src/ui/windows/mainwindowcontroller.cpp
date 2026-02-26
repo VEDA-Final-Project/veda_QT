@@ -84,8 +84,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   }
   m_parkingServicePrimary->setTelegramApi(m_telegramApi);
   m_parkingServiceSecondary->setTelegramApi(m_telegramApi);
-  m_parkingServicePrimary->setRoiService(&m_roiServicePrimary);
-  m_parkingServiceSecondary->setRoiService(&m_roiServiceSecondary);
 
   // ROI DB 로드 -> UI 반영 -> 시그널 연결 순으로 초기화.
   refreshCameraSelectors();
@@ -975,24 +973,18 @@ void MainWindowController::onMetadataReceivedPrimary(
   // ParkingService에도 메타데이터를 전달하여 입출차 감지 수행
   // 매 프레임마다 ROI 폴리곤을 동기화 (DB 로드/사용자 그리기 반영)
   if (m_ui.videoWidgetPrimary && m_parkingServicePrimary) {
-    m_parkingServicePrimary->updateRoiPolygons(
-        RoiService::toNormalizedPolygons(m_roiServicePrimary.records()));
+    const auto intPolygons = m_ui.videoWidgetPrimary->roiPolygons();
+    QList<QPolygonF> floatPolygons;
+    floatPolygons.reserve(intPolygons.size());
+    for (const QPolygon &p : intPolygons)
+      floatPolygons.append(QPolygonF(p));
+    m_parkingServicePrimary->updateRoiPolygons(floatPolygons);
   }
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
   if (m_parkingServicePrimary) {
-    m_parkingServicePrimary->processMetadata(objects, cfg.cropOffsetX(),
-                                             cfg.effectiveWidth(),
+    m_parkingServicePrimary->processMetadata(objects, 0, cfg.effectiveWidth(),
                                              cfg.sourceHeight(), pruneMs);
-    // VehicleTracker 점유 결과를 UI에 전달
-    if (m_ui.videoWidgetPrimary) {
-      QSet<int> occupied;
-      for (const VehicleState &vs : m_parkingServicePrimary->activeVehicles()) {
-        if (vs.occupiedRoiIndex >= 0)
-          occupied.insert(vs.occupiedRoiIndex);
-      }
-      m_ui.videoWidgetPrimary->setOccupiedRoiIndices(occupied);
-    }
   }
 
   if (m_ui.reidTable && m_roiTarget == RoiTarget::Primary &&
@@ -1012,26 +1004,19 @@ void MainWindowController::onMetadataReceivedSecondary(
                                         QDateTime::currentMSecsSinceEpoch());
 
   if (m_ui.videoWidgetSecondary && m_parkingServiceSecondary) {
-    m_parkingServiceSecondary->updateRoiPolygons(
-        RoiService::toNormalizedPolygons(m_roiServiceSecondary.records()));
+    const auto intPolygons = m_ui.videoWidgetSecondary->roiPolygons();
+    QList<QPolygonF> floatPolygons;
+    floatPolygons.reserve(intPolygons.size());
+    for (const QPolygon &p : intPolygons)
+      floatPolygons.append(QPolygonF(p));
+    m_parkingServiceSecondary->updateRoiPolygons(floatPolygons);
   }
 
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
   if (m_parkingServiceSecondary) {
-    m_parkingServiceSecondary->processMetadata(objects, cfg.cropOffsetX(),
-                                               cfg.effectiveWidth(),
+    m_parkingServiceSecondary->processMetadata(objects, 0, cfg.effectiveWidth(),
                                                cfg.sourceHeight(), pruneMs);
-    // VehicleTracker 점유 결과를 UI에 전달
-    if (m_ui.videoWidgetSecondary) {
-      QSet<int> occupied;
-      for (const VehicleState &vs :
-           m_parkingServiceSecondary->activeVehicles()) {
-        if (vs.occupiedRoiIndex >= 0)
-          occupied.insert(vs.occupiedRoiIndex);
-      }
-      m_ui.videoWidgetSecondary->setOccupiedRoiIndices(occupied);
-    }
   }
 
   if (m_ui.reidTable && m_roiTarget == RoiTarget::Secondary &&

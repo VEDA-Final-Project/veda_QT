@@ -5,6 +5,12 @@
     "password": "5hanwha%21",
     "profile": "profile2/media.smp"
   },
+  "camera2": {
+    "ip": "192.168.0.34",
+    "username": "admin",
+    "password": "5hanwha%21",
+    "profile": "profile2/media.smp"
+  },
   "video": {
     "sourceWidth": 3840,
     "sourceHeight": 2160,

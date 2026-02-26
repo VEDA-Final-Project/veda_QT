@@ -8,9 +8,17 @@
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QStringList>
 #include <QUuid>
 
 namespace {
+const QString kDefaultCameraKey = QStringLiteral("camera");
+
+QString normalizedCameraKey(const QString &cameraKey) {
+  const QString trimmed = cameraKey.trimmed();
+  return trimmed.isEmpty() ? kDefaultCameraKey : trimmed;
+}
+
 QString sqlError(const QSqlQuery &query, const QSqlDatabase &db) {
   const QString queryErr = query.lastError().text();
   if (!queryErr.isEmpty()) {
@@ -61,13 +69,128 @@ bool tableHasColumn(QSqlDatabase &db, const QString &tableName,
 QString roiTableDdl() {
   return QStringLiteral("CREATE TABLE IF NOT EXISTS roi ("
                         "rod_id TEXT PRIMARY KEY,"
-                        "rod_name TEXT NOT NULL UNIQUE COLLATE NOCASE,"
+                        "rod_name TEXT NOT NULL,"
+                        "camera_key TEXT NOT NULL DEFAULT 'camera',"
                         "rod_enable INTEGER NOT NULL DEFAULT 1,"
                         "rod_purpose TEXT NOT NULL,"
                         "rod_points TEXT NOT NULL,"
                         "bbox TEXT NOT NULL,"
                         "created_at TEXT NOT NULL"
                         ")");
+}
+
+bool tableUsesLegacyGlobalNameUnique(QSqlDatabase &db, bool *isLegacy,
+                                     QString *errorMessage) {
+  if (!isLegacy) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("legacy 결과 포인터가 null입니다.");
+    }
+    return false;
+  }
+  *isLegacy = false;
+
+  QSqlQuery listQuery(db);
+  if (!listQuery.exec(QStringLiteral("PRAGMA index_list(roi)"))) {
+    if (errorMessage) {
+      *errorMessage = sqlError(listQuery, db);
+    }
+    return false;
+  }
+
+  while (listQuery.next()) {
+    const bool isUnique = listQuery.value(2).toInt() != 0;
+    if (!isUnique) {
+      continue;
+    }
+
+    const QString indexName = listQuery.value(1).toString();
+    if (indexName.isEmpty()) {
+      continue;
+    }
+
+    QSqlQuery indexInfoQuery(db);
+    if (!indexInfoQuery.exec(
+            QStringLiteral("PRAGMA index_info(%1)").arg(indexName))) {
+      if (errorMessage) {
+        *errorMessage = sqlError(indexInfoQuery, db);
+      }
+      return false;
+    }
+
+    QStringList columns;
+    while (indexInfoQuery.next()) {
+      columns.append(indexInfoQuery.value(2).toString());
+    }
+    if (columns.size() == 1 && columns.first() == QStringLiteral("rod_name")) {
+      *isLegacy = true;
+      return true;
+    }
+  }
+  return true;
+}
+
+bool rebuildRoiTableForCameraScopedNames(QSqlDatabase &db,
+                                         QString *errorMessage) {
+  if (!execSql(db, QStringLiteral("BEGIN IMMEDIATE TRANSACTION"), errorMessage)) {
+    return false;
+  }
+
+  auto rollbackOnFailure = [&db, &errorMessage]() {
+    execSql(db, QStringLiteral("ROLLBACK"), errorMessage);
+  };
+
+  if (!execSql(db, QStringLiteral("DROP TABLE IF EXISTS roi_new"),
+               errorMessage)) {
+    rollbackOnFailure();
+    return false;
+  }
+
+  if (!execSql(db,
+               QStringLiteral("CREATE TABLE roi_new ("
+                              "rod_id TEXT PRIMARY KEY,"
+                              "rod_name TEXT NOT NULL,"
+                              "camera_key TEXT NOT NULL DEFAULT 'camera',"
+                              "rod_enable INTEGER NOT NULL DEFAULT 1,"
+                              "rod_purpose TEXT NOT NULL,"
+                              "rod_points TEXT NOT NULL,"
+                              "bbox TEXT NOT NULL,"
+                              "created_at TEXT NOT NULL"
+                              ")"),
+               errorMessage)) {
+    rollbackOnFailure();
+    return false;
+  }
+
+  if (!execSql(db,
+               QStringLiteral("INSERT INTO roi_new "
+                              "(rod_id, rod_name, camera_key, rod_enable, "
+                              "rod_purpose, rod_points, bbox, created_at) "
+                              "SELECT rod_id, rod_name, "
+                              "COALESCE(NULLIF(TRIM(camera_key), ''), 'camera'), "
+                              "rod_enable, rod_purpose, rod_points, bbox, "
+                              "created_at "
+                              "FROM roi"),
+               errorMessage)) {
+    rollbackOnFailure();
+    return false;
+  }
+
+  if (!execSql(db, QStringLiteral("DROP TABLE roi"), errorMessage)) {
+    rollbackOnFailure();
+    return false;
+  }
+
+  if (!execSql(db, QStringLiteral("ALTER TABLE roi_new RENAME TO roi"),
+               errorMessage)) {
+    rollbackOnFailure();
+    return false;
+  }
+
+  if (!execSql(db, QStringLiteral("COMMIT"), errorMessage)) {
+    rollbackOnFailure();
+    return false;
+  }
+  return true;
 }
 } // namespace
 
@@ -80,6 +203,12 @@ bool RoiRepository::init(QString *errorMessage) {
 }
 
 QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const {
+  return loadByCameraKey(QString(), errorMessage);
+}
+
+QVector<QJsonObject>
+RoiRepository::loadByCameraKey(const QString &cameraKey,
+                               QString *errorMessage) const {
   QVector<QJsonObject> records;
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
@@ -90,10 +219,22 @@ QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const {
   }
 
   QSqlQuery query(db);
-  if (!query.exec(QStringLiteral(
-          "SELECT rod_id, rod_name, rod_enable, rod_purpose, rod_points, bbox, "
-          "created_at "
-          "FROM roi ORDER BY datetime(created_at) ASC, rod_id ASC"))) {
+  const QString normalizedKey = normalizedCameraKey(cameraKey);
+  if (cameraKey.trimmed().isEmpty()) {
+    query.prepare(QStringLiteral(
+        "SELECT rod_id, rod_name, camera_key, rod_enable, rod_purpose, "
+        "rod_points, bbox, created_at "
+        "FROM roi ORDER BY datetime(created_at) ASC, rod_id ASC"));
+  } else {
+    query.prepare(QStringLiteral(
+        "SELECT rod_id, rod_name, camera_key, rod_enable, rod_purpose, "
+        "rod_points, bbox, created_at "
+        "FROM roi WHERE camera_key = ? "
+        "ORDER BY datetime(created_at) ASC, rod_id ASC"));
+    query.addBindValue(normalizedKey);
+  }
+
+  if (!query.exec()) {
     if (errorMessage) {
       *errorMessage = sqlError(query, db);
     }
@@ -104,10 +245,10 @@ QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const {
     QJsonParseError pointsErr;
     QJsonParseError bboxErr;
     const QJsonArray points =
-        QJsonDocument::fromJson(query.value(4).toByteArray(), &pointsErr)
+        QJsonDocument::fromJson(query.value(5).toByteArray(), &pointsErr)
             .array();
     const QJsonObject bbox =
-        QJsonDocument::fromJson(query.value(5).toByteArray(), &bboxErr)
+        QJsonDocument::fromJson(query.value(6).toByteArray(), &bboxErr)
             .object();
     if (pointsErr.error != QJsonParseError::NoError ||
         bboxErr.error != QJsonParseError::NoError) {
@@ -117,11 +258,12 @@ QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const {
     QJsonObject record{
         {"rod_id", query.value(0).toString()},
         {"rod_name", query.value(1).toString()},
-        {"rod_enable", query.value(2).toInt() != 0},
-        {"rod_purpose", query.value(3).toString()},
+        {"camera_key", normalizedCameraKey(query.value(2).toString())},
+        {"rod_enable", query.value(3).toInt() != 0},
+        {"rod_purpose", query.value(4).toString()},
         {"rod_points", points},
         {"bbox", bbox},
-        {"created_at", query.value(6).toString()},
+        {"created_at", query.value(7).toString()},
     };
     if (isValidRoiRecord(record)) {
       records.append(record);
@@ -146,11 +288,13 @@ bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage) {
   }
 
   QSqlQuery query(db);
-  query.prepare(QStringLiteral("INSERT INTO roi (rod_id, rod_name, rod_enable, "
+  query.prepare(QStringLiteral("INSERT INTO roi "
+                               "(rod_id, rod_name, camera_key, rod_enable, "
                                "rod_purpose, rod_points, bbox, created_at) "
-                               "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                                "ON CONFLICT(rod_id) DO UPDATE SET "
                                "rod_name = excluded.rod_name, "
+                               "camera_key = excluded.camera_key, "
                                "rod_enable = excluded.rod_enable, "
                                "rod_purpose = excluded.rod_purpose, "
                                "rod_points = excluded.rod_points, "
@@ -158,6 +302,7 @@ bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage) {
 
   query.addBindValue(roiData.value("rod_id").toString());
   query.addBindValue(roiData.value("rod_name").toString());
+  query.addBindValue(normalizedCameraKey(roiData.value("camera_key").toString()));
   query.addBindValue(roiData.value("rod_enable").toBool() ? 1 : 0);
   query.addBindValue(roiData.value("rod_purpose").toString());
   query.addBindValue(QJsonDocument(roiData.value("rod_points").toArray())
@@ -215,14 +360,43 @@ bool RoiRepository::ensureSchema(QString *errorMessage) {
     return false;
   }
 
-  // 간단히 컬럼 추가 여부만 확인 (복잡한 마이그레이션은 생략)
-  // ... (기존 마이그레이션 로직 일부 유지 또는 생략 가능, 여기서는 일단 유지)
+  bool hasCameraKey = false;
+  if (!tableHasColumn(db, QStringLiteral("roi"), QStringLiteral("camera_key"),
+                      &hasCameraKey, errorMessage)) {
+    return false;
+  }
+  if (!hasCameraKey) {
+    if (!execSql(db, QStringLiteral("ALTER TABLE roi ADD COLUMN camera_key "
+                                    "TEXT NOT NULL DEFAULT 'camera'"),
+                 errorMessage)) {
+      return false;
+    }
+  }
+
+  bool hasLegacyGlobalNameUnique = false;
+  if (!tableUsesLegacyGlobalNameUnique(db, &hasLegacyGlobalNameUnique,
+                                       errorMessage)) {
+    return false;
+  }
+  if (hasLegacyGlobalNameUnique &&
+      !rebuildRoiTableForCameraScopedNames(db, errorMessage)) {
+    return false;
+  }
+
+  if (!execSql(db, QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
+                                  "idx_roi_camera_name_unique "
+                                  "ON roi(camera_key, rod_name COLLATE NOCASE)"),
+               errorMessage)) {
+    return false;
+  }
+
   return true;
 }
 
 bool RoiRepository::isValidRoiRecord(const QJsonObject &roiData) {
   return !roiData.value("rod_id").toString().isEmpty() &&
          !roiData.value("rod_name").toString().isEmpty() &&
+         !roiData.value("camera_key").toString().isEmpty() &&
          !roiData.value("rod_purpose").toString().isEmpty() &&
          roiData.value("rod_points").isArray() &&
          roiData.value("bbox").isObject() &&

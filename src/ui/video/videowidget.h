@@ -9,7 +9,6 @@
 #include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPolygonF>
-#include <QSet>
 #include <QSize>
 #include <QStringList>
 #include <QWidget>
@@ -43,7 +42,6 @@ public:
 public slots:
   void updateFrame(const QImage &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
-  void setOccupiedRoiIndices(const QSet<int> &indices);
 
 signals:
   void ocrRequested(int objectId, const QImage &crop);
@@ -66,7 +64,6 @@ private:
   QStringList m_pendingRoiLabels;
   QStringList m_roiLabels;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
-  QSet<int> m_occupiedRoiIndices;
 };
 
 #endif // VIDEOWIDGET_H

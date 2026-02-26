@@ -1,10 +1,21 @@
 #ifndef CAMERAMANAGER_H
 #define CAMERAMANAGER_H
 
-#include "config/config.h"
 #include "metadata/metadatathread.h"
 #include "video/videothread.h"
 #include <QObject>
+#include <QSet>
+#include <QString>
+
+struct CameraConnectionInfo {
+  QString cameraId;
+  QString ip;
+  QString username;
+  QString password;
+  QString profile;
+
+  bool isValid() const { return !ip.isEmpty() && !username.isEmpty(); }
+};
 
 /**
  * @brief 카메라 연결 관리 클래스
@@ -20,6 +31,7 @@ public:
   explicit CameraManager(QObject *parent = nullptr);
   ~CameraManager();
 
+  void setConnectionInfo(const CameraConnectionInfo &connectionInfo);
   void start();
   void stop();
   void restart();
@@ -36,6 +48,7 @@ signals:
   void logMessage(const QString &msg);
 
 private:
+  CameraConnectionInfo m_connectionInfo;
   VideoThread *m_videoThread;
   MetadataThread *m_metadataThread;
 };

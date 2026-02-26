@@ -58,15 +58,19 @@ void VideoThread::run() {
 
   /**
    * === RTSP 설정 ===
-   * - 실시간성을 위해 UDP 방식 유지 (사용자 요청)
-   * - 영상 끊김 완화를 위해 내부 버퍼 2로 설정
+   * - 실시간성 확보를 위해 최신 프레임을 유지하는 UDP 방식 우선
+   * - 내부 버퍼 최소화(0)
    */
-  // TCP 강제 옵션 해제 (qputenv 제거 혹은 주석 처리. 여기서는 제거합니다)
-  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 2);
+  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);
 
   // === RTSP 스트림 열기 ===
   if (!m_cap.open(url.toStdString(), cv::CAP_FFMPEG)) {
-    qDebug() << "Error: Cannot open stream" << url;
+    QString safeUrl = url;
+    const int atPos = safeUrl.indexOf('@');
+    if (safeUrl.startsWith(QStringLiteral("rtsp://")) && atPos > 0) {
+      safeUrl = QStringLiteral("rtsp://***:***") + safeUrl.mid(atPos);
+    }
+    emit logMessage(QString("Error: Cannot open stream: %1").arg(safeUrl));
     return;
   }
 
@@ -88,11 +92,11 @@ void VideoThread::run() {
       if (lastReadErrorLogMs == 0 ||
           (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
         if (suppressedReadErrors > 0) {
-          qDebug() << "Error: Cannot read frame (repeated"
-                   << suppressedReadErrors << "times)";
+          emit logMessage(QString("Error: Cannot read frame (repeated %1 times)")
+                              .arg(suppressedReadErrors));
           suppressedReadErrors = 0;
         } else {
-          qDebug() << "Error: Cannot read frame";
+          emit logMessage(QStringLiteral("Error: Cannot read frame"));
         }
         lastReadErrorLogMs = nowMs;
       } else {

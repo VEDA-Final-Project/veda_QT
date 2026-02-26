@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 /**
  * @brief 설정 관리 클래스
@@ -20,11 +21,12 @@ public:
   bool load(const QString &path = "config/settings.json");
 
   // Camera
-  QString cameraIp() const;
-  QString cameraUsername() const;
-  QString cameraPassword() const;
-  QString cameraProfile() const;
-  QString rtspUrl() const;
+  QStringList cameraKeys() const;
+  QString cameraIp(const QString &cameraKey = QString()) const;
+  QString cameraUsername(const QString &cameraKey = QString()) const;
+  QString cameraPassword(const QString &cameraKey = QString()) const;
+  QString cameraProfile(const QString &cameraKey = QString()) const;
+  QString rtspUrl(const QString &cameraKey = QString()) const;
 
   // Video
   int sourceWidth() const;
@@ -44,6 +46,7 @@ private:
   Config(const Config &) = delete;
   Config &operator=(const Config &) = delete;
 
+  QJsonObject m_root;
   QJsonObject m_camera;
   QJsonObject m_video;
   QJsonObject m_ocr;

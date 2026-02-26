@@ -1,4 +1,5 @@
 #include "cameramanager.h"
+#include "util/rtspurl.h"
 #include <QElapsedTimer>
 
 namespace {
@@ -21,6 +22,8 @@ CameraManager::CameraManager(QObject *parent) : QObject(parent) {
   // 캡처된 프레임을 그대로 외부(UI 등)로 전달
   connect(m_videoThread, &VideoThread::frameCaptured, this,
           &CameraManager::frameCaptured);
+  connect(m_videoThread, &VideoThread::logMessage, this,
+          &CameraManager::logMessage);
 
   // === MetadataThread → CameraManager 시그널 전달 ===
   // 객체 메타데이터 전달
@@ -38,9 +41,14 @@ CameraManager::CameraManager(QObject *parent) : QObject(parent) {
  */
 CameraManager::~CameraManager() { stop(); }
 
+void CameraManager::setConnectionInfo(
+    const CameraConnectionInfo &connectionInfo) {
+  m_connectionInfo = connectionInfo;
+}
+
 /**
  * @brief 카메라 스트림 시작
- * - 설정 로드
+ * - 주입된 연결 설정 사용
  * - RTSP 비디오 스트림 시작
  * - 메타데이터 스트림 시작
  */
@@ -50,23 +58,23 @@ void CameraManager::start() {
   if (isRunning())
     return;
 
-  // === 설정 파일 재로드 (실행 중 설정 변경 반영) ===
-  if (!Config::instance().load()) {
-    emit logMessage("Warning: could not reload config; using existing values.");
+  if (!m_connectionInfo.isValid()) {
+    emit logMessage("Error: camera connection info is not configured.");
+    return;
   }
 
-  // === 설정 값 가져오기 ===
-  const auto &cfg = Config::instance();
-  QString ip = cfg.cameraIp();
-  QString id = cfg.cameraUsername();
-  QString pw = cfg.cameraPassword();
-  QString profile = cfg.cameraProfile();
-  QString url = cfg.rtspUrl();
+  const QString url =
+      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
+                   m_connectionInfo.password, m_connectionInfo.profile);
 
   // === 시작 로그 출력 ===
   emit logMessage(
-      QString("Starting camera with IP=%1, profile=%2").arg(ip, profile));
-  emit logMessage(QString("RTSP URL: %1").arg(url));
+      QString("Starting camera[%1] with IP=%2, profile=%3")
+          .arg(m_connectionInfo.cameraId.isEmpty()
+                   ? QStringLiteral("camera-1")
+                   : m_connectionInfo.cameraId,
+               m_connectionInfo.ip, m_connectionInfo.profile));
+  emit logMessage(QString("RTSP URL: %1").arg(maskedRtspUrl(url)));
 
   // === 비디오 스트림 시작 ===
   m_videoThread->setUrl(url);
@@ -74,7 +82,9 @@ void CameraManager::start() {
 
   // === 메타데이터 스트림 시작 ===
   // 비디오와 동일한 profile 사용 → 싱크 유지
-  m_metadataThread->setConnectionInfo(ip, id, pw, profile);
+  m_metadataThread->setConnectionInfo(
+      m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
+      m_connectionInfo.profile);
   m_metadataThread->start();
 }
 

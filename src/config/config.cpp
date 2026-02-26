@@ -1,10 +1,57 @@
 #include "config.h"
+#include "util/rtspurl.h"
+#include <algorithm>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonValue>
 #include <QStringList>
+
+namespace {
+const QString kDefaultCameraKey = QStringLiteral("camera");
+
+QString normalizedCameraKey(const QString &cameraKey) {
+  const QString trimmed = cameraKey.trimmed();
+  return trimmed.isEmpty() ? kDefaultCameraKey : trimmed;
+}
+
+bool isCameraObject(const QJsonObject &root, const QString &key) {
+  return key.startsWith(QStringLiteral("camera")) && root.value(key).isObject();
+}
+
+QJsonObject cameraObjectForKey(const QJsonObject &root, const QString &cameraKey) {
+  const QString key = normalizedCameraKey(cameraKey);
+  if (root.value(key).isObject()) {
+    return root.value(key).toObject();
+  }
+  if (key != kDefaultCameraKey && root.value(kDefaultCameraKey).isObject()) {
+    return root.value(kDefaultCameraKey).toObject();
+  }
+  return QJsonObject();
+}
+
+QStringList cameraKeysFromRoot(const QJsonObject &root) {
+  QStringList keys;
+  if (root.value(kDefaultCameraKey).isObject()) {
+    keys.append(kDefaultCameraKey);
+  }
+
+  QStringList others;
+  for (const QString &key : root.keys()) {
+    if (key == kDefaultCameraKey) {
+      continue;
+    }
+    if (isCameraObject(root, key)) {
+      others.append(key);
+    }
+  }
+  std::sort(others.begin(), others.end());
+  keys.append(others);
+  return keys;
+}
+} // namespace
 
 /**
  * @brief Config 싱글톤 인스턴스 반환
@@ -93,7 +140,8 @@ bool Config::load(const QString &path)
 
     // === 루트 오브젝트에서 섹션별 설정 추출 ===
     QJsonObject root = doc.object();
-    m_camera = root["camera"].toObject();
+    m_root = root;
+    m_camera = cameraObjectForKey(root, kDefaultCameraKey);
     m_video  = root["video"].toObject();
     m_ocr    = root["ocr"].toObject();
     m_sync   = root["sync"].toObject();
@@ -107,48 +155,55 @@ bool Config::load(const QString &path)
  * Camera 관련 설정
  * ========================= */
 
+QStringList Config::cameraKeys() const
+{
+    const QStringList keys = cameraKeysFromRoot(m_root);
+    return keys.isEmpty() ? QStringList{kDefaultCameraKey} : keys;
+}
+
 /**
  * @brief 카메라 IP 주소
  */
-QString Config::cameraIp() const
+QString Config::cameraIp(const QString &cameraKey) const
 {
-    return m_camera["ip"].toString("192.168.0.23");
+    const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+    return (cameraObj.isEmpty() ? m_camera : cameraObj)["ip"].toString("192.168.0.23");
 }
 
 /**
  * @brief 카메라 로그인 ID
  */
-QString Config::cameraUsername() const
+QString Config::cameraUsername(const QString &cameraKey) const
 {
-    return m_camera["username"].toString("admin");
+    const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+    return (cameraObj.isEmpty() ? m_camera : cameraObj)["username"].toString("admin");
 }
 
 /**
  * @brief 카메라 로그인 비밀번호
  */
-QString Config::cameraPassword() const
+QString Config::cameraPassword(const QString &cameraKey) const
 {
-    return m_camera["password"].toString("");
+    const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+    return (cameraObj.isEmpty() ? m_camera : cameraObj)["password"].toString("");
 }
 
 /**
  * @brief RTSP 프로파일 경로
  */
-QString Config::cameraProfile() const
+QString Config::cameraProfile(const QString &cameraKey) const
 {
-    return m_camera["profile"].toString("profile2/media.smp");
+    const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+    return (cameraObj.isEmpty() ? m_camera : cameraObj)["profile"].toString("profile2/media.smp");
 }
 
 /**
  * @brief RTSP 접속 URL 생성
  */
-QString Config::rtspUrl() const
+QString Config::rtspUrl(const QString &cameraKey) const
 {
-    return QString("rtsp://%1:%2@%3/%4")
-    .arg(cameraUsername(),
-         cameraPassword(),
-         cameraIp(),
-         cameraProfile());
+    return buildRtspUrl(cameraIp(cameraKey), cameraUsername(cameraKey),
+                        cameraPassword(cameraKey), cameraProfile(cameraKey));
 }
 
 /* =========================
