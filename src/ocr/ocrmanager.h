@@ -7,20 +7,20 @@
 #include <opencv2/opencv.hpp>
 #include <tesseract/baseapi.h>
 
-
 // OCR helper that wraps Tesseract and is safe to use from a worker thread.
 // Not a QObject: avoid cross-thread QObject affinity issues.
 struct OcrResult
 {
-  QString text;               // Final accepted text (empty when undecided)
-  QString selectedCandidate;  // Best normalized candidate before final gating
+  QString text;              // Final accepted text (empty when undecided)
+  QString selectedCandidate; // Best normalized candidate before final gating
   int selectedScore = 0;
   int selectedConfidence = -1;
   bool confidenceTiebreakUsed = false;
-  QString dropReason;         // Non-empty when result is dropped/held
+  QString dropReason; // Non-empty when result is dropped/held
 };
 
-class OcrManager {
+class OcrManager
+{
 public:
   OcrManager();
   ~OcrManager();

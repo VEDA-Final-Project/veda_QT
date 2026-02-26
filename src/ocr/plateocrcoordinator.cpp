@@ -7,10 +7,96 @@
 namespace {
 constexpr int kVoteWindow = 5;
 constexpr int kMinMajorityVotes = 3;
-constexpr qint64 kLastGoodHoldMs = 2000;
+constexpr qint64 kLastGoodHoldMs = 5000;
 constexpr qint64 kStateCacheTtlMs = 120000;
 const QRegularExpression kFinalPlatePattern(
     QStringLiteral("^(?:\\d{2}|\\d{3})[가-힣]\\d{4}$"));
+
+bool isHangulSyllable(const QChar ch)
+{
+  const ushort u = ch.unicode();
+  return (u >= 0xAC00 && u <= 0xD7A3);
+}
+
+QString canonicalizePlateCandidate(const QString &candidate)
+{
+  const QString text = candidate.trimmed();
+  if (text.isEmpty())
+  {
+    return QString();
+  }
+  if (kFinalPlatePattern.match(text).hasMatch())
+  {
+    return text;
+  }
+  if (text.size() < 7 || text.size() > 12)
+  {
+    return QString();
+  }
+
+  int hangulIndex = -1;
+  int hangulCount = 0;
+  for (int i = 0; i < text.size(); ++i)
+  {
+    const QChar ch = text.at(i);
+    if (isHangulSyllable(ch))
+    {
+      hangulIndex = i;
+      ++hangulCount;
+      continue;
+    }
+    if (!ch.isDigit())
+    {
+      return QString();
+    }
+  }
+
+  if (hangulCount != 1 || hangulIndex <= 0 || hangulIndex >= (text.size() - 1))
+  {
+    return QString();
+  }
+
+  int left = hangulIndex - 1;
+  while (left >= 0 && text.at(left).isDigit())
+  {
+    --left;
+  }
+  int right = hangulIndex + 1;
+  while (right < text.size() && text.at(right).isDigit())
+  {
+    ++right;
+  }
+
+  const int beforeDigits = hangulIndex - (left + 1);
+  const int afterDigits = right - (hangulIndex + 1);
+  if (beforeDigits < 2 || afterDigits < 4)
+  {
+    return QString();
+  }
+
+  const QString hangul = text.mid(hangulIndex, 1);
+  const QString tail = text.mid(hangulIndex + 1, 4);
+
+  const int preferredHeadLen = (beforeDigits == 2) ? 2 : 3;
+  const int fallbackHeadLen = (preferredHeadLen == 3) ? 2 : 3;
+
+  auto buildPlate = [&](int headLen) -> QString {
+    if (beforeDigits < headLen)
+    {
+      return QString();
+    }
+    const QString head = text.mid(hangulIndex - headLen, headLen);
+    const QString plate = head + hangul + tail;
+    return kFinalPlatePattern.match(plate).hasMatch() ? plate : QString();
+  };
+
+  const QString preferred = buildPlate(preferredHeadLen);
+  if (!preferred.isEmpty())
+  {
+    return preferred;
+  }
+  return buildPlate(fallbackHeadLen);
+}
 } // namespace
 
 PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent)
@@ -111,9 +197,12 @@ QString PlateOcrCoordinator::resolveStableResult(int objectId,
   ObjectOcrState &state = m_objectStates[objectId];
   state.lastSeenMs = nowMs;
 
-  if (!rawResult.selectedCandidate.isEmpty())
+  const QString voteCandidate = !rawResult.text.isEmpty()
+                                    ? rawResult.text
+                                    : canonicalizePlateCandidate(rawResult.selectedCandidate);
+  if (!voteCandidate.isEmpty())
   {
-    state.recentVotes.enqueue(rawResult.selectedCandidate);
+    state.recentVotes.enqueue(voteCandidate);
     while (state.recentVotes.size() > kVoteWindow)
     {
       state.recentVotes.dequeue();

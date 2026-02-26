@@ -38,6 +38,14 @@ qt_add_executable(rtsp_test
     src/ocr/ocrmanager.h
     src/ocr/plateocrcoordinator.cpp
     src/ocr/plateocrcoordinator.h
+    src/ocr/preprocess/platepreprocessor.cpp
+    src/ocr/preprocess/platepreprocessor.h
+    src/ocr/recognition/tesseractrunner.cpp
+    src/ocr/recognition/tesseractrunner.h
+    src/ocr/postprocess/platepostprocessor.cpp
+    src/ocr/postprocess/platepostprocessor.h
+    src/ocr/debug/ocrdebugdumper.cpp
+    src/ocr/debug/ocrdebugdumper.h
     # Core
     src/config/config.cpp
     src/config/config.h
