@@ -23,6 +23,7 @@ struct VehicleState {
   bool manualOverride = false; // 수동으로 정보가 수정되었는지 여부
   qint64 firstSeenMs = 0;      // 최초 감지 시각 (ms)
   qint64 lastSeenMs = 0;       // 마지막 감지 시각 (ms)
+  QList<int> roiHistory; // 최근 N프레임 동안의 점유 상태 (히스테리시스 필터용)
 };
 
 /**
@@ -41,7 +42,7 @@ public:
   /**
    * @brief 새로운 메타데이터 프레임을 처리하여 차량 상태를 업데이트합니다.
    * @param objects AI가 감지한 객체 목록
-   * @param cropOffsetX AI 인식 좌표 공간 보정값
+   * @param cropOffsetX AI 인식 좌표 보정값
    * @param effectiveWidth 정규화를 위한 프레임 너비
    * @param sourceHeight 정규화를 위한 프레임 높이
    * @param nowMs 현재 시각 (ms)

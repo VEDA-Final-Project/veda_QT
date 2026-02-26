@@ -39,6 +39,11 @@ public:
   void setRoiService(const RoiService *roiService);
 
   /**
+   * @brief ROI 서비스 연결 (이름 조회용)
+   */
+  void setRoiService(const RoiService *roiService);
+
+  /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
    */
   void updateRoiPolygons(const QList<QPolygonF> &polygons);

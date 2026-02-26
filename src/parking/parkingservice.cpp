@@ -10,6 +10,12 @@ bool ParkingService::init(QString *errorMessage) {
 }
 
 void ParkingService::setTelegramApi(TelegramBotAPI *api) { m_telegram = api; }
+void ParkingService::setCameraKey(const QString &cameraKey) {
+  const QString trimmed = cameraKey.trimmed();
+  m_cameraKey = trimmed.isEmpty() ? QStringLiteral("camera") : trimmed;
+}
+
+QString ParkingService::cameraKey() const { return m_cameraKey; }
 
 void ParkingService::setRoiService(const RoiService *roiService) {
   m_roiService = roiService;
@@ -28,10 +34,9 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   QList<VehicleState> newEntries = m_tracker.update(
       objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
 
-  // 2. 새로 진입한 차량에 대해 OCR 요청
+  // 2. 새로 진입한 차량 이벤트 로깅
   for (const VehicleState &vs : newEntries) {
     if (!vs.ocrRequested) {
-      emit ocrRequested(vs.objectId);
       QString roiName = QString::number(vs.occupiedRoiIndex + 1);
       if (m_roiService && vs.occupiedRoiIndex >= 0 &&
           vs.occupiedRoiIndex < m_roiService->count()) {
@@ -39,10 +44,9 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
             m_roiService->records()[vs.occupiedRoiIndex]["rod_name"].toString(
                 roiName);
       }
-      emit logMessage(
-          QString("[Parking] Vehicle ID:%1 entered ROI '%2' — OCR requested")
-              .arg(vs.objectId)
-              .arg(roiName));
+      emit logMessage(QString("[Parking] Vehicle ID:%1 entered ROI '%2'")
+                          .arg(vs.objectId)
+                          .arg(roiName));
     }
   }
 
@@ -70,15 +74,19 @@ void ParkingService::processOcrResult(int objectId,
 }
 
 QVector<QJsonObject> ParkingService::recentLogs(int limit) const {
-  return m_repository.recentLogs(limit);
+  return m_repository.recentLogs(m_cameraKey, limit);
 }
 
 QVector<QJsonObject> ParkingService::searchByPlate(const QString &plate) const {
-  return m_repository.searchByPlate(plate);
+  return m_repository.searchByPlate(m_cameraKey, plate);
 }
 
 bool ParkingService::updatePlate(int recordId, const QString &newPlate) {
-  return m_repository.updatePlate(recordId, newPlate);
+  return m_repository.updatePlate(m_cameraKey, recordId, newPlate);
+}
+
+bool ParkingService::deleteLog(int recordId, QString *errorMessage) {
+  return m_repository.deleteLog(m_cameraKey, recordId, errorMessage);
 }
 
 void ParkingService::forceObjectData(int objectId, const QString &type,
@@ -120,7 +128,8 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
   const QDateTime now = QDateTime::currentDateTime();
 
   // DB에 이미 활성 레코드가 있는지 확인 (중복 입차 방지)
-  QJsonObject existing = m_repository.findActiveByPlate(vs.plateNumber);
+  QJsonObject existing =
+      m_repository.findActiveByPlate(m_cameraKey, vs.plateNumber);
   if (!existing.isEmpty()) {
     emit logMessage(QString("[Parking] %1 — already has active entry, skipping")
                         .arg(vs.plateNumber));
@@ -128,8 +137,8 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
   }
 
   // DB에 입차 기록 생성
-  int recordId =
-      m_repository.insertEntry(vs.plateNumber, vs.occupiedRoiIndex, now);
+  int recordId = m_repository.insertEntry(m_cameraKey, vs.plateNumber,
+                                          vs.occupiedRoiIndex, now);
   if (recordId >= 0) {
     QString roiName = QString::number(vs.occupiedRoiIndex + 1);
     if (m_roiService && vs.occupiedRoiIndex >= 0 &&
@@ -162,7 +171,8 @@ void ParkingService::handleDeparture(const VehicleState &vs) {
   const QDateTime now = QDateTime::currentDateTime();
 
   // DB에서 활성 레코드 찾아 출차 시각 업데이트
-  QJsonObject active = m_repository.findActiveByPlate(vs.plateNumber);
+  QJsonObject active =
+      m_repository.findActiveByPlate(m_cameraKey, vs.plateNumber);
   if (!active.isEmpty()) {
     int recordId = active["id"].toInt();
     m_repository.updateExit(recordId, now);

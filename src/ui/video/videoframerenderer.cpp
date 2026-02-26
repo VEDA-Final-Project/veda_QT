@@ -45,15 +45,12 @@ QList<QPolygon> scaleRoiPolygons(const QList<QPolygon> &roiPolygons,
     QPolygon scaledPolygon;
     scaledPolygon.reserve(polygon.size());
     for (const QPoint &pt : polygon) {
-      const int x =
-          qBound(0, static_cast<int>(pt.x() * sx), maxX);
-      const int y =
-          qBound(0, static_cast<int>(pt.y() * sy), maxY);
+      const int x = qBound(0, static_cast<int>(pt.x() * sx), maxX);
+      const int y = qBound(0, static_cast<int>(pt.y() * sy), maxY);
       scaledPolygon << QPoint(x, y);
     }
 
-    if (scaledPolygon.size() >= 3 &&
-        !scaledPolygon.boundingRect().isEmpty()) {
+    if (scaledPolygon.size() >= 3 && !scaledPolygon.boundingRect().isEmpty()) {
       scaledPolygons.append(scaledPolygon);
     }
   }
@@ -76,6 +73,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
                                    bool roiEnabled,
+                                   const QSet<int> &occupiedRoiIndices,
                                    QList<OcrRequest> *ocrRequests) const {
   if (targetSize.isEmpty()) {
     return frame;
@@ -175,21 +173,8 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
         continue;
       }
 
-      // ROI별 차량 점유 여부 판단 (50% 이상 점유 시 주차로 인식)
-      const QRegion singleRoiRegion(polygon, Qt::WindingFill);
-      const double roiArea = regionPixelArea(singleRoiRegion);
-      bool occupied = false;
-      for (const RenderCandidate &c : candidates) {
-        if (!c.obj.type.startsWith("Vehic"))
-          continue;
-        const QRegion intersection =
-            singleRoiRegion.intersected(QRegion(c.scaledRect));
-        const double interArea = regionPixelArea(intersection);
-        if (roiArea > 0 && (interArea / roiArea) >= 0.5) {
-          occupied = true;
-          break;
-        }
-      }
+      // VehicleTracker의 점유 판정 결과를 그대로 사용
+      bool occupied = occupiedRoiIndices.contains(i);
 
       // 점유 상태에 따라 색상 변경
       if (occupied) {
