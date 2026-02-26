@@ -9,24 +9,30 @@ namespace ocr::postprocess
 {
   namespace
   {
+    // 번호판 OCR은 한 줄/한 단어 두 모드를 모두 시도한다.
     constexpr tesseract::PageSegMode kPlatePageSegMode = tesseract::PSM_SINGLE_LINE;
     constexpr tesseract::PageSegMode kPlateAltPageSegMode = tesseract::PSM_SINGLE_WORD;
+    // 점수 차이가 작을 때 신뢰도로 동점 해소하는 임계값.
     constexpr int kScoreTieThreshold = 30;
 
+    // 최종 번호판 형식: 2~3자리 숫자 + 한글 1자 + 4자리 숫자
     const QRegularExpression kFinalPlatePattern(
         QStringLiteral("^(?:\\d{2}|\\d{3})[가-힣]\\d{4}$"));
 
+    // 차량 번호판 OCR에 허용할 문자 집합.
     const char kPlateWhitelist[] =
         "0123456789"
         "가나다라마거너더러머버서어저고노도로모보소"
         "오조구누두루무부수우주아바사자하허호";
 
+    // 중앙 글자 복구 단계에서 쓸 한글 전용 집합.
     const char kHangulWhitelist[] =
         "가나다라마거너더러머버서어저고노도로모보소"
         "오조구누두루무부수우주아바사자하허호";
 
     bool isHangulSyllable(const QChar ch)
     {
+      // UTF-16 코드 단위가 한글 음절 범위(가~힣)인지 판별.
       const ushort u = ch.unicode();
       return (u >= 0xAC00 && u <= 0xD7A3);
     }
@@ -61,6 +67,7 @@ namespace ocr::postprocess
       }
 
       api->SetPageSegMode(psm);
+      // 단일 채널(binary) 이미지를 직접 OCR 입력으로 전달.
       api->SetImage(binary.data, binary.cols, binary.rows, 1,
                     static_cast<int>(binary.step));
 
@@ -78,6 +85,7 @@ namespace ocr::postprocess
     void considerBestPatternCandidate(const OcrCandidate &candidate,
                                       const OcrCandidate **bestPattern)
     {
+      // 최종 번호판 정규식과 맞는 후보만 '패턴 우선 후보'로 고려한다.
       if (!kFinalPlatePattern.match(candidate.normalizedText).hasMatch())
       {
         return;
@@ -126,6 +134,7 @@ namespace ocr::postprocess
         return QString();
       }
 
+      // 번호판 중앙 영역(한글이 주로 위치하는 구간)을 잘라 별도 OCR 시도.
       const int x0 = std::clamp(static_cast<int>(std::lround(w * 0.24)), 0, w - 2);
       const int x1 = std::clamp(static_cast<int>(std::lround(w * 0.62)), x0 + 1, w);
       const int y0 = std::clamp(static_cast<int>(std::lround(h * 0.10)), 0, h - 2);
@@ -146,6 +155,7 @@ namespace ocr::postprocess
       }
 
       QString recoveredHangul;
+      // 극성이 다른 두 영상(binary/binary_inv)과 두 PSM을 모두 탐색한다.
       const cv::Mat probes[] = {binaryCrop, binaryInvCrop};
       const tesseract::PageSegMode probeModes[] = {
           tesseract::PSM_SINGLE_CHAR, tesseract::PSM_SINGLE_WORD};
@@ -206,6 +216,7 @@ namespace ocr::postprocess
 
   QString normalizePlateText(const QString &raw)
   {
+    // OCR 잡문자를 제거하고 숫자/한글 음절만 유지한다.
     QString normalized;
     normalized.reserve(raw.size());
     for (const QChar ch : raw)
@@ -228,11 +239,13 @@ namespace ocr::postprocess
     const int len = candidate.size();
     int score = 0;
 
+    // 정규식 일치 여부를 가장 큰 가중치로 부여한다.
     if (kFinalPlatePattern.match(candidate).hasMatch())
     {
       score += 1000;
     }
 
+    // 길이(7 또는 8)와 문자 구성(숫자/한글 분포)을 함께 평가한다.
     const int distanceTo7 = std::abs(len - 7);
     const int distanceTo8 = std::abs(len - 8);
     const int nearestDistance = std::min(distanceTo7, distanceTo8);
@@ -263,6 +276,7 @@ namespace ocr::postprocess
       score -= std::abs(hangulCount - 1) * 40;
     }
 
+    // 번호판 구조상 한글 위치(3번째 또는 4번째)에 보너스/패널티를 준다.
     const int hangulIndex = (len == 7) ? 2 : 3;
     if (len > hangulIndex)
     {
@@ -299,6 +313,7 @@ namespace ocr::postprocess
       ranked.push_back(&candidate);
     }
 
+    // 우선 score -> confidence -> 길이 순으로 정렬한다.
     std::sort(ranked.begin(), ranked.end(),
               [](const OcrCandidate *lhs, const OcrCandidate *rhs)
               {
@@ -316,6 +331,7 @@ namespace ocr::postprocess
     const OcrCandidate *primary = ranked.front();
     const OcrCandidate *secondary = (ranked.size() >= 2) ? ranked[1] : nullptr;
 
+    // 상위 두 후보 점수가 근소하면 confidence로 최종 순서를 조정한다.
     if (secondary)
     {
       const int scoreGap = std::abs(primary->score - secondary->score);
@@ -340,6 +356,7 @@ namespace ocr::postprocess
     out.selectedScore = primary->score;
     out.selectedConfidence = primary->confidence;
 
+    // 정규 패턴에 맞는 후보가 하나라도 있으면 그 후보를 최우선 채택한다.
     const OcrCandidate *bestPattern = nullptr;
     for (const OcrCandidate &candidate : candidates)
     {
@@ -355,6 +372,7 @@ namespace ocr::postprocess
       return out;
     }
 
+    // 최종 실패 시 상위 후보 요약을 dropReason에 남겨 디버깅에 활용한다.
     QStringList detail;
     const int detailCount = std::min(3, static_cast<int>(ranked.size()));
     for (int i = 0; i < detailCount; ++i)
@@ -397,6 +415,7 @@ namespace ocr::postprocess
       }
     }
 
+    // 이미 한글이 포함되어 있으면 복구 대상이 아니다(숫자-only 후보만 복구 시도).
     if (hangulCount > 0 || digitsOnly.size() < 6)
     {
       return QString();
@@ -408,6 +427,7 @@ namespace ocr::postprocess
       return QString();
     }
 
+    // 앞자리 2/3자리 두 경우를 모두 조합해 최종 패턴에 맞는 후보를 선택한다.
     QString best;
     int bestScore = std::numeric_limits<int>::min() / 4;
     const int headLens[] = {3, 2};

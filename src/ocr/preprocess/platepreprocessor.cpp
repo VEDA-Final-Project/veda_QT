@@ -11,7 +11,9 @@ namespace ocr::preprocess
 {
   namespace
   {
+    // OCR 입력을 확대해 작은 문자 인식률을 높인다.
     constexpr double kOcrUpscaleFactor = 2.0;
+    // 원근 보정 후보 탐색/필터링 기준값.
     constexpr int kPerspectiveMaxContours = 35;
     constexpr double kPerspectiveMinAreaRatio = 0.04;
     constexpr double kPerspectiveMaxAreaRatio = 0.95;
@@ -22,13 +24,15 @@ namespace ocr::preprocess
     constexpr int kPerspectiveMinRawHeight = 10;
     constexpr int kPerspectiveMinDstWidth = 160;
     constexpr int kPerspectiveMinDstHeight = 48;
-    constexpr double kPerspectiveMinAcceptScore = 95.0;
+    constexpr double kPerspectiveMinAcceptScore = 90.0;
     constexpr double kInvalidCandidateScore = -1e18;
+    // Otsu 결과가 과도하게 치우친 경우 adaptive threshold를 사용한다.
     constexpr int kAdaptiveBlockSize = 31;
     constexpr int kAdaptiveC = 7;
     constexpr double kAdaptiveWhiteRatioLo = 0.18;
     constexpr double kAdaptiveWhiteRatioHi = 0.82;
 
+    // 원근 보정 후보 한 건(사각형/점수/출력 크기) 정보.
     struct PerspectiveCandidate
     {
       std::vector<cv::Point2f> quad;
@@ -38,6 +42,7 @@ namespace ocr::preprocess
       bool fromMinAreaRect = false;
     };
 
+    // 원근 보정 탐색 전체 결과(최고 후보 + 채택 여부).
     struct PerspectiveSearchResult
     {
       PerspectiveCandidate best;
@@ -52,6 +57,7 @@ namespace ocr::preprocess
         return false;
       }
 
+      // OCR_FORCE_ADAPTIVE 환경변수로 강제 on/off 가능.
       const QString forceAdaptive =
           qEnvironmentVariable("OCR_FORCE_ADAPTIVE").trimmed().toLower();
       if (forceAdaptive == QStringLiteral("1") ||
@@ -75,6 +81,7 @@ namespace ocr::preprocess
 
       const double whiteRatio =
           static_cast<double>(cv::countNonZero(otsuBinary)) / total;
+      // 백색 비율이 너무 낮거나 높으면 Otsu 품질이 낮다고 보고 adaptive 사용.
       return (whiteRatio < kAdaptiveWhiteRatioLo ||
               whiteRatio > kAdaptiveWhiteRatioHi);
     }
@@ -94,6 +101,7 @@ namespace ocr::preprocess
 
       std::vector<cv::Point2f> out;
       out.reserve(4);
+      // 왜곡 행렬 계산 시 이미지 범위를 벗어난 점을 방지한다.
       for (const cv::Point2f &pt : quad)
       {
         const float x = std::clamp(pt.x, 0.0f, static_cast<float>(size.width - 1));
@@ -110,6 +118,7 @@ namespace ocr::preprocess
         return {};
       }
 
+      // 점들을 좌상/우상/우하/좌하(TL/TR/BR/BL) 순서로 정렬한다.
       int tl = 0;
       int tr = 0;
       int br = 0;
@@ -171,6 +180,7 @@ namespace ocr::preprocess
         contour.emplace_back(cvRound(pt.x), cvRound(pt.y));
       }
 
+      // 원근 보정 후보는 볼록 사각형이며 최소 면적을 가져야 한다.
       if (!cv::isContourConvex(contour))
       {
         return false;
@@ -194,6 +204,7 @@ namespace ocr::preprocess
         polygon.emplace_back(cvRound(pt.x), cvRound(pt.y));
       }
 
+      // 후보 내부의 에지 밀도를 계산해 문자/경계가 풍부한 사각형에 가중치를 준다.
       cv::Mat mask = cv::Mat::zeros(edges.size(), CV_8UC1);
       cv::fillConvexPoly(mask, polygon, cv::Scalar(255), cv::LINE_AA);
 
@@ -216,6 +227,7 @@ namespace ocr::preprocess
                                      const cv::Mat &edges, int *dstWidthOut,
                                      int *dstHeightOut)
     {
+      // 면적/비율/채움률 기준을 통과한 후보만 점수화한다.
       if (!isUsableQuad(orderedQuad) || imageSize.width <= 0 || imageSize.height <= 0)
       {
         return kInvalidCandidateScore;
@@ -280,6 +292,7 @@ namespace ocr::preprocess
       }
 
       const double edgeDensity = estimateEdgeDensityInQuad(edges, orderedQuad);
+      // 이상적인 번호판 형태(면적비/종횡비/채움/에지)와의 근접도를 가중합으로 점수화.
       const double areaScore =
           1.0 - std::min(1.0, std::abs(areaRatio - 0.22) / 0.22);
       const double aspectScore =
@@ -327,6 +340,7 @@ namespace ocr::preprocess
         score -= 10.0;
       }
 
+      // 동일 프레임에서 가장 높은 점수 후보만 유지한다.
       if (!result->hasCandidate || score > result->best.score)
       {
         result->hasCandidate = true;
@@ -347,8 +361,9 @@ namespace ocr::preprocess
       }
 
       cv::Mat blurred;
-      cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0.0);
+      cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0.0); //가우시안 블러
 
+      // 강/약 Canny를 합쳐 다양한 경계 강도에 대응한다.
       cv::Mat edgesStrong;
       cv::Canny(blurred, edgesStrong, 60, 180);
 
@@ -359,6 +374,8 @@ namespace ocr::preprocess
       cv::bitwise_or(edgesStrong, edgesSoft, edges);
 
       cv::Mat closed;
+
+      // 닫힘/팽창으로 끊긴 경계를 연결해 사각형 후보를 안정화한다.
       const cv::Mat closeKernel =
           cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7, 3));
       cv::morphologyEx(edges, closed, cv::MORPH_CLOSE, closeKernel);
@@ -374,14 +391,13 @@ namespace ocr::preprocess
         return result;
       }
 
-      std::sort(contours.begin(), contours.end(),
-                [](const std::vector<cv::Point> &lhs,
-                   const std::vector<cv::Point> &rhs)
-                {
-                  return std::abs(cv::contourArea(lhs)) >
-                         std::abs(cv::contourArea(rhs));
-                });
+      std::sort(contours.begin(), contours.end(), [](const std::vector<cv::Point> &lhs, const std::vector<cv::Point> &rhs)
+      {
+          return std::abs(cv::contourArea(lhs)) >
+          std::abs(cv::contourArea(rhs));
+      });
 
+      //contours가 너무 많으면 앞에서부터 N개만 남기고 잘라버리는 코드, kPerspectiveMaxContours:35개
       if (static_cast<int>(contours.size()) > kPerspectiveMaxContours)
       {
         contours.resize(kPerspectiveMaxContours);
@@ -402,6 +418,7 @@ namespace ocr::preprocess
         }
         const double boundingArea = static_cast<double>(bbox.area());
 
+        // 근사 사각형 후보(approxPolyDP) 우선 평가.
         const double perimeter = cv::arcLength(contour, true);
         if (perimeter > 0.0)
         {
@@ -422,6 +439,7 @@ namespace ocr::preprocess
           }
         }
 
+        // 보조로 minAreaRect 후보도 평가(점수에서 소폭 페널티 적용).
         const cv::RotatedRect minRect = cv::minAreaRect(contour);
         cv::Point2f minRectPts[4];
         minRect.points(minRectPts);
@@ -453,6 +471,7 @@ namespace ocr::preprocess
                       static_cast<float>(candidate.dstHeight - 1)),
           cv::Point2f(0.0f, static_cast<float>(candidate.dstHeight - 1))};
 
+      // 동일 변환으로 RGB/Gray를 함께 워프해 디버그와 OCR 기준을 일치시킨다.
       const cv::Mat transform = cv::getPerspectiveTransform(candidate.quad, dstQuad);
       cv::warpPerspective(srcRgb, *rectifiedRgb, transform,
                           cv::Size(candidate.dstWidth, candidate.dstHeight),
@@ -473,6 +492,7 @@ namespace ocr::preprocess
         return cv::Mat();
       }
 
+      // 선택된 사각형과 보정/적응형 이진화 상태를 오버레이로 시각화한다.
       cv::Mat overlay = roiRgb.clone();
       const int textThickness = std::max(1, overlay.rows / 220);
       const double textScale = std::max(0.45, overlay.rows / 520.0);
@@ -551,8 +571,6 @@ namespace ocr::preprocess
       return false;
     }
 
-    constexpr bool upscaleAfterWarp = true;
-
     cv::Mat perspectiveRgbInput = roiRgb;
 
     cv::Mat perspectiveGrayInput;
@@ -561,6 +579,7 @@ namespace ocr::preprocess
     const PerspectiveSearchResult perspective =
         findPerspectiveCandidate(perspectiveGrayInput);
 
+    // 원근 보정 실패 시에도 원본 ROI로 계속 진행하기 위해 기본값을 원본으로 둔다.
     cv::Mat rectifiedRgb = perspectiveRgbInput;
     cv::Mat rectifiedGray = perspectiveGrayInput;
     bool perspectiveApplied = false;
@@ -577,6 +596,7 @@ namespace ocr::preprocess
       }
     }
 
+    // 보정(또는 원본) 결과를 OCR 입력 크기로 확대한다.
     cv::Mat ocrRgb;
     cv::Mat ocrGray;
     cv::resize(rectifiedRgb, ocrRgb, cv::Size(), kOcrUpscaleFactor,
@@ -584,6 +604,7 @@ namespace ocr::preprocess
     cv::resize(rectifiedGray, ocrGray, cv::Size(), kOcrUpscaleFactor,
                kOcrUpscaleFactor, cv::INTER_CUBIC);
 
+    // 기본 OCR 입력은 Otsu 이진화 + 반전 영상 쌍을 사용한다.
     cv::Mat binary;
     cv::threshold(ocrGray, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
@@ -592,6 +613,7 @@ namespace ocr::preprocess
 
     cv::Mat adaptiveBinary;
     bool adaptiveUsed = false;
+    // Otsu 결과 품질이 불안정한 경우 adaptive threshold를 추가 생성한다.
     if (shouldUseAdaptiveThreshold(binary))
     {
       int blockSize = kAdaptiveBlockSize;
@@ -615,6 +637,7 @@ namespace ocr::preprocess
 
       if (blockSize >= 3)
       {
+        // adaptiveThreshold block size는 홀수/3 이상이어야 한다.
         cv::adaptiveThreshold(ocrGray, adaptiveBinary, 255,
                               cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY,
                               blockSize, kAdaptiveC);
@@ -622,6 +645,7 @@ namespace ocr::preprocess
       }
     }
 
+    // OCR 단계와 디버그 덤프에서 사용할 산출물을 한 번에 채운다.
     out->roiDebugRgb = perspectiveRgbInput;
     out->ocrGray = ocrGray;
     out->ocrRgb = ocrRgb;
@@ -629,7 +653,6 @@ namespace ocr::preprocess
     out->binaryInv = binaryInv;
     out->adaptiveBinary = adaptiveBinary;
     out->adaptiveUsed = adaptiveUsed;
-    out->upscaleAfterWarp = upscaleAfterWarp;
     out->perspectiveApplied = perspectiveApplied;
     out->quadDebug = buildQuadDebugOverlay(perspectiveRgbInput, perspective,
                                            perspectiveApplied, adaptiveUsed);
