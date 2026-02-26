@@ -13,6 +13,7 @@ struct CameraConnectionInfo {
   QString username;
   QString password;
   QString profile;
+  QString subProfile;
 
   bool isValid() const { return !ip.isEmpty() && !username.isEmpty(); }
 };
@@ -48,6 +49,8 @@ signals:
   void logMessage(const QString &msg);
 
 private:
+  void createThreads();
+
   CameraConnectionInfo m_connectionInfo;
   VideoThread *m_videoThread;
   MetadataThread *m_metadataThread;

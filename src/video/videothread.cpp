@@ -74,6 +74,12 @@ void VideoThread::run() {
     return;
   }
 
+  const double sourceFps = m_cap.get(cv::CAP_PROP_FPS);
+  qDebug() << "[Video] RTSP Source Native FPS for" << url << ":" << sourceFps;
+
+  qint64 frameCount = 0;
+  qint64 lastFpsTimeMs = QDateTime::currentMSecsSinceEpoch();
+
   // === 프레임 수신 루프 ===
   while (true) {
 
@@ -92,8 +98,9 @@ void VideoThread::run() {
       if (lastReadErrorLogMs == 0 ||
           (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
         if (suppressedReadErrors > 0) {
-          emit logMessage(QString("Error: Cannot read frame (repeated %1 times)")
-                              .arg(suppressedReadErrors));
+          emit logMessage(
+              QString("Error: Cannot read frame (repeated %1 times)")
+                  .arg(suppressedReadErrors));
           suppressedReadErrors = 0;
         } else {
           emit logMessage(QStringLiteral("Error: Cannot read frame"));
@@ -106,12 +113,21 @@ void VideoThread::run() {
       QThread::msleep(100);
       continue;
     }
+    const qint64 readEndMs = QDateTime::currentMSecsSinceEpoch();
 
-    // === 유효하지 않은 프레임 방어 ===
-    if (frame.empty())
+    frameCount++;
+    if (readEndMs - lastFpsTimeMs > 5000) {
+      double actualFps = (frameCount * 1000.0) / (readEndMs - lastFpsTimeMs);
+      qDebug() << "[Video] Incoming Frame Loop FPS for" << url << ":"
+               << actualFps;
+      frameCount = 0;
+      lastFpsTimeMs = readEndMs;
+    }
+
+    // === 메모리 보호: 빈 프레임 무시 ===
+    if (frame.empty()) {
       continue;
-
-    // === Zero-Copy 전송: clone()으로 독립 데이터 확보 ===
+    } // === Zero-Copy 전송: clone()으로 독립 데이터 확보 ===
     // OpenCV의 frame 버퍼 재사용을 유지하면서, UI에 넘길 독립 복사본을
     // 생성합니다. BGR → RGB 색상 변환은 UI 스레드에서 렌더링할 프레임에만
     // 수행합니다. (불필요한 변환 방지)
