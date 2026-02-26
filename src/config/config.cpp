@@ -9,7 +9,6 @@
 #include <QStringList>
 #include <algorithm>
 
-
 namespace {
 const QString kDefaultCameraKey = QStringLiteral("camera");
 
@@ -186,15 +185,6 @@ QString Config::cameraProfile(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
   return (cameraObj.isEmpty() ? m_camera : cameraObj)["profile"].toString(
       "profile2/media.smp");
-}
-
-/**
- * @brief RTSP 서브스트림 프로파일 경로 (듀얼뷰 렌더링 최적화용)
- */
-QString Config::cameraSubProfile(const QString &cameraKey) const {
-  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
-  return (cameraObj.isEmpty() ? m_camera : cameraObj)["subProfile"].toString(
-      "profile4/media.smp");
 }
 
 /**

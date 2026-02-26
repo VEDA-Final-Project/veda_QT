@@ -29,6 +29,9 @@ public:
   void shutdown();
 
 public slots:
+  bool eventFilter(QObject *obj, QEvent *event) override;
+  void onVideoWidgetResizedSlot();
+
   void connectSignals();
   void initRoiDb();
   void appendRoiStructuredLog(const QJsonObject &roiData);
@@ -73,11 +76,11 @@ private:
   void refreshRoiSelectorForTarget();
   void refreshZoneTableAllChannels();
   void applyViewModeUiState();
-  bool refreshCameraConnectionFromConfig(CameraManager *cameraManager,
-                                         const QString &cameraKey,
-                                         QString *resolvedKey = nullptr,
-                                         bool useSubstream = false,
-                                         bool reloadConfig = true);
+  bool refreshCameraConnectionFromConfig(
+      CameraManager *cameraManager, const QString &cameraKey,
+      QString *resolvedKey = nullptr, const QString &profileSuffix = QString(),
+      bool reloadConfig = true);
+  QString getBestProfileForWidth(int width) const;
   VideoWidget *videoWidgetForTarget(RoiTarget target) const;
   RoiService *roiServiceForTarget(RoiTarget target);
   const RoiService *roiServiceForTarget(RoiTarget target) const;
@@ -105,6 +108,9 @@ private:
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerPrimary;
   QElapsedTimer m_renderTimerSecondary;
+  QTimer *m_resizeDebounceTimer = nullptr;
+  QString m_currentProfilePrimary;
+  QString m_currentProfileSecondary;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

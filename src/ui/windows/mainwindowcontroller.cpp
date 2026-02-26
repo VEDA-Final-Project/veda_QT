@@ -11,15 +11,18 @@
 #include <QDebug>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEvent>
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRectF>
+#include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTableWidget> // User Table
+#include <QTimer>
 #include <algorithm>
 
 static void populateReidTable(QTableWidget *table,
@@ -61,12 +64,12 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   const int delayMs = Config::instance().defaultDelayMs();
   m_cameraSessionPrimary.setDelayMs(delayMs);
   m_cameraSessionSecondary.setDelayMs(delayMs);
-  refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
-                                    m_selectedCameraKeyPrimary,
-                                    &m_selectedCameraKeyPrimary, false, true);
+  refreshCameraConnectionFromConfig(
+      m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+      &m_selectedCameraKeyPrimary, QString(), true);
   refreshCameraConnectionFromConfig(
       m_cameraManagerSecondary, m_selectedCameraKeySecondary,
-      &m_selectedCameraKeySecondary, false, false);
+      &m_selectedCameraKeySecondary, QString(), false);
 
   // 통합 DB 초기화 (veda.db)
   const QString dbPath =
@@ -135,6 +138,18 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
 
+  m_resizeDebounceTimer = new QTimer(this);
+  m_resizeDebounceTimer->setSingleShot(true);
+  connect(m_resizeDebounceTimer, &QTimer::timeout, this,
+          &MainWindowController::onVideoWidgetResizedSlot);
+
+  if (m_ui.videoWidgetPrimary) {
+    m_ui.videoWidgetPrimary->installEventFilter(this);
+  }
+  if (m_ui.videoWidgetSecondary) {
+    m_ui.videoWidgetSecondary->installEventFilter(this);
+  }
+
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
   applyViewModeUiState();
@@ -142,6 +157,73 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
   m_renderTimerPrimary.start();
   m_renderTimerSecondary.start();
+}
+
+bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
+  if (event->type() == QEvent::Resize) {
+    if (obj == m_ui.videoWidgetPrimary || obj == m_ui.videoWidgetSecondary) {
+      m_resizeDebounceTimer->start(500); // 500ms debounce
+    }
+  }
+  return QObject::eventFilter(obj, event);
+}
+
+void MainWindowController::onVideoWidgetResizedSlot() {
+  if (m_viewMode == ViewMode::Single) {
+    if (m_ui.videoWidgetPrimary && m_cameraManagerPrimary &&
+        m_cameraManagerPrimary->isRunning()) {
+      int width = m_ui.videoWidgetPrimary->width();
+      QString bestProfile = getBestProfileForWidth(width);
+      if (bestProfile != m_currentProfilePrimary) {
+        onLogMessage(
+            QString("[Camera] 화면 크기 변경 감지 (A 채널 %1px) -> %2 적용")
+                .arg(width)
+                .arg(bestProfile));
+        m_currentProfilePrimary = bestProfile;
+        if (refreshCameraConnectionFromConfig(
+                m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+                &m_selectedCameraKeyPrimary, m_currentProfilePrimary, false)) {
+          m_cameraSessionPrimary.playOrRestart();
+        }
+      }
+    }
+  } else if (m_viewMode == ViewMode::Dual) {
+    if (m_ui.videoWidgetPrimary && m_cameraManagerPrimary &&
+        m_cameraManagerPrimary->isRunning()) {
+      int widthA = m_ui.videoWidgetPrimary->width();
+      QString bestProfileA = getBestProfileForWidth(widthA);
+      if (bestProfileA != m_currentProfilePrimary) {
+        onLogMessage(
+            QString("[Camera] 화면 크기 변경 감지 (A 채널 %1px) -> %2 적용")
+                .arg(widthA)
+                .arg(bestProfileA));
+        m_currentProfilePrimary = bestProfileA;
+        if (refreshCameraConnectionFromConfig(
+                m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+                &m_selectedCameraKeyPrimary, m_currentProfilePrimary, false)) {
+          m_cameraSessionPrimary.playOrRestart();
+        }
+      }
+    }
+    if (m_ui.videoWidgetSecondary && m_cameraManagerSecondary &&
+        m_cameraManagerSecondary->isRunning()) {
+      int widthB = m_ui.videoWidgetSecondary->width();
+      QString bestProfileB = getBestProfileForWidth(widthB);
+      if (bestProfileB != m_currentProfileSecondary) {
+        onLogMessage(
+            QString("[Camera] 화면 크기 변경 감지 (B 채널 %1px) -> %2 적용")
+                .arg(widthB)
+                .arg(bestProfileB));
+        m_currentProfileSecondary = bestProfileB;
+        if (refreshCameraConnectionFromConfig(
+                m_cameraManagerSecondary, m_selectedCameraKeySecondary,
+                &m_selectedCameraKeySecondary, m_currentProfileSecondary,
+                false)) {
+          m_cameraSessionSecondary.playOrRestart();
+        }
+      }
+    }
+  }
 }
 
 void MainWindowController::shutdown() {
@@ -414,11 +496,15 @@ QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
 }
 
 void MainWindowController::playCctv() {
-  const bool useSubstream = (m_viewMode == ViewMode::Dual);
+  QString profileA;
+  if (m_ui.videoWidgetPrimary) {
+    profileA = getBestProfileForWidth(m_ui.videoWidgetPrimary->width());
+    m_currentProfilePrimary = profileA;
+  }
 
   const bool primaryReady = refreshCameraConnectionFromConfig(
       m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
-      &m_selectedCameraKeyPrimary, useSubstream, true);
+      &m_selectedCameraKeyPrimary, profileA, true);
   if (!primaryReady) {
     onLogMessage("[Camera] 연결 설정이 올바르지 않습니다.");
     return;
@@ -433,9 +519,15 @@ void MainWindowController::playCctv() {
     return;
   }
 
+  QString profileB;
+  if (m_ui.videoWidgetSecondary) {
+    profileB = getBestProfileForWidth(m_ui.videoWidgetSecondary->width());
+    m_currentProfileSecondary = profileB;
+  }
+
   const bool secondaryReady = refreshCameraConnectionFromConfig(
       m_cameraManagerSecondary, m_selectedCameraKeySecondary,
-      &m_selectedCameraKeySecondary, useSubstream, false);
+      &m_selectedCameraKeySecondary, profileB, false);
   if (!secondaryReady) {
     onLogMessage(
         QString("[Camera] '%1' 연결 설정이 올바르지 않아 B 채널은 중지됩니다.")
@@ -550,7 +642,7 @@ void MainWindowController::onRoiTargetChanged(int index) {
 
 bool MainWindowController::refreshCameraConnectionFromConfig(
     CameraManager *cameraManager, const QString &cameraKey,
-    QString *resolvedKey, bool useSubstream, bool reloadConfig) {
+    QString *resolvedKey, const QString &profileSuffix, bool reloadConfig) {
   if (!cameraManager) {
     return false;
   }
@@ -569,12 +661,8 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
   connectionInfo.username = cfg.cameraUsername(selectedKey).trimmed();
   connectionInfo.password = cfg.cameraPassword(selectedKey);
 
-  // 듀얼 채널(ViewMode::Dual) 접근 시 저사양 서브스트림 프로파일 할당
-  if (useSubstream) {
-    connectionInfo.profile = cfg.cameraSubProfile(selectedKey).trimmed();
-    if (connectionInfo.profile.isEmpty()) {
-      connectionInfo.profile = QStringLiteral("profile4/media.smp");
-    }
+  if (!profileSuffix.isEmpty()) {
+    connectionInfo.profile = profileSuffix;
   } else {
     connectionInfo.profile = cfg.cameraProfile(selectedKey).trimmed();
     if (connectionInfo.profile.isEmpty()) {
@@ -592,6 +680,20 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
     *resolvedKey = selectedKey;
   }
   return true;
+}
+
+QString MainWindowController::getBestProfileForWidth(int width) const {
+  if (width >= 3840)
+    return QStringLiteral("profile2/media.smp"); // 3840x2160
+  if (width >= 3072)
+    return QStringLiteral("profile3/media.smp"); // 3072x1728
+  if (width >= 2560)
+    return QStringLiteral("profile4/media.smp"); // 2560x1440
+  if (width >= 1920)
+    return QStringLiteral("profile5/media.smp"); // 1920x1080
+  if (width >= 1280)
+    return QStringLiteral("profile6/media.smp"); // 1280x720
+  return QStringLiteral("profile7/media.smp");   // 640x360
 }
 
 void MainWindowController::onViewModeChanged(int index) {
@@ -655,9 +757,14 @@ void MainWindowController::onViewModeChanged(int index) {
       m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning();
 
   if (wasRunningPrimary || wasRunningSecondary) {
+    if (m_viewMode == ViewMode::Single && wasRunningSecondary) {
+      m_cameraSessionSecondary.stop();
+      m_currentProfileSecondary.clear();
+    }
     playCctv();
   } else if (m_viewMode == ViewMode::Single) {
     m_cameraSessionSecondary.stop();
+    m_currentProfileSecondary.clear();
   }
 }
 
@@ -695,11 +802,17 @@ void MainWindowController::onCameraPrimarySelectionChanged(int index) {
     refreshRoiSelectorForTarget();
   }
 
-  if (m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning() &&
-      refreshCameraConnectionFromConfig(
-          m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
-          &m_selectedCameraKeyPrimary, (m_viewMode == ViewMode::Dual))) {
-    m_cameraSessionPrimary.playOrRestart();
+  if (m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning()) {
+    QString profile =
+        m_ui.videoWidgetPrimary
+            ? getBestProfileForWidth(m_ui.videoWidgetPrimary->width())
+            : QString();
+    m_currentProfilePrimary = profile;
+    if (refreshCameraConnectionFromConfig(
+            m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+            &m_selectedCameraKeyPrimary, profile)) {
+      m_cameraSessionPrimary.playOrRestart();
+    }
   }
 }
 
@@ -740,11 +853,17 @@ void MainWindowController::onCameraSecondarySelectionChanged(int index) {
   if (m_viewMode != ViewMode::Dual) {
     return;
   }
-  if (m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning() &&
-      refreshCameraConnectionFromConfig(
-          m_cameraManagerSecondary, m_selectedCameraKeySecondary,
-          &m_selectedCameraKeySecondary, (m_viewMode == ViewMode::Dual))) {
-    m_cameraSessionSecondary.playOrRestart();
+  if (m_cameraManagerSecondary && m_cameraManagerSecondary->isRunning()) {
+    QString profile =
+        m_ui.videoWidgetSecondary
+            ? getBestProfileForWidth(m_ui.videoWidgetSecondary->width())
+            : QString();
+    m_currentProfileSecondary = profile;
+    if (refreshCameraConnectionFromConfig(
+            m_cameraManagerSecondary, m_selectedCameraKeySecondary,
+            &m_selectedCameraKeySecondary, profile)) {
+      m_cameraSessionSecondary.playOrRestart();
+    }
   }
 }
 

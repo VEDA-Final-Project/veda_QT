@@ -26,7 +26,6 @@ public:
   QString cameraUsername(const QString &cameraKey = QString()) const;
   QString cameraPassword(const QString &cameraKey = QString()) const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
-  QString cameraSubProfile(const QString &cameraKey = QString()) const;
   QString rtspUrl(const QString &cameraKey = QString()) const;
 
   // Video
