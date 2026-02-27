@@ -22,8 +22,10 @@
     "offsetX": 0
   },
   "ocr": {
-    "language": "kor",
-    "tessdataPath": "C:/vcpkg/installed/x64-windows/share/tessdata/"
+    "modelPath": "C:/Users/1-22/Downloads/rec.onnx",
+    "dictPath": "C:/Users/1-22/Downloads/dict.txt",
+    "inputWidth": 320,
+    "inputHeight": 48
   },
   "sync": {
     "defaultDelayMs": 100

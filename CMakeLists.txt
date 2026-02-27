@@ -15,6 +15,8 @@ qt_add_executable(rtsp_test
     src/ui/windows/mainwindow.cpp
     src/ui/windows/mainwindow.h
     src/ui/windows/mainwindowuirefs.h
+    src/ui/windows/loginpage.cpp
+    src/ui/windows/loginpage.h
     src/ui/windows/mainwindowcontroller.cpp
     src/ui/windows/mainwindowcontroller.h
     src/ui/windows/dbpanelcontroller.cpp
@@ -36,12 +38,13 @@ qt_add_executable(rtsp_test
     # OCR
     src/ocr/ocrmanager.cpp
     src/ocr/ocrmanager.h
+    src/ocr/ocrtypes.h
     src/ocr/plateocrcoordinator.cpp
     src/ocr/plateocrcoordinator.h
     src/ocr/preprocess/platepreprocessor.cpp
     src/ocr/preprocess/platepreprocessor.h
-    src/ocr/recognition/tesseractrunner.cpp
-    src/ocr/recognition/tesseractrunner.h
+    src/ocr/recognition/paddleocrunner.cpp
+    src/ocr/recognition/paddleocrunner.h
     src/ocr/postprocess/platepostprocessor.cpp
     src/ocr/postprocess/platepostprocessor.h
     src/ocr/debug/ocrdebugdumper.cpp
@@ -82,6 +85,7 @@ qt_add_executable(rtsp_test
     src/database/hardwarelogrepository.cpp
     src/database/hardwarelogrepository.h
     src/database/vehiclerepository.cpp
+    resources.qrc
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)
@@ -140,7 +144,6 @@ install(SCRIPT ${deploy_script})
 #
 # 또는 환경 변수로 개별 경로 지정 가능:
 #   - OPENCV_DIR: OpenCV 설치 경로
-#   - TESSERACT_DIR: Tesseract 설치 경로
 # ============================================================
 
 # OpenCV 패키지 찾기 (vcpkg 또는 환경 변수에서 자동 검사)
@@ -152,8 +155,66 @@ find_package(OpenCV REQUIRED)
 target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
 
-# Tesseract & Leptonica 찾기 (vcpkg에서 자동 검사)
-find_package(Tesseract REQUIRED)
-find_package(Leptonica REQUIRED)
+# ONNX Runtime 패키지 찾기 (vcpkg 또는 ONNXRUNTIME_ROOT 환경 변수)
+find_package(onnxruntime CONFIG QUIET)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Tesseract::libtesseract leptonica)
+if(TARGET onnxruntime::onnxruntime)
+    target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime::onnxruntime)
+elseif(TARGET onnxruntime)
+    target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime)
+else()
+    set(_onnxruntime_hints)
+
+    if(DEFINED ONNXRUNTIME_ROOT AND ONNXRUNTIME_ROOT)
+        list(APPEND _onnxruntime_hints "${ONNXRUNTIME_ROOT}")
+    endif()
+    if(DEFINED ENV{ONNXRUNTIME_ROOT} AND NOT "$ENV{ONNXRUNTIME_ROOT}" STREQUAL "")
+        list(APPEND _onnxruntime_hints "$ENV{ONNXRUNTIME_ROOT}")
+    endif()
+    if(DEFINED ENV{ONNXRUNTIME_DIR} AND NOT "$ENV{ONNXRUNTIME_DIR}" STREQUAL "")
+        list(APPEND _onnxruntime_hints "$ENV{ONNXRUNTIME_DIR}")
+    endif()
+    if(WIN32)
+        list(APPEND _onnxruntime_hints
+            "$ENV{USERPROFILE}/Downloads/onnxruntime-win-x64-1.24.2/onnxruntime-win-x64-1.24.2"
+            "$ENV{USERPROFILE}/Downloads/onnxruntime-win-x64-1.23.2/onnxruntime-win-x64-1.23.2"
+        )
+    endif()
+
+    list(REMOVE_DUPLICATES _onnxruntime_hints)
+
+    find_path(ONNXRUNTIME_INCLUDE_DIR
+        NAMES onnxruntime_cxx_api.h
+        HINTS ${_onnxruntime_hints}
+        PATH_SUFFIXES include
+    )
+
+    find_library(ONNXRUNTIME_LIBRARY
+        NAMES onnxruntime
+        HINTS ${_onnxruntime_hints}
+        PATH_SUFFIXES lib lib64
+    )
+
+    find_file(ONNXRUNTIME_DLL
+        NAMES onnxruntime.dll
+        HINTS ${_onnxruntime_hints}
+        PATH_SUFFIXES bin lib lib64
+    )
+
+    if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIBRARY)
+        target_include_directories(rtsp_test PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_LIBRARY})
+
+        if(ONNXRUNTIME_DLL)
+            add_custom_command(TARGET rtsp_test POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${ONNXRUNTIME_DLL}
+                        $<TARGET_FILE_DIR:rtsp_test>
+            )
+        endif()
+    else()
+        message(FATAL_ERROR
+            "ONNX Runtime package not found. Set ONNXRUNTIME_ROOT to the extracted folder "
+            "(it must contain include/onnxruntime_cxx_api.h and lib/onnxruntime.lib).")
+    endif()
+endif()

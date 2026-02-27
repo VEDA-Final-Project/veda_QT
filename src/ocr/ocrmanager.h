@@ -1,23 +1,11 @@
 #ifndef OCRMANAGER_H
 #define OCRMANAGER_H
 
+#include "ocr/ocrtypes.h"
+#include "ocr/recognition/paddleocrunner.h"
 #include <QImage>
 #include <QString>
-#include <leptonica/allheaders.h>
-#include <opencv2/opencv.hpp>
-#include <tesseract/baseapi.h>
-
-// OCR helper that wraps Tesseract and is safe to use from a worker thread.
-// Not a QObject: avoid cross-thread QObject affinity issues.
-struct OcrResult
-{
-  QString text;              // Final accepted text (empty when undecided)
-  QString selectedCandidate; // Best normalized candidate before final gating
-  int selectedScore = 0;
-  int selectedConfidence = -1;
-  bool confidenceTiebreakUsed = false;
-  QString dropReason; // Non-empty when result is dropped/held
-};
+#include <QStringList>
 
 class OcrManager
 {
@@ -25,12 +13,25 @@ public:
   OcrManager();
   ~OcrManager();
 
-  bool init(const QString &datapath = QString(), const QString &language = "eng");
+  bool init(const QString &modelPath = QString(),
+            const QString &dictPath = QString(), int inputWidth = 320,
+            int inputHeight = 48);
+
   OcrResult performOcrDetailed(const QImage &image);
   QString performOcr(const QImage &image);
 
 private:
-  tesseract::TessBaseAPI *m_tessApi;
+  static QString findFirstFileRecursively(const QString &rootPath,
+                                          const QStringList &filters);
+  static QString resolveFilePath(const QString &pathOrDir,
+                                 const QStringList &filters);
+  QString resolveModelPath(const QString &modelPath) const;
+  QString resolveDictionaryPath(const QString &dictPath,
+                                const QString &resolvedModelPath) const;
+
+  ocr::recognition::PaddleOcrRunner m_runner;
+  int m_inputWidth = 320;
+  int m_inputHeight = 48;
 };
 
 #endif // OCRMANAGER_H
