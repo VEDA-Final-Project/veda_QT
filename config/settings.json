@@ -4,7 +4,6 @@
     "username": "admin",
     "password": "5hanwha%21",
     "profile": "profile2/media.smp",
-    "ocrProfile": "profile2/media.smp",
     "subProfile": "profile4/media.smp"
   },
   "camera2": {
@@ -12,7 +11,6 @@
     "username": "admin",
     "password": "5hanwha%21",
     "profile": "profile2/media.smp",
-    "ocrProfile": "profile2/media.smp",
     "subProfile": "profile4/media.smp"
   },
   "video": {
@@ -25,8 +23,7 @@
   },
   "ocr": {
     "language": "kor",
-    "tessdataPath": "C:/vcpkg/installed/x64-windows/share/tessdata/",
-    "dedicatedStreamEnabled": true
+    "tessdataPath": "C:/vcpkg/installed/x64-windows/share/tessdata/"
   },
   "sync": {
     "defaultDelayMs": 100

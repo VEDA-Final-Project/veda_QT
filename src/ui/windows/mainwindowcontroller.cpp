@@ -24,66 +24,6 @@
 #include <QTableWidget> // User Table
 #include <QTimer>
 #include <algorithm>
-#include <opencv2/imgproc.hpp>
-
-namespace {
-constexpr qint64 kOcrStreamStaleThresholdMs = 120;
-constexpr int kOcrStreamMinIntervalMs = 33;
-
-QRect projectObjectRectToFrame(const ObjectInfo &obj, const int frameWidth,
-                               const int frameHeight) {
-  if (frameWidth <= 0 || frameHeight <= 0) {
-    return QRect();
-  }
-
-  const auto &cfg = Config::instance();
-  const double sourceHeight = static_cast<double>(cfg.sourceHeight());
-  const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
-  if (sourceHeight <= 0.0 || effectiveWidth <= 0.0) {
-    return QRect();
-  }
-
-  const QRectF &nsRect = obj.rect;
-  const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
-  const double srcX = ((nsRect.x() - cropOffsetX) / effectiveWidth) * frameWidth;
-  const double srcY = (nsRect.y() / sourceHeight) * frameHeight;
-  const double srcW = (nsRect.width() / effectiveWidth) * frameWidth;
-  const double srcH = (nsRect.height() / sourceHeight) * frameHeight;
-
-  return QRect(static_cast<int>(srcX), static_cast<int>(srcY),
-               static_cast<int>(srcW), static_cast<int>(srcH));
-}
-
-void requestOcrFromFrame(const cv::Mat &frameBgr, const QList<ObjectInfo> &objects,
-                         PlateOcrCoordinator *coordinator) {
-  if (!coordinator || frameBgr.empty() || objects.isEmpty()) {
-    return;
-  }
-
-  const QRect frameRect(0, 0, frameBgr.cols, frameBgr.rows);
-  for (const ObjectInfo &obj : objects) {
-    if (obj.id < 0 || obj.type != QStringLiteral("LicensePlate")) {
-      continue;
-    }
-
-    const QRect projected = projectObjectRectToFrame(obj, frameBgr.cols, frameBgr.rows);
-    const QRect safeRect = projected.intersected(frameRect);
-    if (safeRect.width() <= 1 || safeRect.height() <= 1) {
-      continue;
-    }
-
-    const cv::Rect roi(safeRect.x(), safeRect.y(), safeRect.width(), safeRect.height());
-    const cv::Mat cropBgr = frameBgr(roi);
-
-    cv::Mat cropRgb;
-    cv::cvtColor(cropBgr, cropRgb, cv::COLOR_BGR2RGB);
-    const QImage cropImage(cropRgb.data, cropRgb.cols, cropRgb.rows,
-                           static_cast<int>(cropRgb.step), QImage::Format_RGB888);
-    coordinator->requestOcr(obj.id, cropImage.copy());
-  }
-}
-
-} // namespace
 
 static void populateReidTable(QTableWidget *table,
                               const QList<VehicleState> &vehicleStates,
@@ -96,8 +36,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   // (QObject parent 관계로 MainWindow 종료 시 함께 정리됨)
   m_cameraManagerPrimary = new CameraManager(this);
   m_cameraManagerSecondary = new CameraManager(this);
-  m_cameraManagerPrimaryOcr = new CameraManager(this);
-  m_cameraManagerSecondaryOcr = new CameraManager(this);
   m_ocrCoordinatorPrimary = new PlateOcrCoordinator(this);
   m_ocrCoordinatorSecondary = new PlateOcrCoordinator(this);
   m_telegramApi = new TelegramBotAPI(this);
@@ -123,25 +61,15 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   // 세션 서비스는 "카메라 제어 + 메타데이터 지연 동기화"를 묶는 파사드 역할.
   m_cameraSessionPrimary.setCameraManager(m_cameraManagerPrimary);
   m_cameraSessionSecondary.setCameraManager(m_cameraManagerSecondary);
-  m_cameraSessionPrimaryOcr.setCameraManager(m_cameraManagerPrimaryOcr);
-  m_cameraSessionSecondaryOcr.setCameraManager(m_cameraManagerSecondaryOcr);
   const int delayMs = Config::instance().defaultDelayMs();
   m_cameraSessionPrimary.setDelayMs(delayMs);
   m_cameraSessionSecondary.setDelayMs(delayMs);
-  m_cameraSessionPrimaryOcr.setDelayMs(delayMs);
-  m_cameraSessionSecondaryOcr.setDelayMs(delayMs);
   refreshCameraConnectionFromConfig(
       m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
       &m_selectedCameraKeyPrimary, QString(), true);
   refreshCameraConnectionFromConfig(
       m_cameraManagerSecondary, m_selectedCameraKeySecondary,
       &m_selectedCameraKeySecondary, QString(), false);
-  refreshCameraConnectionFromConfig(
-      m_cameraManagerPrimaryOcr, m_selectedCameraKeyPrimary, nullptr,
-      Config::instance().cameraOcrProfile(m_selectedCameraKeyPrimary), false);
-  refreshCameraConnectionFromConfig(
-      m_cameraManagerSecondaryOcr, m_selectedCameraKeySecondary, nullptr,
-      Config::instance().cameraOcrProfile(m_selectedCameraKeySecondary), false);
 
   // 통합 DB 초기화 (veda.db)
   const QString dbPath =
@@ -229,8 +157,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
   m_renderTimerPrimary.start();
   m_renderTimerSecondary.start();
-  m_ocrRenderTimerPrimary.start();
-  m_ocrRenderTimerSecondary.start();
 }
 
 bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
@@ -316,8 +242,6 @@ void MainWindowController::shutdown() {
   }
   m_cameraSessionPrimary.stop();
   m_cameraSessionSecondary.stop();
-  m_cameraSessionPrimaryOcr.stop();
-  m_cameraSessionSecondaryOcr.stop();
   if (m_rpiPanelController) {
     m_rpiPanelController->shutdown();
   }
@@ -418,20 +342,6 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onFrameCapturedSecondary);
   connect(m_cameraManagerSecondary, &CameraManager::logMessage, this,
           &MainWindowController::onLogMessage);
-  connect(m_cameraManagerPrimaryOcr, &CameraManager::metadataReceived, this,
-          &MainWindowController::onMetadataReceivedPrimaryOcr);
-  connect(m_cameraManagerPrimaryOcr, &CameraManager::frameCaptured, this,
-          &MainWindowController::onFrameCapturedPrimaryOcr);
-  connect(m_cameraManagerPrimaryOcr, &CameraManager::logMessage, this,
-          [this](const QString &msg)
-          { onLogMessage(QString("[OCR-Stream][A] %1").arg(msg)); });
-  connect(m_cameraManagerSecondaryOcr, &CameraManager::metadataReceived, this,
-          &MainWindowController::onMetadataReceivedSecondaryOcr);
-  connect(m_cameraManagerSecondaryOcr, &CameraManager::frameCaptured, this,
-          &MainWindowController::onFrameCapturedSecondaryOcr);
-  connect(m_cameraManagerSecondaryOcr, &CameraManager::logMessage, this,
-          [this](const QString &msg)
-          { onLogMessage(QString("[OCR-Stream][B] %1").arg(msg)); });
   connect(m_ocrCoordinatorPrimary, &PlateOcrCoordinator::ocrReady, this,
           &MainWindowController::onOcrResultPrimary);
   connect(m_ocrCoordinatorSecondary, &PlateOcrCoordinator::ocrReady, this,
@@ -589,14 +499,6 @@ QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
 }
 
 void MainWindowController::playCctv() {
-  const bool useDedicatedOcr = Config::instance().ocrDedicatedStreamEnabled();
-  if (m_ui.videoWidgetPrimary) {
-    m_ui.videoWidgetPrimary->setOcrRequestEnabled(!useDedicatedOcr);
-  }
-  if (m_ui.videoWidgetSecondary) {
-    m_ui.videoWidgetSecondary->setOcrRequestEnabled(!useDedicatedOcr);
-  }
-
   QString profileA;
   if (m_ui.videoWidgetPrimary) {
     profileA = getBestProfileForSize(m_ui.videoWidgetPrimary->size());
@@ -614,27 +516,9 @@ void MainWindowController::playCctv() {
     m_parkingServicePrimary->setCameraKey(m_selectedCameraKeyPrimary);
   }
   m_cameraSessionPrimary.playOrRestart();
-  if (useDedicatedOcr) {
-    const QString ocrProfileA =
-        Config::instance().cameraOcrProfile(m_selectedCameraKeyPrimary);
-    const bool ocrPrimaryReady = refreshCameraConnectionFromConfig(
-        m_cameraManagerPrimaryOcr, m_selectedCameraKeyPrimary, nullptr,
-        ocrProfileA, false);
-    if (ocrPrimaryReady) {
-      m_cameraSessionPrimaryOcr.playOrRestart();
-    } else {
-      onLogMessage(QString("[OCR-Stream][A] '%1' 연결 설정이 올바르지 않아 OCR "
-                          "전용 스트림은 중지됩니다.")
-                       .arg(m_selectedCameraKeyPrimary));
-      m_cameraSessionPrimaryOcr.stop();
-    }
-  } else {
-    m_cameraSessionPrimaryOcr.stop();
-  }
 
   if (m_viewMode == ViewMode::Single) {
     m_cameraSessionSecondary.stop();
-    m_cameraSessionSecondaryOcr.stop();
     return;
   }
 
@@ -659,23 +543,6 @@ void MainWindowController::playCctv() {
   }
 
   m_cameraSessionSecondary.playOrRestart();
-  if (useDedicatedOcr) {
-    const QString ocrProfileB =
-        Config::instance().cameraOcrProfile(m_selectedCameraKeySecondary);
-    const bool ocrSecondaryReady = refreshCameraConnectionFromConfig(
-        m_cameraManagerSecondaryOcr, m_selectedCameraKeySecondary, nullptr,
-        ocrProfileB, false);
-    if (ocrSecondaryReady) {
-      m_cameraSessionSecondaryOcr.playOrRestart();
-    } else {
-      onLogMessage(QString("[OCR-Stream][B] '%1' 연결 설정이 올바르지 않아 OCR "
-                          "전용 스트림은 중지됩니다.")
-                       .arg(m_selectedCameraKeySecondary));
-      m_cameraSessionSecondaryOcr.stop();
-    }
-  } else {
-    m_cameraSessionSecondaryOcr.stop();
-  }
 }
 
 void MainWindowController::refreshCameraSelectors() {
@@ -897,13 +764,11 @@ void MainWindowController::onViewModeChanged(int index) {
   if (wasRunningPrimary || wasRunningSecondary) {
     if (m_viewMode == ViewMode::Single && wasRunningSecondary) {
       m_cameraSessionSecondary.stop();
-      m_cameraSessionSecondaryOcr.stop();
       m_currentProfileSecondary.clear();
     }
     playCctv();
   } else if (m_viewMode == ViewMode::Single) {
     m_cameraSessionSecondary.stop();
-    m_cameraSessionSecondaryOcr.stop();
     m_currentProfileSecondary.clear();
   }
 }
@@ -952,17 +817,6 @@ void MainWindowController::onCameraPrimarySelectionChanged(int index) {
             m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
             &m_selectedCameraKeyPrimary, profile)) {
       m_cameraSessionPrimary.playOrRestart();
-    }
-  }
-
-  if (Config::instance().ocrDedicatedStreamEnabled() && m_cameraManagerPrimaryOcr &&
-      m_cameraManagerPrimaryOcr->isRunning()) {
-    const QString ocrProfile =
-        Config::instance().cameraOcrProfile(m_selectedCameraKeyPrimary);
-    if (refreshCameraConnectionFromConfig(
-            m_cameraManagerPrimaryOcr, m_selectedCameraKeyPrimary, nullptr,
-            ocrProfile, false)) {
-      m_cameraSessionPrimaryOcr.playOrRestart();
     }
   }
 }
@@ -1016,17 +870,6 @@ void MainWindowController::onCameraSecondarySelectionChanged(int index) {
       m_cameraSessionSecondary.playOrRestart();
     }
   }
-
-  if (Config::instance().ocrDedicatedStreamEnabled() &&
-      m_cameraManagerSecondaryOcr && m_cameraManagerSecondaryOcr->isRunning()) {
-    const QString ocrProfile =
-        Config::instance().cameraOcrProfile(m_selectedCameraKeySecondary);
-    if (refreshCameraConnectionFromConfig(
-            m_cameraManagerSecondaryOcr, m_selectedCameraKeySecondary, nullptr,
-            ocrProfile, false)) {
-      m_cameraSessionSecondaryOcr.playOrRestart();
-    }
-  }
 }
 
 void MainWindowController::updateObjectFilter(
@@ -1036,12 +879,6 @@ void MainWindowController::updateObjectFilter(
   }
   if (m_cameraManagerSecondary) {
     m_cameraManagerSecondary->setDisabledObjectTypes(disabledTypes);
-  }
-  if (m_cameraManagerPrimaryOcr) {
-    m_cameraManagerPrimaryOcr->setDisabledObjectTypes(disabledTypes);
-  }
-  if (m_cameraManagerSecondaryOcr) {
-    m_cameraManagerSecondaryOcr->setDisabledObjectTypes(disabledTypes);
   }
 }
 
@@ -1335,63 +1172,6 @@ void MainWindowController::onMetadataReceivedSecondary(
                       m_parkingServiceSecondary->activeVehicles(), staleMs,
                       showStaleObjects);
   }
-}
-
-void MainWindowController::onMetadataReceivedPrimaryOcr(
-    const QList<ObjectInfo> &objects) {
-  m_cameraSessionPrimaryOcr.pushMetadata(objects,
-                                         QDateTime::currentMSecsSinceEpoch());
-}
-
-void MainWindowController::onMetadataReceivedSecondaryOcr(
-    const QList<ObjectInfo> &objects) {
-  m_cameraSessionSecondaryOcr.pushMetadata(objects,
-                                           QDateTime::currentMSecsSinceEpoch());
-}
-
-void MainWindowController::onFrameCapturedPrimaryOcr(
-    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
-  if (!Config::instance().ocrDedicatedStreamEnabled() || !m_ocrCoordinatorPrimary ||
-      !framePtr || framePtr->empty()) {
-    return;
-  }
-
-  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > kOcrStreamStaleThresholdMs) {
-    return;
-  }
-  if (m_ocrRenderTimerPrimary.isValid() &&
-      m_ocrRenderTimerPrimary.elapsed() < kOcrStreamMinIntervalMs) {
-    return;
-  }
-  m_ocrRenderTimerPrimary.restart();
-
-  const QList<ObjectInfo> readyObjects =
-      m_cameraSessionPrimaryOcr.consumeReadyMetadata(nowMs);
-  requestOcrFromFrame(*framePtr, readyObjects, m_ocrCoordinatorPrimary);
-}
-
-void MainWindowController::onFrameCapturedSecondaryOcr(
-    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
-  if (!Config::instance().ocrDedicatedStreamEnabled() ||
-      m_viewMode != ViewMode::Dual || !m_ocrCoordinatorSecondary || !framePtr ||
-      framePtr->empty()) {
-    return;
-  }
-
-  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > kOcrStreamStaleThresholdMs) {
-    return;
-  }
-  if (m_ocrRenderTimerSecondary.isValid() &&
-      m_ocrRenderTimerSecondary.elapsed() < kOcrStreamMinIntervalMs) {
-    return;
-  }
-  m_ocrRenderTimerSecondary.restart();
-
-  const QList<ObjectInfo> readyObjects =
-      m_cameraSessionSecondaryOcr.consumeReadyMetadata(nowMs);
-  requestOcrFromFrame(*framePtr, readyObjects, m_ocrCoordinatorSecondary);
 }
 
 void MainWindowController::onFrameCapturedPrimary(
