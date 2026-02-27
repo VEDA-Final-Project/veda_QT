@@ -312,6 +312,7 @@ PaddleOcrRunner::collectCandidates(
 bool PaddleOcrRunner::loadDictionary(const QString &dictPath, QString *errorOut)
 {
   m_dictionary.clear();
+  m_dictionary.push_back(QString());
 
   const QFileInfo dictInfo(dictPath);
   if (!dictPath.trimmed().isEmpty() && dictInfo.exists() && dictInfo.isFile())
@@ -338,7 +339,7 @@ bool PaddleOcrRunner::loadDictionary(const QString &dictPath, QString *errorOut)
     }
     file.close();
 
-    if (!m_dictionary.empty())
+    if (m_dictionary.size() > 1)
     {
       return true;
     }
@@ -365,7 +366,8 @@ std::vector<QString> PaddleOcrRunner::fallbackDictionary()
                      "구누두루무부수우주");
 
   std::vector<QString> dictionary;
-  dictionary.reserve(chars.size());
+  dictionary.reserve(chars.size() + 1);
+  dictionary.push_back(QString());
   for (const QChar ch : chars)
   {
     dictionary.push_back(QString(ch));
@@ -444,8 +446,8 @@ postprocess::OcrCandidate PaddleOcrRunner::runOcrOnImage(const cv::Mat &imageRgb
 
   cv::Mat scores(timeSteps, classCount, CV_32F, const_cast<float *>(raw));
   out.rawText = decodeCtcGreedy(scores, classCount, &out.confidence);
-  out.normalizedText = selectBestNormalizedCandidate(out.rawText);
-  out.score = postprocess::platePlausibilityScore(out.normalizedText);
+  out.normalizedText = normalizeSingleCandidate(out.rawText);
+  out.score = 0;
   return out;
 }
 
@@ -488,8 +490,8 @@ QString PaddleOcrRunner::decodeCtcGreedy(const cv::Mat &scores,
     return QString();
   }
 
-  const int blankIndex = classCount - 1;
-  int prevIndex = -1;
+  const int blankIndex = 0;
+  int prevIndex = blankIndex;
 
   QString decoded;
   double confSum = 0.0;
@@ -534,25 +536,9 @@ QString PaddleOcrRunner::decodeCtcGreedy(const cv::Mat &scores,
   return decoded;
 }
 
-QString PaddleOcrRunner::selectBestNormalizedCandidate(const QString &raw)
+QString PaddleOcrRunner::normalizeSingleCandidate(const QString &raw)
 {
-  const QString strict = postprocess::canonicalizePlateCandidate(
-      postprocess::normalizePlateText(raw));
-  const QString corrected = postprocess::canonicalizePlateCandidate(
-      postprocess::normalizePlateTextWithConfusableFix(raw));
-
-  if (strict.isEmpty())
-  {
-    return corrected;
-  }
-  if (corrected.isEmpty())
-  {
-    return strict;
-  }
-
-  const int strictScore = postprocess::platePlausibilityScore(strict);
-  const int correctedScore = postprocess::platePlausibilityScore(corrected);
-  return (correctedScore > strictScore) ? corrected : strict;
+  return postprocess::normalizePlateTextWithConfusableFix(raw);
 }
 
 } // namespace ocr::recognition

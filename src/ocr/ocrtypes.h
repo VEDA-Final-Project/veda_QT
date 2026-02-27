@@ -10,7 +10,6 @@ struct OcrResult
   QString selectedCandidate;
   int selectedScore = 0;
   int selectedConfidence = -1;
-  bool confidenceTiebreakUsed = false;
   QString dropReason;
 };
 

@@ -8,7 +8,12 @@ namespace ocr::postprocess
 {
 namespace
 {
-constexpr int kScoreTieThreshold = 35;
+const QString kAllowedPlateHangul = QStringLiteral(
+    "가나다라마바사아자하"
+    "거너더러머버서어저허"
+    "고노도로모보소오조호"
+    "구누두루무부수우주");
+
 const QRegularExpression kFinalPlatePattern(
     QStringLiteral("^(?:\\d{2}|\\d{3})[가-힣]\\d{4}$"));
 
@@ -16,6 +21,66 @@ bool isHangulSyllable(const QChar ch)
 {
   const ushort u = ch.unicode();
   return (u >= 0xAC00 && u <= 0xD7A3);
+}
+
+bool isAllowedPlateHangul(const QChar ch)
+{
+  return kAllowedPlateHangul.contains(ch);
+}
+
+QChar normalizePlateHangul(const QChar ch)
+{
+  if (!isHangulSyllable(ch))
+  {
+    return QChar();
+  }
+
+  const ushort base = 0xAC00;
+  const int syllableIndex = static_cast<int>(ch.unicode()) - base;
+  const int jongseong = syllableIndex % 28;
+  const QChar normalized =
+      (jongseong == 0) ? ch : QChar(static_cast<char16_t>(ch.unicode() - jongseong));
+  if (isAllowedPlateHangul(normalized))
+  {
+    return normalized;
+  }
+
+  return QChar();
+}
+
+QChar confusableToPlateHangul(const QChar ch)
+{
+  switch (ch.unicode())
+  {
+  case 'u':
+  case 'U':
+  case 'n':
+  case 'N':
+    return QChar(u'나');
+  case 'a':
+  case 'A':
+    return QChar(u'아');
+  case 'g':
+  case 'G':
+    return QChar(u'가');
+  case 'd':
+    return QChar(u'다');
+  case 'm':
+  case 'M':
+    return QChar(u'마');
+  case 'b':
+    return QChar(u'바');
+  case 's':
+    return QChar(u'사');
+  case 'j':
+  case 'J':
+    return QChar(u'자');
+  case 'h':
+  case 'H':
+    return QChar(u'하');
+  default:
+    return QChar();
+  }
 }
 
 QChar confusableToDigit(const QChar ch)
@@ -36,8 +101,6 @@ QChar confusableToDigit(const QChar ch)
   case 'q':
   case 'D':
   case 'd':
-  case 'U':
-  case 'u':
     return QChar('0');
   case 'S':
   case 's':
@@ -56,22 +119,6 @@ QChar confusableToDigit(const QChar ch)
   }
 }
 
-void considerBestPatternCandidate(const OcrCandidate &candidate,
-                                  const OcrCandidate **bestPattern)
-{
-  if (!kFinalPlatePattern.match(candidate.normalizedText).hasMatch())
-  {
-    return;
-  }
-
-  if (!(*bestPattern) || candidate.score > (*bestPattern)->score ||
-      (candidate.score == (*bestPattern)->score &&
-       candidate.confidence > (*bestPattern)->confidence))
-  {
-    *bestPattern = &candidate;
-  }
-}
-
 } // namespace
 
 QString normalizePlateText(const QString &raw)
@@ -82,7 +129,18 @@ QString normalizePlateText(const QString &raw)
   {
     if (ch.isDigit() || isHangulSyllable(ch))
     {
-      normalized.append(ch);
+      if (ch.isDigit())
+      {
+        normalized.append(ch);
+      }
+      else
+      {
+        const QChar mappedHangul = normalizePlateHangul(ch);
+        if (!mappedHangul.isNull())
+        {
+          normalized.append(mappedHangul);
+        }
+      }
     }
   }
   return normalized;
@@ -96,7 +154,25 @@ QString normalizePlateTextWithConfusableFix(const QString &raw)
   {
     if (ch.isDigit() || isHangulSyllable(ch))
     {
-      normalized.append(ch);
+      if (ch.isDigit())
+      {
+        normalized.append(ch);
+      }
+      else
+      {
+        const QChar mappedHangul = normalizePlateHangul(ch);
+        if (!mappedHangul.isNull())
+        {
+          normalized.append(mappedHangul);
+        }
+      }
+      continue;
+    }
+
+    const QChar mappedHangul = confusableToPlateHangul(ch);
+    if (!mappedHangul.isNull())
+    {
+      normalized.append(mappedHangul);
       continue;
     }
 
@@ -258,47 +334,19 @@ OcrResult chooseBestPlateResult(const std::vector<OcrCandidate> &candidates)
     return out;
   }
 
-  std::vector<const OcrCandidate *> ranked;
-  ranked.reserve(candidates.size());
-  for (const OcrCandidate &candidate : candidates)
+  const OcrCandidate &candidate = candidates.front();
+  out.selectedRawText = candidate.rawText;
+  out.selectedCandidate = candidate.normalizedText;
+  out.selectedScore = candidate.score;
+  out.selectedConfidence = candidate.confidence;
+
+  if (candidate.normalizedText.isEmpty())
   {
-    ranked.push_back(&candidate);
-  }
-
-  std::sort(ranked.begin(), ranked.end(), [](const OcrCandidate *lhs,
-                                             const OcrCandidate *rhs) {
-    if (lhs->score != rhs->score)
-    {
-      return lhs->score > rhs->score;
-    }
-    return lhs->confidence > rhs->confidence;
-  });
-
-  const OcrCandidate *bestPattern = nullptr;
-  for (const OcrCandidate *candidate : ranked)
-  {
-    considerBestPatternCandidate(*candidate, &bestPattern);
-  }
-
-  const OcrCandidate *best = bestPattern ? bestPattern : ranked.front();
-  out.selectedRawText = best->rawText;
-  out.selectedCandidate = best->normalizedText;
-  out.selectedScore = best->score;
-  out.selectedConfidence = best->confidence;
-
-  if (!bestPattern)
-  {
-    out.dropReason = QStringLiteral("no plate-like OCR candidate");
+    out.dropReason = QStringLiteral("empty OCR candidate");
     return out;
   }
 
-  out.text = bestPattern->normalizedText;
-  if (!ranked.empty() && ranked.front() != bestPattern &&
-      std::abs(ranked.front()->score - bestPattern->score) <= kScoreTieThreshold &&
-      ranked.front()->confidence > bestPattern->confidence)
-  {
-    out.confidenceTiebreakUsed = true;
-  }
+  out.text = candidate.normalizedText;
   return out;
 }
 

@@ -34,7 +34,7 @@ private:
 
   QString decodeCtcGreedy(const cv::Mat &scores, int classCount,
                           int *confidenceOut) const;
-  static QString selectBestNormalizedCandidate(const QString &raw);
+  static QString normalizeSingleCandidate(const QString &raw);
 
   std::unique_ptr<Ort::Env> m_env;
   std::unique_ptr<Ort::Session> m_session;
