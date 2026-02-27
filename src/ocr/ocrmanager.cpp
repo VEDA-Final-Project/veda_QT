@@ -3,7 +3,9 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QPainter>
 #include <QRegularExpression>
+#include <algorithm>
 
 OcrManager::OcrManager() : m_tessApi(nullptr) {
   m_tessApi = new tesseract::TessBaseAPI();
@@ -201,34 +203,190 @@ QString OcrManager::performOcr(const QImage &image) {
   cv::Mat binary;
   cv::threshold(warped, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
-  // 4. OCR 수행
-  m_tessApi->SetImage(binary.data, binary.cols, binary.rows, 1, binary.step);
+  // === 4. 한 글자씩 개별 OCR 수행 ===
+  // 4-1. 문자 영역 분리를 위해 반전 이미지에서 contour 추출
+  //      (흰 배경 + 검은 글자 → 반전하여 흰 글자 contour를 찾음)
+  cv::Mat inverted;
+  cv::bitwise_not(binary, inverted);
 
-  char *outText = m_tessApi->GetUTF8Text();
-  QString result = QString::fromUtf8(outText).trimmed();
-  delete[] outText;
+  // === 글자 뭉침(Connected Components) 방지를 위한 모폴로지 연산 ===
+  // 얇고 가벼운 침식 연산만 수행하여 미세한 노이즈 선만 다듬습니다.
+  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));
+  cv::Mat eroded;
+  cv::erode(inverted, eroded, kernel);
+
+  std::vector<std::vector<cv::Point>> charContours;
+  cv::findContours(eroded, charContours, cv::RETR_EXTERNAL,
+                   cv::CHAIN_APPROX_SIMPLE);
+
+  // 4-2. 유효한 문자 bounding rect만 필터링
+  int imgH = binary.rows;
+  int imgW = binary.cols;
+  double minCharH = imgH * 0.3; // 이미지 높이의 30% 이상
+  double maxCharH = imgH * 1.0;
+  double minCharW = 5.0;        // 최소 너비 5px (얇은 노이즈 제거)
+  double maxCharW = imgW * 0.8; // 여러 글자가 뭉친 경우를 위해 상향 허용 (80%)
+
+  struct CharRect {
+    cv::Rect rect;
+  };
+  std::vector<CharRect> charRects;
+
+  for (const auto &cnt : charContours) {
+    cv::Rect br = cv::boundingRect(cnt);
+    double aspectRatio = (double)br.width / br.height;
+
+    // 1. 기본 크기 조건 필터링
+    if (br.height >= minCharH && br.height <= maxCharH &&
+        br.width >= minCharW && br.width <= maxCharW) {
+
+      // 2. 종횡비(가로/세로) 기반 노이즈 필터링 및 뭉친 글자 기하학적 분할 처리
+      if (aspectRatio < 0.15) {
+        // 세로로 매우 얇은 노이즈 무시
+        continue;
+      } else if (aspectRatio > 0.85 && aspectRatio <= 1.5) {
+        // 2글자가 가로로 완전히 뭉친 경우 (예: '12') -> 가로를 2등분
+        int w1 = br.width / 2;
+        int w2 = br.width - w1;
+        charRects.push_back({cv::Rect(br.x, br.y, w1, br.height)});
+        charRects.push_back({cv::Rect(br.x + w1, br.y, w2, br.height)});
+      } else if (aspectRatio > 1.5 && aspectRatio <= 2.5) {
+        // 3글자가 가로로 뭉친 경우 (예: '568') -> 가로를 3등분
+        int w1 = br.width / 3;
+        int w2 = br.width / 3;
+        int w3 = br.width - (w1 + w2);
+        charRects.push_back({cv::Rect(br.x, br.y, w1, br.height)});
+        charRects.push_back({cv::Rect(br.x + w1, br.y, w2, br.height)});
+        charRects.push_back({cv::Rect(br.x + w1 + w2, br.y, w3, br.height)});
+      } else if (aspectRatio > 2.5) {
+        // 4글자 이상이거나 번호판 상/하단 가로줄 노이즈일 확률이 높아 무시
+        continue;
+      } else {
+        // 정상적인 1글자 종횡비 (0.15 ~ 0.85)
+        charRects.push_back({br});
+      }
+    }
+  }
+
+  // 4-3. x 좌표 기준 왼쪽→오른쪽 정렬
+  std::sort(
+      charRects.begin(), charRects.end(),
+      [](const CharRect &a, const CharRect &b) { return a.rect.x < b.rect.x; });
+
+  qDebug() << "[OCR] Character segmentation: found" << charRects.size()
+           << "candidate chars (from" << charContours.size() << "contours)";
+
+  // 4-4. 각 문자를 개별 인식 (PSM_SINGLE_CHAR)
+  QString result;
+  struct CharDebugInfo {
+    cv::Rect rect;
+    QString text;
+    cv::Mat image;
+  };
+  std::vector<CharDebugInfo> debugChars;
+
+  if (charRects.empty()) {
+    // 문자 분리 실패 시 기존 한 줄 인식으로 폴백
+    qDebug() << "[OCR] No chars segmented, falling back to line mode.";
+    m_tessApi->SetPageSegMode(tesseract::PSM_SINGLE_LINE);
+    m_tessApi->SetImage(binary.data, binary.cols, binary.rows, 1, binary.step);
+    char *outText = m_tessApi->GetUTF8Text();
+    result = QString::fromUtf8(outText).trimmed();
+    delete[] outText;
+  } else {
+    m_tessApi->SetPageSegMode(tesseract::PSM_SINGLE_CHAR);
+
+    for (const auto &cr : charRects) {
+      // 문자 영역 잘라내기 (약간의 패딩 추가)
+      int pad = 4;
+      int x = std::max(0, cr.rect.x - pad);
+      int y = std::max(0, cr.rect.y - pad);
+      int w = std::min(cr.rect.width + pad * 2, imgW - x);
+      int h = std::min(cr.rect.height + pad * 2, imgH - y);
+      cv::Mat charRoi = binary(cv::Rect(x, y, w, h));
+
+      // Tesseract 최적 크기로 리사이즈 (높이 48px 기준)
+      int targetH = 48;
+      double scale = (double)targetH / charRoi.rows;
+      int targetW = (int)(charRoi.cols * scale);
+      if (targetW < 10)
+        targetW = 10;
+      cv::Mat resized;
+      cv::resize(charRoi, resized, cv::Size(targetW, targetH), 0, 0,
+                 cv::INTER_CUBIC);
+
+      // 흰색 패딩 보더 추가 (Tesseract가 문자를 더 잘 인식)
+      cv::Mat padded;
+      int border = 10;
+      cv::copyMakeBorder(resized, padded, border, border, border, border,
+                         cv::BORDER_CONSTANT, cv::Scalar(255));
+
+      m_tessApi->SetImage(padded.data, padded.cols, padded.rows, 1,
+                          padded.step);
+      char *outChar = m_tessApi->GetUTF8Text();
+
+      // 공백 및 특수문자 일부 정리
+      QString chRaw = QString::fromUtf8(outChar).trimmed();
+      chRaw = chRaw.replace(" ", "").replace("\n", "").replace("\r", "");
+      delete[] outChar;
+
+      // PSM_SINGLE_CHAR 인데도 여러 글자를 뱉는 노이즈 케이스 방지
+      // 가장 첫 번째 유효한 글자 하나만 취득 (Qt QString은 유니코드 1글자를
+      // length 1로 처리함)
+      QString ch;
+      if (!chRaw.isEmpty()) {
+        // 특수기호나 알파벳 등 번호판에서 안 쓰이는 노이즈를 걸러낼 수도
+        // 있지만, 최종 Regex 필터링에서 걸러지므로 여기서는 1글자 제약만 강제.
+        ch = chRaw.at(0);
+      }
+
+      if (!ch.isEmpty()) {
+        // === 비정상 위치의 한글 노이즈 필터링 ===
+        // 한글 문자의 유니코드 범위: 0xAC00 ~ 0xD7A3
+        QChar firstChar = ch.at(0);
+        bool isHangul =
+            (firstChar.unicode() >= 0xAC00 && firstChar.unicode() <= 0xD7A3);
+
+        if (isHangul) {
+          double centerX = cr.rect.x + (cr.rect.width / 2.0);
+          double relativePos = centerX / imgW;
+
+          // 번호판 구조상 한글은 양 끝단에 위치할 수 없음
+          // 오차를 감안해 왼쪽 15% 미만, 오른쪽 85% 초과 영역의 한글은 노이즈로
+          // 간주하고 무시
+          if (relativePos < 0.15 || relativePos > 0.85) {
+            qDebug() << "[OCR] Ignored Hangul out of bounds at" << cr.rect.x
+                     << "(rel:" << relativePos << ") char:" << ch;
+            continue;
+          }
+        }
+
+        result += ch;
+        debugChars.push_back({cr.rect, ch, padded.clone()});
+        qDebug() << "[OCR]   Char rect" << cr.rect.x << "," << cr.rect.y
+                 << cr.rect.width << "x" << cr.rect.height << " -> raw:'"
+                 << chRaw << "' filtered:'" << ch << "'";
+      }
+    }
+  }
 
   // === 번호판 규격 정규식 필터링 (공백 제거 후 추출) ===
-  // 1. 모든 공백 제거 (Regex용 임시 문자열)
   QString cleaned = result;
   cleaned =
       cleaned.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r",
                                                                            "");
 
-  // 2. 정규표현식 매칭 (숫자 2~3자리 + 한글 + 숫자 4자리)
-  // C++ std::regex는 UTF-8(한글) 처리에 취약할 수 있으므로, Qt의
-  // QRegularExpression을 사용합니다.
   QRegularExpression plateRe(QStringLiteral("\\d{2,3}[가-힣]+\\d{4}"));
   QRegularExpressionMatch reMatch = plateRe.match(cleaned);
 
   if (reMatch.hasMatch()) {
     QString finalPlate = reMatch.captured(0);
     qDebug() << "[OCR] Regex Match Success:" << result << "->" << finalPlate;
-    result = finalPlate; // 규격에 맞는 부분만 최종 결과로 채택
+    result = finalPlate;
   } else {
     qDebug() << "[OCR] Regex Match Failed. Tesseract saw:" << cleaned
              << " (Original was:" << result << ")";
-    result = ""; // 규격에 맞지 않으면 빈 문자열 반환
+    result = "";
   }
 
   // === 디버그 이미지 저장 로직 (워핑 성공 시에만 저장) ===
@@ -246,48 +404,45 @@ QString OcrManager::performOcr(const QImage &image) {
     QString timestamp =
         QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz");
 
-    // 1. 원본 크롭 저장
-    formattedImage.save(
-        QString("%1/%2_1_original.png").arg(debugPath).arg(timestamp));
+    // === 통합 시각화 이미지 생성 (QPainter를 사용하여 한글 깨짐 방지) ===
+    // 1. 최종 인식용 binary 이미지를 QImage로 변환
+    QImage vizImg(binary.data, binary.cols, binary.rows, binary.step,
+                  QImage::Format_Grayscale8);
+    // 2. 컬러 표시를 위해 RGB32로 변환
+    vizImg = vizImg.convertToFormat(QImage::Format_RGB32);
 
-    // 2. 그레이스케일 저장
-    cv::imwrite(QString("%1/%2_2a_gray.png")
-                    .arg(debugPath)
-                    .arg(timestamp)
-                    .toLocal8Bit()
-                    .toStdString(),
-                gray);
+    QPainter painter(&vizImg);
+    QFont font = painter.font();
+    font.setPixelSize(12);
+    font.setBold(true);
+    painter.setFont(font);
 
-    // 3. 투영 변환 결과 저장
-    cv::imwrite(QString("%1/%2_3_warped.png")
-                    .arg(debugPath)
-                    .arg(timestamp)
-                    .toLocal8Bit()
-                    .toStdString(),
-                warped);
+    for (const auto &dc : debugChars) {
+      QRect qRect(dc.rect.x, dc.rect.y, dc.rect.width, dc.rect.height);
 
-    // 2b. 에지 이미지 저장 (유저 제안 기반 디버깅용)
-    cv::imwrite(QString("%1/%2_2b_canned.png")
-                    .arg(debugPath)
-                    .arg(timestamp)
-                    .toLocal8Bit()
-                    .toStdString(),
-                canned);
+      // 빨간색 박스
+      painter.setPen(QPen(Qt::red, 1));
+      painter.drawRect(qRect);
 
-    // 4. 이진화 이미지 저장
-    // 인식 결과(result)가 있으면 파일명에 포함, 없으면 FAIL 표시
+      // 파란색 텍스트 (한글 지원)
+      painter.setPen(QPen(Qt::blue));
+      painter.drawText(qRect.left(), qRect.top() - 2, dc.text);
+    }
+    painter.end();
+
+    // 최종 인식 결과 태그
     QString plateTag = result.isEmpty() ? "FAIL" : result;
-    // 파일명에 부적절한 문자 제거
     plateTag.replace("/", "_").replace("\\", "_").replace(":", "_");
 
-    QString finalPath = QString("%1/%2_4_binary_%3.png")
+    // 통합 시각화 결과 저장
+    QString finalPath = QString("%1/%2_RESULT_%3.png")
                             .arg(debugPath)
                             .arg(timestamp)
                             .arg(plateTag);
-    cv::imwrite(finalPath.toLocal8Bit().toStdString(), binary);
+    vizImg.save(finalPath);
 
-    qDebug() << "[OCR Debug] Images saved to:" << debugPath
-             << "prefix:" << timestamp << "Result:" << plateTag;
+    qDebug() << "[OCR Debug] Integrated result (Hangul supported) saved to:"
+             << finalPath;
   }
 
   return result;
