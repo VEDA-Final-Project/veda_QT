@@ -6,7 +6,6 @@
 #include <QPainter>
 #include <QRegularExpression>
 #include <algorithm>
-
 OcrManager::OcrManager() : m_tessApi(nullptr) {
   m_tessApi = new tesseract::TessBaseAPI();
 }
