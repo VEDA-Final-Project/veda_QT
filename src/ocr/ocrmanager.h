@@ -17,8 +17,8 @@ public:
             const QString &dictPath = QString(), int inputWidth = 320,
             int inputHeight = 48);
 
-  OcrResult performOcrDetailed(const QImage &image);
-  QString performOcr(const QImage &image);
+  OcrResult performOcrDetailed(const QImage &image, int objectId = -1);
+  QString performOcr(const QImage &image, int objectId = -1);
 
 private:
   static QString findFirstFileRecursively(const QString &rootPath,

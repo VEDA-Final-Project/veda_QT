@@ -121,31 +121,6 @@ QChar confusableToDigit(const QChar ch)
 
 } // namespace
 
-QString normalizePlateText(const QString &raw)
-{
-  QString normalized;
-  normalized.reserve(raw.size());
-  for (const QChar ch : raw)
-  {
-    if (ch.isDigit() || isHangulSyllable(ch))
-    {
-      if (ch.isDigit())
-      {
-        normalized.append(ch);
-      }
-      else
-      {
-        const QChar mappedHangul = normalizePlateHangul(ch);
-        if (!mappedHangul.isNull())
-        {
-          normalized.append(mappedHangul);
-        }
-      }
-    }
-  }
-  return normalized;
-}
-
 QString normalizePlateTextWithConfusableFix(const QString &raw)
 {
   QString normalized;
@@ -185,156 +160,15 @@ QString normalizePlateTextWithConfusableFix(const QString &raw)
   return normalized;
 }
 
-QString canonicalizePlateCandidate(const QString &normalized)
-{
-  if (normalized.isEmpty())
-  {
-    return QString();
-  }
-
-  if (kFinalPlatePattern.match(normalized).hasMatch())
-  {
-    return normalized;
-  }
-
-  QString best = normalized;
-  int bestScore = platePlausibilityScore(normalized);
-
-  const int lengths[] = {8, 7};
-  for (const int len : lengths)
-  {
-    if (normalized.size() < len)
-    {
-      continue;
-    }
-
-    for (int start = 0; start <= (normalized.size() - len); ++start)
-    {
-      const QString window = normalized.mid(start, len);
-      const int score = platePlausibilityScore(window);
-      if (score > bestScore)
-      {
-        best = window;
-        bestScore = score;
-      }
-    }
-  }
-
-  return best;
-}
-
-int platePlausibilityScore(const QString &candidate)
-{
-  if (candidate.isEmpty())
-  {
-    return std::numeric_limits<int>::min() / 4;
-  }
-
-  int score = 0;
-  const int len = candidate.size();
-  if (len == 7 || len == 8)
-  {
-    score += 180;
-  }
-  else
-  {
-    score -= 25 * std::abs(len - 8);
-  }
-
-  int digitCount = 0;
-  int hangulCount = 0;
-  int hangulIndex = -1;
-  for (int i = 0; i < len; ++i)
-  {
-    const QChar ch = candidate.at(i);
-    if (ch.isDigit())
-    {
-      ++digitCount;
-      continue;
-    }
-    if (isHangulSyllable(ch))
-    {
-      if (hangulIndex < 0)
-      {
-        hangulIndex = i;
-      }
-      ++hangulCount;
-      continue;
-    }
-    score -= 300;
-  }
-
-  score += digitCount * 8;
-  if (hangulCount == 1)
-  {
-    score += 260;
-  }
-  else
-  {
-    score -= 180 * std::abs(hangulCount - 1);
-  }
-
-  if (hangulIndex >= 0)
-  {
-    const int digitsBefore = hangulIndex;
-    const int digitsAfter = len - hangulIndex - 1;
-
-    if (digitsBefore == 2 || digitsBefore == 3)
-    {
-      score += 180;
-    }
-    else
-    {
-      score -= 80 * std::abs(digitsBefore - 3);
-    }
-
-    if (digitsAfter == 4)
-    {
-      score += 320;
-    }
-    else
-    {
-      score -= 100 * std::abs(digitsAfter - 4);
-    }
-
-    if ((len == 7 && hangulIndex == 2) || (len == 8 && hangulIndex == 3))
-    {
-      score += 140;
-    }
-    else if (len == 7 || len == 8)
-    {
-      score -= 70;
-    }
-  }
-  else
-  {
-    score -= 280;
-  }
-
-  const int tailStart = std::max(0, len - 4);
-  for (int i = tailStart; i < len; ++i)
-  {
-    score += candidate.at(i).isDigit() ? 20 : -60;
-  }
-
-  if (kFinalPlatePattern.match(candidate).hasMatch())
-  {
-    score += 1500;
-  }
-
-  return score;
-}
-
-OcrResult chooseBestPlateResult(const std::vector<OcrCandidate> &candidates)
+OcrResult chooseBestPlateResult(const OcrCandidate &candidate)
 {
   OcrResult out;
-  if (candidates.empty())
+  if (candidate.normalizedText.isEmpty() && candidate.rawText.isEmpty())
   {
-    out.dropReason = QStringLiteral("no OCR candidates");
+    out.dropReason = QStringLiteral("no OCR candidate");
     return out;
   }
 
-  const OcrCandidate &candidate = candidates.front();
   out.selectedRawText = candidate.rawText;
   out.selectedCandidate = candidate.normalizedText;
   out.selectedScore = candidate.score;

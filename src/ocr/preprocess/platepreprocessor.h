@@ -1,19 +1,25 @@
-#ifndef OCR_PREPROCESS_PLATEPREPROCESSOR_H
-#define OCR_PREPROCESS_PLATEPREPROCESSOR_H
+#ifndef PLATEPREPROCESSOR_H
+#define PLATEPREPROCESSOR_H
 
+#include <QImage>
 #include <QString>
-#include <opencv2/opencv.hpp>
-#include <vector>
+#include <opencv2/core.hpp>
 
 namespace ocr::preprocess
 {
 
-struct OcrInputVariant
+struct PlatePreprocessResult
 {
-  QString tag;
-  cv::Mat imageRgb;
+  cv::Mat roiRgb;
+  cv::Mat normalizedRgb;
+  cv::Mat enhancedGray;
+  cv::Mat ocrInputRgb;
+  QString dropReason;
 };
+
+bool preprocessPlateImage(const QImage &image, int inputWidth, int inputHeight,
+                          PlatePreprocessResult *resultOut);
 
 } // namespace ocr::preprocess
 
-#endif // OCR_PREPROCESS_PLATEPREPROCESSOR_H
+#endif // PLATEPREPROCESSOR_H

@@ -97,14 +97,18 @@ QString restoreHangulFromTemplate(const QString &digitOnly,
 PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent)
 {
     const auto &cfg = Config::instance();
-    if (!m_ocrManager.init(cfg.ocrModelPath(), cfg.ocrDictPath(),
-                           cfg.ocrInputWidth(), cfg.ocrInputHeight()))
+    for (size_t i = 0; i < m_workers.size(); ++i)
     {
-        qDebug() << "Could not initialize OCR Manager.";
-    }
+        WorkerState &worker = m_workers[i];
+        if (!worker.ocrManager.init(cfg.ocrModelPath(), cfg.ocrDictPath(),
+                                    cfg.ocrInputWidth(), cfg.ocrInputHeight()))
+        {
+            qDebug() << "Could not initialize OCR Manager for worker" << i;
+        }
 
-    connect(&m_watcher, &QFutureWatcher<QString>::finished, this,
-            &PlateOcrCoordinator::onOcrFinished);
+        connect(&worker.watcher, &QFutureWatcher<QString>::finished, this,
+                [this, i]() { onWorkerFinished(i); });
+    }
 }
 
 PlateOcrCoordinator::~PlateOcrCoordinator()
@@ -114,10 +118,13 @@ PlateOcrCoordinator::~PlateOcrCoordinator()
     m_inflightObjectIds.clear();
     m_pendingObjectIds.clear();
     m_histories.clear();
-    if (m_watcher.isRunning())
+    for (WorkerState &worker : m_workers)
     {
-        m_watcher.cancel();
-        m_watcher.waitForFinished();
+        if (worker.watcher.isRunning())
+        {
+            worker.watcher.cancel();
+            worker.watcher.waitForFinished();
+        }
     }
 }
 
@@ -143,19 +150,25 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop)
     startNext();
 }
 
-void PlateOcrCoordinator::onOcrFinished()
+void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex)
 {
     if (m_shuttingDown)
     {
         return;
     }
 
-    const QString result = m_watcher.result();
-    const int objectId = m_runningObjectId;
+    if (workerIndex >= m_workers.size())
+    {
+        return;
+    }
+
+    WorkerState &worker = m_workers[workerIndex];
+    const QString result = worker.watcher.result();
+    const int objectId = worker.runningObjectId;
 
     m_inflightObjectIds.remove(objectId);
     m_pendingObjectIds.remove(objectId);
-    m_runningObjectId = -1;
+    worker.runningObjectId = -1;
 
     if (!result.isEmpty())
     {
@@ -295,17 +308,25 @@ void PlateOcrCoordinator::startNext()
         return;
     }
 
-    if (m_watcher.isRunning() || m_pending.isEmpty())
+    for (WorkerState &worker : m_workers)
     {
-        return;
+        if (m_pending.isEmpty())
+        {
+            return;
+        }
+        if (worker.watcher.isRunning())
+        {
+            continue;
+        }
+
+        const PendingOcr next = m_pending.dequeue();
+        worker.runningObjectId = next.objectId;
+        m_inflightObjectIds.insert(next.objectId);
+        WorkerState *workerPtr = &worker;
+
+        QFuture<QString> future = QtConcurrent::run(
+            [workerPtr, objectId = next.objectId, crop = next.crop]()
+            { return workerPtr->ocrManager.performOcr(crop, objectId); });
+        worker.watcher.setFuture(future);
     }
-
-    const PendingOcr next = m_pending.dequeue();
-    m_runningObjectId = next.objectId;
-    m_inflightObjectIds.insert(next.objectId);
-
-    QFuture<QString> future = QtConcurrent::run(
-        [this, crop = next.crop]()
-        { return m_ocrManager.performOcr(crop); });
-    m_watcher.setFuture(future);
 }

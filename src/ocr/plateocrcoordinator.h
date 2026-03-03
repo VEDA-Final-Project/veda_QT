@@ -2,6 +2,7 @@
 #define PLATEOCRCOORDINATOR_H
 
 #include "ocr/ocrmanager.h"
+#include <array>
 #include <QFutureWatcher>
 #include <QHash>
 #include <QImage>
@@ -23,14 +24,20 @@ public:
 signals:
     void ocrReady(int objectId, const QString &text);
 
-private slots:
-    void onOcrFinished();
-
 private:
+    static constexpr size_t kWorkerCount = 2;
+
     struct PendingOcr
     {
         int objectId = -1;
         QImage crop;
+    };
+
+    struct WorkerState
+    {
+        OcrManager ocrManager;
+        QFutureWatcher<QString> watcher;
+        int runningObjectId = -1;
     };
 
     struct OcrHistory
@@ -44,15 +51,14 @@ private:
                                    const QString &result) const;
     QString stabilizeResult(int objectId, const QString &result);
     void pruneHistory(qint64 nowMs);
+    void onWorkerFinished(size_t workerIndex);
     void startNext();
 
-    OcrManager m_ocrManager;
-    QFutureWatcher<QString> m_watcher;
+    std::array<WorkerState, kWorkerCount> m_workers;
     QQueue<PendingOcr> m_pending;
     QSet<int> m_inflightObjectIds;
     QSet<int> m_pendingObjectIds;
     QHash<int, OcrHistory> m_histories;
-    int m_runningObjectId = -1;
     bool m_shuttingDown = false;
 };
 

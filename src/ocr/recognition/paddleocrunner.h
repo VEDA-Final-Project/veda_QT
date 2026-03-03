@@ -2,7 +2,6 @@
 #define OCR_RECOGNITION_PADDLEOCRRUNNER_H
 
 #include "ocr/postprocess/platepostprocessor.h"
-#include "ocr/preprocess/platepreprocessor.h"
 #include <onnxruntime_cxx_api.h>
 #include <QString>
 #include <opencv2/dnn.hpp>
@@ -21,15 +20,13 @@ public:
             int inputHeight, QString *errorOut = nullptr);
   bool isReady() const;
 
-  std::vector<postprocess::OcrCandidate>
-  collectCandidates(const std::vector<preprocess::OcrInputVariant> &variants);
+  postprocess::OcrCandidate runSingleCandidate(const cv::Mat &imageRgb);
 
 private:
   bool loadDictionary(const QString &dictPath, QString *errorOut);
   static std::vector<QString> fallbackDictionary();
 
-  postprocess::OcrCandidate runOcrOnImage(const cv::Mat &imageRgb,
-                                          const QString &sourceTag);
+  postprocess::OcrCandidate runOcrOnImage(const cv::Mat &imageRgb);
   cv::Mat makeInputBlob(const cv::Mat &imageRgb) const;
 
   QString decodeCtcGreedy(const cv::Mat &scores, int classCount,

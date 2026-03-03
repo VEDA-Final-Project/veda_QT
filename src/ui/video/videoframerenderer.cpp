@@ -235,8 +235,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     if (obj.type == "LicensePlate" && ocrRequests != nullptr) {
       // 2. OCR Decoupling: Extract from original FULL RES frame, not
       // scaledFrame
-      // 2-1. 바운딩 박스 여백(Padding) 추가: 가로 약 3%, 세로 약 7% (기존의
-      // 1/3로 축소)
+      // 2-1. 바운딩 박스 여백(Padding) 추가: 가로 약 3%, 세로 약 7%
       int padX = static_cast<int>(candidate.srcRect.width() * 0.033);
       int padY = static_cast<int>(candidate.srcRect.height() * 0.066);
       QRect paddedRect = candidate.srcRect.adjusted(-padX, -padY, padX, padY);

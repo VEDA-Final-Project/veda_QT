@@ -88,8 +88,8 @@ bool saveRgbPng(const QString &filePath, const cv::Mat &rgb)
 } // namespace
 
 void dumpOcrStages(const cv::Mat &roiRgb, const cv::Mat &normalizedRgb,
-                   const cv::Mat &enhancedGray,
-                   const std::vector<ocr::preprocess::OcrInputVariant> &variants)
+                   const cv::Mat &enhancedGray, const cv::Mat &ocrInputRgb,
+                   const int objectId)
 {
   static std::atomic<int> s_callCounter{0};
   static std::atomic<bool> s_loggedPath{false};
@@ -109,10 +109,13 @@ void dumpOcrStages(const cv::Mat &roiRgb, const cv::Mat &normalizedRgb,
   const QString stamp =
       QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss_zzz");
   const QString seq = QString("%1").arg(callCount, 6, 10, QChar('0'));
+  const QString objectPrefix =
+      (objectId >= 0) ? QString("obj_%1_").arg(objectId) : QString();
 
   if (!roiRgb.empty())
   {
-    const QString path = debugDir.filePath(QString("roi_%1_%2.png").arg(stamp, seq));
+    const QString path = debugDir.filePath(
+        QString("roi_%1%2_%3.png").arg(objectPrefix, stamp, seq));
     saveRgbPng(path, roiRgb);
     rotateStageFiles(debugDir, QStringLiteral("roi"), kDebugKeepFilesPerStage);
   }
@@ -120,7 +123,8 @@ void dumpOcrStages(const cv::Mat &roiRgb, const cv::Mat &normalizedRgb,
   if (!normalizedRgb.empty())
   {
     const QString path =
-        debugDir.filePath(QString("normalized_%1_%2.png").arg(stamp, seq));
+        debugDir.filePath(
+            QString("normalized_%1%2_%3.png").arg(objectPrefix, stamp, seq));
     saveRgbPng(path, normalizedRgb);
     rotateStageFiles(debugDir, QStringLiteral("normalized"),
                      kDebugKeepFilesPerStage);
@@ -129,19 +133,21 @@ void dumpOcrStages(const cv::Mat &roiRgb, const cv::Mat &normalizedRgb,
   if (!enhancedGray.empty())
   {
     const QString path =
-        debugDir.filePath(QString("enhanced_%1_%2.png").arg(stamp, seq));
+        debugDir.filePath(
+            QString("enhanced_%1%2_%3.png").arg(objectPrefix, stamp, seq));
     savePng(path, enhancedGray);
     rotateStageFiles(debugDir, QStringLiteral("enhanced"),
                      kDebugKeepFilesPerStage);
   }
 
-  const int variantCount = std::min<int>(variants.size(), 5);
-  for (int i = 0; i < variantCount; ++i)
+  if (!ocrInputRgb.empty())
   {
-    const QString prefix = QString("variant_%1").arg(sanitizeTag(variants[i].tag));
+    const QString prefix =
+        (objectId >= 0) ? QString("ocr_input_obj_%1").arg(objectId)
+                        : QStringLiteral("ocr_input");
     const QString path =
         debugDir.filePath(QString("%1_%2_%3.png").arg(prefix, stamp, seq));
-    saveRgbPng(path, variants[i].imageRgb);
+    saveRgbPng(path, ocrInputRgb);
     rotateStageFiles(debugDir, prefix, kDebugKeepFilesPerStage);
   }
 }
