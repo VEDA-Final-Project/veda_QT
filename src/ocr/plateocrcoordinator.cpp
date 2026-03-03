@@ -9,6 +9,7 @@ namespace
 constexpr int kStabilizationWindow = 5;
 constexpr int kMinimumStableCount = 2;
 constexpr qint64 kHistoryTtlMs = 15000;
+constexpr int kRuntimeLogInterval = 10;
 
 const QRegularExpression kPlatePattern(
     QStringLiteral("^(?:\\d{2}|\\d{3})[가-힣]\\d{4}$"));
@@ -188,17 +189,23 @@ QString PlateOcrCoordinator::stabilizeResult(int objectId, const QString &result
     pruneHistory(nowMs);
 
     OcrHistory &history = m_histories[objectId];
+    const bool shouldLogThisFrame =
+        ((++history.logFrameCount % kRuntimeLogInterval) == 0);
     const QString stabilizedInput = restoreDigitOnlyResult(history, result);
-    if (stabilizedInput != result)
+    if (shouldLogThisFrame && stabilizedInput != result)
     {
-        qDebug() << "[OCR] Digit-only result restored from history. raw="
-                 << result << "restored=" << stabilizedInput;
+        qDebug() << "[OCR] Digit-only result restored from history. objectId="
+                 << objectId << "raw=" << result << "restored=" << stabilizedInput;
     }
 
     if (!kPlatePattern.match(stabilizedInput).hasMatch())
     {
-        qDebug() << "[OCR] Skipping non-matching OCR result. raw=" << result
-                 << "candidate=" << stabilizedInput;
+        if (shouldLogThisFrame)
+        {
+            qDebug() << "[OCR] Skipping non-matching OCR result. objectId="
+                     << objectId << "raw=" << result << "candidate="
+                     << stabilizedInput;
+        }
         history.lastUpdatedMs = nowMs;
         return QString();
     }

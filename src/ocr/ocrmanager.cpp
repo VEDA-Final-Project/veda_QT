@@ -6,11 +6,31 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <mutex>
+#include <unordered_map>
 
 namespace
 {
 constexpr int kDefaultInputWidth = 320;
 constexpr int kDefaultInputHeight = 48;
+constexpr int kRuntimeLogInterval = 10;
+
+bool shouldLogRuntimeOcrMessage(const int objectId)
+{
+  static std::mutex mutex;
+  static std::unordered_map<int, int> countsByObject;
+
+  std::lock_guard<std::mutex> lock(mutex);
+  int &count = countsByObject[objectId];
+  ++count;
+  if (count < kRuntimeLogInterval)
+  {
+    return false;
+  }
+
+  count = 0;
+  return true;
+}
 }
 
 OcrManager::OcrManager() = default;
@@ -170,9 +190,6 @@ OcrResult OcrManager::performOcrDetailed(const QImage &image, const int objectId
   if (!ocr::preprocess::preprocessPlateImage(image, m_inputWidth, m_inputHeight,
                                              &preprocessed))
   {
-    out.dropReason = preprocessed.dropReason.isEmpty()
-                         ? QStringLiteral("preprocess failed")
-                         : preprocessed.dropReason;
     return out;
   }
 
@@ -182,19 +199,21 @@ OcrResult OcrManager::performOcrDetailed(const QImage &image, const int objectId
 
   if (!m_runner.isReady())
   {
-    out.dropReason = QStringLiteral("ocr runner not initialized");
     return out;
   }
 
   const ocr::postprocess::OcrCandidate candidate =
       m_runner.runSingleCandidate(preprocessed.ocrInputRgb);
   const OcrResult result = ocr::postprocess::chooseBestPlateResult(candidate);
-  qDebug() << "[OCR][Final] raw=" << result.selectedRawText
-           << "text=" << result.text
-           << "selected=" << result.selectedCandidate
-           << "score=" << result.selectedScore
-           << "confidence=" << result.selectedConfidence
-           << "dropReason=" << result.dropReason;
+  if (shouldLogRuntimeOcrMessage(objectId))
+  {
+    qDebug() << "[OCR][Final] objectId=" << objectId
+             << "raw=" << result.selectedRawText
+             << "text=" << result.text
+             << "selected=" << result.selectedCandidate
+             << "score=" << result.selectedScore
+             << "confidence=" << result.selectedConfidence;
+  }
   return result;
 }
 

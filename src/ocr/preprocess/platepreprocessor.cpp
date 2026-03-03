@@ -551,11 +551,8 @@ bool buildOcrInput(const cv::Mat &normalizedRgb, cv::Mat *enhancedGrayOut,
     ocrGray = claheGray;
   }
 
-  cv::Mat binary;
-  cv::threshold(ocrGray, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
-
-  *enhancedGrayOut = binary.clone();
-  *ocrInputRgbOut = grayToRgb(binary);
+  *enhancedGrayOut = ocrGray.clone();
+  *ocrInputRgbOut = grayToRgb(ocrGray);
   return !ocrInputRgbOut->empty();
 }
 
@@ -845,7 +842,6 @@ bool preprocessPlateImage(const QImage &image, const int inputWidth,
 
   if (image.isNull())
   {
-    resultOut->dropReason = QStringLiteral("empty input image");
     return false;
   }
 
@@ -857,7 +853,6 @@ bool preprocessPlateImage(const QImage &image, const int inputWidth,
   resultOut->roiRgb = toRgbImage(roiView);
   if (resultOut->roiRgb.empty())
   {
-    resultOut->dropReason = QStringLiteral("preprocess failed");
     return false;
   }
 
@@ -865,7 +860,6 @@ bool preprocessPlateImage(const QImage &image, const int inputWidth,
   const cv::Mat gray = toGrayImage(resultOut->roiRgb);
   if (gray.empty())
   {
-    resultOut->dropReason = QStringLiteral("preprocess failed");
     return false;
   }
 
@@ -900,7 +894,6 @@ bool preprocessPlateImage(const QImage &image, const int inputWidth,
   if (!buildOcrInput(resultOut->normalizedRgb, &resultOut->enhancedGray,
                      &resultOut->ocrInputRgb))
   {
-    resultOut->dropReason = QStringLiteral("preprocess failed");
     return false;
   }
 

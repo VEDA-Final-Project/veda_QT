@@ -165,7 +165,6 @@ OcrResult chooseBestPlateResult(const OcrCandidate &candidate)
   OcrResult out;
   if (candidate.normalizedText.isEmpty() && candidate.rawText.isEmpty())
   {
-    out.dropReason = QStringLiteral("no OCR candidate");
     return out;
   }
 
@@ -176,7 +175,6 @@ OcrResult chooseBestPlateResult(const OcrCandidate &candidate)
 
   if (candidate.normalizedText.isEmpty())
   {
-    out.dropReason = QStringLiteral("empty OCR candidate");
     return out;
   }
 

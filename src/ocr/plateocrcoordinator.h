@@ -45,6 +45,7 @@ private:
         QQueue<QString> recentResults;
         QString lastEmitted;
         qint64 lastUpdatedMs = 0;
+        int logFrameCount = 0;
     };
 
     QString restoreDigitOnlyResult(const OcrHistory &history,
