@@ -146,8 +146,12 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop)
         return;
     }
 
-    m_pending.enqueue(PendingOcr{objectId, crop});
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    m_pending.enqueue(PendingOcr{objectId, crop, nowMs});
     m_pendingObjectIds.insert(objectId);
+    qDebug() << "[OCR][Enter] objectId=" << objectId
+             << "pending=" << m_pending.size()
+             << "inflight=" << m_inflightObjectIds.size();
     startNext();
 }
 
@@ -166,10 +170,29 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex)
     WorkerState &worker = m_workers[workerIndex];
     const QString result = worker.watcher.result();
     const int objectId = worker.runningObjectId;
+    const qint64 finishedAtMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 processMs =
+        (worker.startedAtMs > 0 && finishedAtMs > worker.startedAtMs)
+            ? (finishedAtMs - worker.startedAtMs)
+            : 0;
+    const qint64 endToEndMs =
+        (worker.queuedAtMs > 0 && finishedAtMs > worker.queuedAtMs)
+            ? (finishedAtMs - worker.queuedAtMs)
+            : processMs;
+    const double speedHz =
+        (processMs > 0) ? (1000.0 / static_cast<double>(processMs)) : 0.0;
+
+    qDebug() << "[OCR][Done] objectId=" << objectId
+             << "empty=" << result.isEmpty()
+             << "processMs=" << processMs
+             << "endToEndMs=" << endToEndMs
+             << "speedHz=" << QString::number(speedHz, 'f', 2);
 
     m_inflightObjectIds.remove(objectId);
     m_pendingObjectIds.remove(objectId);
     worker.runningObjectId = -1;
+    worker.queuedAtMs = 0;
+    worker.startedAtMs = 0;
 
     if (!result.isEmpty())
     {
@@ -327,9 +350,20 @@ void PlateOcrCoordinator::startNext()
         }
 
         const PendingOcr next = m_pending.dequeue();
+        const qint64 startMs = QDateTime::currentMSecsSinceEpoch();
+        const qint64 queueWaitMs =
+            (next.enqueuedAtMs > 0 && startMs > next.enqueuedAtMs)
+                ? (startMs - next.enqueuedAtMs)
+                : 0;
         worker.runningObjectId = next.objectId;
+        worker.queuedAtMs = next.enqueuedAtMs;
+        worker.startedAtMs = startMs;
         m_inflightObjectIds.insert(next.objectId);
         WorkerState *workerPtr = &worker;
+
+        qDebug() << "[OCR][Start] objectId=" << next.objectId
+                 << "queueWaitMs=" << queueWaitMs
+                 << "pending=" << m_pending.size();
 
         QFuture<QString> future = QtConcurrent::run(
             [workerPtr, objectId = next.objectId, crop = next.crop]()

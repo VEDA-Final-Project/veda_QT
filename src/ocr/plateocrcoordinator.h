@@ -31,6 +31,7 @@ private:
     {
         int objectId = -1;
         QImage crop;
+        qint64 enqueuedAtMs = 0;
     };
 
     struct WorkerState
@@ -38,6 +39,8 @@ private:
         OcrManager ocrManager;
         QFutureWatcher<QString> watcher;
         int runningObjectId = -1;
+        qint64 queuedAtMs = 0;
+        qint64 startedAtMs = 0;
     };
 
     struct OcrHistory
