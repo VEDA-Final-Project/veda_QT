@@ -113,57 +113,63 @@ QString OcrManager::performOcr(const QImage &image) {
     // 찾습니다.
     std::vector<cv::Point2f> srcPoints(4);
 
-    // 다각형 근사를 통해 4개 점 추출 시도
+    // 다각형 근사 또는 극점 추출을 통해 4개 후보점 확보
+    std::vector<cv::Point> candidates;
     std::vector<cv::Point> approx;
     double peri = cv::arcLength(plateContour, true);
     cv::approxPolyDP(plateContour, approx, 0.02 * peri, true);
 
     if (approx.size() == 4) {
-      // 근사 결과가 4개라면 그 포인트를 그대로 사용
-      for (int i = 0; i < 4; ++i)
-        plateContour[i] = approx[i]; // 임시 저장
+      for (const auto &p : approx)
+        candidates.push_back(p);
     } else {
-      // 4개가 아니라면 윤곽선 내에서 합/차가 최대/최소인 4개 극점을 직접 추출
-      std::vector<cv::Point> corners(4);
-      int tl_idx = 0, br_idx = 0, tr_idx = 0, bl_idx = 0;
+      cv::Point tl_p = plateContour[0], br_p = plateContour[0],
+                tr_p = plateContour[0], bl_p = plateContour[0];
       float minSum = (float)plateContour[0].x + plateContour[0].y;
       float maxSum = (float)plateContour[0].x + plateContour[0].y;
       float minDiff = (float)plateContour[0].x - plateContour[0].y;
       float maxDiff = (float)plateContour[0].x - plateContour[0].y;
 
-      for (int i = 0; i < plateContour.size(); ++i) {
-        float sum = (float)plateContour[i].x + plateContour[i].y;
-        float diff = (float)plateContour[i].x - plateContour[i].y;
+      for (const auto &p : plateContour) {
+        float sum = (float)p.x + p.y;
+        float diff = (float)p.x - p.y;
         if (sum < minSum) {
           minSum = sum;
-          tl_idx = i;
+          tl_p = p;
         }
         if (sum > maxSum) {
           maxSum = sum;
-          br_idx = i;
+          br_p = p;
         }
         if (diff < minDiff) {
           minDiff = diff;
-          bl_idx = i;
+          bl_p = p;
         }
         if (diff > maxDiff) {
           maxDiff = diff;
-          tr_idx = i;
+          tr_p = p;
         }
       }
-
-      // 순서 보장을 위해 임시 벡터에 저장
-      std::vector<cv::Point> sortedPlate;
-      sortedPlate.push_back(plateContour[tl_idx]); // TL
-      sortedPlate.push_back(plateContour[tr_idx]); // TR
-      sortedPlate.push_back(plateContour[br_idx]); // BR
-      sortedPlate.push_back(plateContour[bl_idx]); // BL
-      plateContour = sortedPlate;
+      candidates = {tl_p, tr_p, br_p, bl_p};
     }
 
-    // 최종 srcPoints 설정 (TL, TR, BR, BL 순서)
-    for (int i = 0; i < 4; ++i)
-      srcPoints[i] = plateContour[i];
+    // === 4개 점을 TL, TR, BR, BL 순서로 강제 정렬 (뒤집힘 방지) ===
+    // 1. Y축 기준 정렬 (위쪽 2개, 아래쪽 2개 분리)
+    std::sort(candidates.begin(), candidates.end(),
+              [](const cv::Point &a, const cv::Point &b) { return a.y < b.y; });
+
+    // 2. 상단 2개 중 X가 작은게 TL, 큰게 TR
+    if (candidates[0].x > candidates[1].x)
+      std::swap(candidates[0], candidates[1]);
+    // 3. 하단 2개 중 X가 큰게 BR, 작은게 BL
+    if (candidates[2].x < candidates[3].x)
+      std::swap(candidates[2], candidates[3]);
+
+    // 최종 srcPoints 설정 (TL, TR, BR, BL)
+    srcPoints[0] = candidates[0];
+    srcPoints[1] = candidates[1];
+    srcPoints[2] = candidates[2];
+    srcPoints[3] = candidates[3];
 
     // === 기하학적 유효성 검사 (안전 장치 추가) ===
     // 1. 회전 각도 검사: 상단 변(TL-TR)의 기울기가 45도를 넘으면 비정상으로
@@ -203,7 +209,61 @@ QString OcrManager::performOcr(const QImage &image) {
   cv::Mat binary;
   cv::threshold(warped, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
-  // === 4. 한 글자씩 개별 OCR 수행 ===
+  // === 3.5. [Fast-Path] 전체 이미지를 한 줄로 우선 인식 (Line-First Strategy)
+  // ===
+  m_tessApi->SetPageSegMode(tesseract::PSM_SINGLE_LINE);
+  m_tessApi->SetImage(binary.data, binary.cols, binary.rows, 1, binary.step);
+  m_tessApi->SetSourceResolution(300);
+  char *lineOutText = m_tessApi->GetUTF8Text();
+  QString lineResult = QString::fromUtf8(lineOutText).trimmed();
+  delete[] lineOutText;
+
+  QString cleanedLine = lineResult;
+  cleanedLine =
+      cleanedLine.replace(" ", "").replace("\t", "").replace("\n", "").replace(
+          "\r", "");
+  QRegularExpression plateRe(QStringLiteral("\\d{2,3}[가-힣]+\\d{4}"));
+  QRegularExpressionMatch reMatchLine = plateRe.match(cleanedLine);
+
+  if (reMatchLine.hasMatch()) {
+    QString finalPlate = reMatchLine.captured(0);
+    qDebug() << "[OCR] Line-First Strategy Success:" << lineResult << "->"
+             << finalPlate;
+
+    // Line-First 성공 시, 간단히 디버그 이미지 생성 후 즉시 반환
+    if (isWarped) {
+      static bool debugDirChecked = false;
+      QString debugPath = QCoreApplication::applicationDirPath() + "/debug_ocr";
+      if (!debugDirChecked) {
+        QDir dir(debugPath);
+        if (!dir.exists())
+          dir.mkpath(".");
+        debugDirChecked = true;
+      }
+      QString timestamp =
+          QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz");
+      QImage vizImg(binary.data, binary.cols, binary.rows, binary.step,
+                    QImage::Format_Grayscale8);
+      vizImg = vizImg.convertToFormat(QImage::Format_RGB32);
+      QPainter painter(&vizImg);
+      QFont font = painter.font();
+      font.setPixelSize(14);
+      font.setBold(true);
+      painter.setFont(font);
+      painter.setPen(Qt::blue);
+      painter.drawText(10, 20, finalPlate);
+
+      QString savePath =
+          debugPath + "/_LINE_RESULT_" + finalPlate + "_" + timestamp + ".png";
+      vizImg.save(savePath);
+    }
+    return finalPlate;
+  }
+
+  qDebug() << "[OCR] Line-First Strategy Failed (raw:" << lineResult
+           << "). Falling back to character segmentation.";
+
+  // === 4. 한 글자씩 개별 OCR 수행 (Fallback Strategy) ===
   // 4-1. 문자 영역 분리를 위해 반전 이미지에서 contour 추출
   //      (흰 배경 + 검은 글자 → 반전하여 흰 글자 contour를 찾음)
   cv::Mat inverted;
@@ -268,6 +328,54 @@ QString OcrManager::performOcr(const QImage &image) {
     }
   }
 
+  // === 겹치는 박스 병합(Merge Overlapping Bounding Boxes) ===
+  // 하나의 글자('2', '가' 등)가 여러 개의 영역으로 나뉘어 검색된 경우 박스
+  // 합치기
+  bool merged;
+  do {
+    merged = false;
+    for (size_t i = 0; i < charRects.size(); ++i) {
+      for (size_t j = i + 1; j < charRects.size(); ++j) {
+        cv::Rect r1 = charRects[i].rect;
+        cv::Rect r2 = charRects[j].rect;
+        cv::Rect intersection = r1 & r2;
+
+        int minArea = std::min(r1.area(), r2.area());
+
+        // 1. 겹치는 영역 기반 병합 (30% 이상 겹치면 합침)
+        bool conditionOverlap = (intersection.area() > minArea * 0.3);
+
+        // 2. 근접성 기반 병합 (가까이 있으면 '가' 처럼 합침)
+        int dx = std::max(0, std::max(r1.x, r2.x) -
+                                 std::min(r1.x + r1.width, r2.x + r2.width));
+        int dy_overlap =
+            std::max(0, std::min(r1.y + r1.height, r2.y + r2.height) -
+                            std::max(r1.y, r2.y));
+
+        bool conditionProximity = false;
+        // 가로 간격 6px 이하, 세로 50% 이상 겹침 조건
+        if (dx <= 6 && dy_overlap > std::min(r1.height, r2.height) * 0.5) {
+          cv::Rect mergedRect = r1 | r2;
+          double mergedRatio = (double)mergedRect.width / mergedRect.height;
+          // 합쳐진 결과가 너무 가로로 길어지지 않는 범위(1.2 이하) 내에서만
+          // 합침
+          if (mergedRatio <= 1.2) {
+            conditionProximity = true;
+          }
+        }
+
+        if (conditionOverlap || conditionProximity) {
+          charRects[i].rect = r1 | r2; // 두 박스를 감싸는 가장 큰 박스로 합침
+          charRects.erase(charRects.begin() + j); // 흡수된 박스는 제거
+          merged = true;
+          break;
+        }
+      }
+      if (merged)
+        break; // 다시 처음부터 검사
+    }
+  } while (merged);
+
   // 4-3. x 좌표 기준 왼쪽→오른쪽 정렬
   std::sort(
       charRects.begin(), charRects.end(),
@@ -276,7 +384,7 @@ QString OcrManager::performOcr(const QImage &image) {
   qDebug() << "[OCR] Character segmentation: found" << charRects.size()
            << "candidate chars (from" << charContours.size() << "contours)";
 
-  // 4-4. 각 문자를 개별 인식 (PSM_SINGLE_CHAR)
+  // 4-4. 각 문자를 개별 인식 (단어 모드로 둥근 윤곽선 유지)
   QString result;
   struct CharDebugInfo {
     cv::Rect rect;
@@ -286,87 +394,83 @@ QString OcrManager::performOcr(const QImage &image) {
   std::vector<CharDebugInfo> debugChars;
 
   if (charRects.empty()) {
-    // 문자 분리 실패 시 기존 한 줄 인식으로 폴백
-    qDebug() << "[OCR] No chars segmented, falling back to line mode.";
-    m_tessApi->SetPageSegMode(tesseract::PSM_SINGLE_LINE);
-    m_tessApi->SetImage(binary.data, binary.cols, binary.rows, 1, binary.step);
-    char *outText = m_tessApi->GetUTF8Text();
-    result = QString::fromUtf8(outText).trimmed();
-    delete[] outText;
-  } else {
-    m_tessApi->SetPageSegMode(tesseract::PSM_SINGLE_CHAR);
+    qDebug()
+        << "[OCR] Character segmentation yielded 0 rects. Returning empty.";
+  }
 
-    for (const auto &cr : charRects) {
-      // 문자 영역 잘라내기 (약간의 패딩 추가)
-      int pad = 4;
-      int x = std::max(0, cr.rect.x - pad);
-      int y = std::max(0, cr.rect.y - pad);
-      int w = std::min(cr.rect.width + pad * 2, imgW - x);
-      int h = std::min(cr.rect.height + pad * 2, imgH - y);
-      cv::Mat charRoi = binary(cv::Rect(x, y, w, h));
+  // PSM_SINGLE_CHAR(10)을 기반으로 인식 (패딩 최소화)
+  m_tessApi->SetPageSegMode(tesseract::PSM_SINGLE_CHAR);
 
-      // Tesseract 최적 크기로 리사이즈 (높이 48px 기준)
-      int targetH = 48;
-      double scale = (double)targetH / charRoi.rows;
-      int targetW = (int)(charRoi.cols * scale);
-      if (targetW < 10)
-        targetW = 10;
-      cv::Mat resized;
-      cv::resize(charRoi, resized, cv::Size(targetW, targetH), 0, 0,
-                 cv::INTER_CUBIC);
+  for (const auto &cr : charRects) {
+    // 문자 영역 잘라내기 (패딩을 2px로 축소하여 타이트하게 추출)
+    int pad = 2;
+    int x = std::max(0, cr.rect.x - pad);
+    int y = std::max(0, cr.rect.y - pad);
+    int w = std::min(cr.rect.width + pad * 2, imgW - x);
+    int h = std::min(cr.rect.height + pad * 2, imgH - y);
+    cv::Mat charRoi = binary(cv::Rect(x, y, w, h));
 
-      // 흰색 패딩 보더 추가 (Tesseract가 문자를 더 잘 인식)
-      cv::Mat padded;
-      int border = 10;
-      cv::copyMakeBorder(resized, padded, border, border, border, border,
-                         cv::BORDER_CONSTANT, cv::Scalar(255));
+    // Tesseract 최적 크기로 리사이즈 (높이 48px 기준)
+    int targetH = 48;
+    double scale = (double)targetH / charRoi.rows;
+    int targetW = (int)(charRoi.cols * scale);
+    if (targetW < 10)
+      targetW = 10;
+    cv::Mat resized;
+    cv::resize(charRoi, resized, cv::Size(targetW, targetH), 0, 0,
+               cv::INTER_CUBIC);
 
-      m_tessApi->SetImage(padded.data, padded.cols, padded.rows, 1,
-                          padded.step);
-      char *outChar = m_tessApi->GetUTF8Text();
+    // 흰색 패딩 보더 추가 (Tesseract가 문자를 더 잘 인식)
+    cv::Mat padded;
+    int border = 10;
+    cv::copyMakeBorder(resized, padded, border, border, border, border,
+                       cv::BORDER_CONSTANT, cv::Scalar(255));
 
-      // 공백 및 특수문자 일부 정리
-      QString chRaw = QString::fromUtf8(outChar).trimmed();
-      chRaw = chRaw.replace(" ", "").replace("\n", "").replace("\r", "");
-      delete[] outChar;
+    m_tessApi->SetImage(padded.data, padded.cols, padded.rows, 1, padded.step);
+    m_tessApi->SetSourceResolution(300);
+    char *outChar = m_tessApi->GetUTF8Text();
 
-      // PSM_SINGLE_CHAR 인데도 여러 글자를 뱉는 노이즈 케이스 방지
-      // 가장 첫 번째 유효한 글자 하나만 취득 (Qt QString은 유니코드 1글자를
-      // length 1로 처리함)
-      QString ch;
-      if (!chRaw.isEmpty()) {
-        // 특수기호나 알파벳 등 번호판에서 안 쓰이는 노이즈를 걸러낼 수도
-        // 있지만, 최종 Regex 필터링에서 걸러지므로 여기서는 1글자 제약만 강제.
-        ch = chRaw.at(0);
-      }
+    // 공백 및 특수문자 일부 정리
+    QString chRaw = QString::fromUtf8(outChar).trimmed();
+    chRaw = chRaw.replace(" ", "").replace("\n", "").replace("\r", "");
+    delete[] outChar;
 
-      if (!ch.isEmpty()) {
-        // === 비정상 위치의 한글 노이즈 필터링 ===
-        // 한글 문자의 유니코드 범위: 0xAC00 ~ 0xD7A3
-        QChar firstChar = ch.at(0);
-        bool isHangul =
-            (firstChar.unicode() >= 0xAC00 && firstChar.unicode() <= 0xD7A3);
+    // PSM_SINGLE_CHAR 인데도 여러 글자를 뱉는 노이즈 케이스 방지
+    // 가장 첫 번째 유효한 글자 하나만 취득 (Qt QString은 유니코드 1글자를
+    // length 1로 처리함)
+    QString ch;
+    if (!chRaw.isEmpty()) {
+      // 특수기호나 알파벳 등 번호판에서 안 쓰이는 노이즈를 걸러낼 수도
+      // 있지만, 최종 Regex 필터링에서 걸러지므로 여기서는 1글자 제약만 강제.
+      ch = chRaw.at(0);
+    }
 
-        if (isHangul) {
-          double centerX = cr.rect.x + (cr.rect.width / 2.0);
-          double relativePos = centerX / imgW;
+    if (!ch.isEmpty()) {
+      // === 비정상 위치의 한글 노이즈 필터링 ===
+      // 한글 문자의 유니코드 범위: 0xAC00 ~ 0xD7A3
+      QChar firstChar = ch.at(0);
+      bool isHangul =
+          (firstChar.unicode() >= 0xAC00 && firstChar.unicode() <= 0xD7A3);
 
-          // 번호판 구조상 한글은 양 끝단에 위치할 수 없음
-          // 오차를 감안해 왼쪽 15% 미만, 오른쪽 85% 초과 영역의 한글은 노이즈로
-          // 간주하고 무시
-          if (relativePos < 0.15 || relativePos > 0.85) {
-            qDebug() << "[OCR] Ignored Hangul out of bounds at" << cr.rect.x
-                     << "(rel:" << relativePos << ") char:" << ch;
-            continue;
-          }
+      if (isHangul) {
+        double centerX = cr.rect.x + (cr.rect.width / 2.0);
+        double relativePos = centerX / imgW;
+
+        // 번호판 구조상 한글은 가운데 영역에만 위치함
+        // 한글이 발견 가능한 범위를 가운데 30% 영역(0.35~0.65)으로 더 좁혀서
+        // 양 끝단의 숫자나 노이즈가 한글로 오인되는 것을 방지
+        if (relativePos < 0.35 || relativePos > 0.65) {
+          qDebug() << "[OCR] Ignored Hangul out of bounds at" << cr.rect.x
+                   << "(rel:" << relativePos << ") char:" << ch;
+          continue;
         }
-
-        result += ch;
-        debugChars.push_back({cr.rect, ch, padded.clone()});
-        qDebug() << "[OCR]   Char rect" << cr.rect.x << "," << cr.rect.y
-                 << cr.rect.width << "x" << cr.rect.height << " -> raw:'"
-                 << chRaw << "' filtered:'" << ch << "'";
       }
+
+      result += ch;
+      debugChars.push_back({cr.rect, ch, padded.clone()});
+      qDebug() << "[OCR]   Char rect" << cr.rect.x << "," << cr.rect.y
+               << cr.rect.width << "x" << cr.rect.height << " -> raw:'" << chRaw
+               << "' filtered:'" << ch << "'";
     }
   }
 
@@ -376,8 +480,8 @@ QString OcrManager::performOcr(const QImage &image) {
       cleaned.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r",
                                                                            "");
 
-  QRegularExpression plateRe(QStringLiteral("\\d{2,3}[가-힣]+\\d{4}"));
-  QRegularExpressionMatch reMatch = plateRe.match(cleaned);
+  QRegularExpression fallbackPlateRe(QStringLiteral("\\d{2,3}[가-힣]+\\d{4}"));
+  QRegularExpressionMatch reMatch = fallbackPlateRe.match(cleaned);
 
   if (reMatch.hasMatch()) {
     QString finalPlate = reMatch.captured(0);
