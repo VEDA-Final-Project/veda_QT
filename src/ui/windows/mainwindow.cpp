@@ -7,21 +7,44 @@
 #endif
 
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDoubleSpinBox>
 #include <QFont>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+// 아이콘 틴팅(색상 변경)을 위한 헬퍼 함수
+static QIcon tintIcon(const QString &path, const QColor &color) {
+  QPixmap pixmap(path);
+  if (pixmap.isNull())
+    return QIcon();
+
+  QPixmap result(pixmap.size());
+  result.fill(Qt::transparent);
+
+  QPainter painter(&result);
+  painter.setCompositionMode(QPainter::CompositionMode_Source);
+  painter.drawPixmap(0, 0, pixmap);
+  painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+  painter.fillRect(result.rect(), color);
+  painter.end();
+
+  return QIcon(result);
+}
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // 프레임리스 윈도우 (타이틀바 제거)
@@ -58,15 +81,19 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   MainWindowUiRefs uiRefs;
   uiRefs.videoWidgetPrimary = m_videoWidgetPrimary;
   uiRefs.videoWidgetSecondary = m_videoWidgetSecondary;
-  uiRefs.viewModeCombo = m_viewModeCombo;
-  uiRefs.cameraPrimarySelectorCombo = m_cameraPrimarySelectorCombo;
-  uiRefs.cameraSecondarySelectorCombo = m_cameraSecondarySelectorCombo;
+  for (int i = 0; i < 4; ++i) {
+    uiRefs.channelCards[i] = m_channelCards[i];
+    uiRefs.channelStatusDots[i] = m_channelStatusDots[i];
+    uiRefs.channelNameLabels[i] = m_channelNameLabels[i];
+  }
   uiRefs.roiTargetCombo = m_roiTargetCombo;
   uiRefs.roiNameEdit = m_roiNameEdit;
   uiRefs.roiPurposeCombo = m_roiPurposeCombo;
   uiRefs.roiSelectorCombo = m_roiSelectorCombo;
   uiRefs.logView = m_logView;
-  uiRefs.btnPlay = m_btnPlay;
+  for (int i = 0; i < 4; ++i) {
+    uiRefs.thumbnailLabels[i] = m_thumbnailLabels[i];
+  }
   uiRefs.btnApplyRoi = m_btnApplyRoi;
   uiRefs.btnFinishRoi = m_btnFinishRoi;
   uiRefs.btnDeleteRoi = m_btnDeleteRoi;
@@ -208,6 +235,21 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
       return true;
     }
   }
+
+  // 사이드바 위젯들이 휠 이벤트를 가로채서 스크롤이 끊기는 문제 해결
+  if (event->type() == QEvent::Wheel) {
+    if (qobject_cast<QComboBox *>(watched) ||
+        qobject_cast<QAbstractSpinBox *>(watched) ||
+        qobject_cast<QLineEdit *>(watched)) {
+      // 이벤트를 가로채서 부모 위젯(ScrollArea의 콘텐츠)으로 전달하여 스크롤
+      // 유도
+      if (watched->parent()) {
+        QCoreApplication::sendEvent(watched->parent(), event);
+      }
+      return true; // 원본 위젯의 기본 동작(값 변경 등)은 막음
+    }
+  }
+
   return QMainWindow::eventFilter(watched, event);
 }
 
@@ -317,7 +359,9 @@ void MainWindow::setupUi() {
 
   // Hamburger menu button
   m_menuButton = new QToolButton(this);
-  m_menuButton->setText(QString::fromUtf8("\xE2\x98\xB0"));
+  m_menuButton->setIcon(
+      tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/menu.png", QColor("#94A3B8")));
+  m_menuButton->setIconSize(QSize(18, 18));
   m_menuButton->setObjectName("navBtn");
   m_menuButton->setPopupMode(QToolButton::InstantPopup);
   m_menuButton->setCursor(Qt::PointingHandCursor);
@@ -348,8 +392,10 @@ void MainWindow::setupUi() {
   headerLayout->addStretch();
 
   // ── Window Control Buttons: Minimize, Maximize/Restore, Close ──
-  QPushButton *btnMinimize =
-      new QPushButton(QString::fromUtf8("\xE2\x94\x80"), this);
+  QPushButton *btnMinimize = new QPushButton(this);
+  btnMinimize->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/minimize.png",
+                                QColor("#94A3B8")));
+  btnMinimize->setIconSize(QSize(18, 18));
   btnMinimize->setObjectName("btnWindowCtrl");
   btnMinimize->setFixedSize(32, 32);
   btnMinimize->setToolTip(
@@ -357,8 +403,10 @@ void MainWindow::setupUi() {
   connect(btnMinimize, &QPushButton::clicked, this, &MainWindow::showMinimized);
   headerLayout->addWidget(btnMinimize);
 
-  QPushButton *btnMaxRestore =
-      new QPushButton(QString::fromUtf8("\xE2\x96\xA1"), this);
+  QPushButton *btnMaxRestore = new QPushButton(this);
+  btnMaxRestore->setIcon(tintIcon(
+      PROJECT_SOURCE_DIR "/src/ui/icon/maximize.png", QColor("#94A3B8")));
+  btnMaxRestore->setIconSize(QSize(18, 18));
   btnMaxRestore->setObjectName("btnWindowCtrl");
   btnMaxRestore->setFixedSize(32, 32);
   btnMaxRestore->setToolTip(
@@ -366,19 +414,20 @@ void MainWindow::setupUi() {
   connect(btnMaxRestore, &QPushButton::clicked, this, [=]() {
     if (isMaximized()) {
       showNormal();
-      btnMaxRestore->setText(QString::fromUtf8("\xE2\x96\xA1"));
       btnMaxRestore->setToolTip(
           QString::fromUtf8("\xEC\xB5\x9C\xEB\x8C\x80\xED\x99\x94"));
     } else {
       showMaximized();
-      btnMaxRestore->setText(QString::fromUtf8("\xE2\x9D\x90"));
       btnMaxRestore->setToolTip(QString::fromUtf8(
           "\xEC\x9B\x90\xEB\x9E\x98 \xED\x81\xAC\xEA\xB8\xB0"));
     }
   });
   headerLayout->addWidget(btnMaxRestore);
 
-  m_btnExit = new QPushButton(QString::fromUtf8("\xE2\x9C\x95"), this);
+  m_btnExit = new QPushButton(this);
+  m_btnExit->setIcon(
+      tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/exit.png", QColor("#94A3B8")));
+  m_btnExit->setIconSize(QSize(18, 18));
   m_btnExit->setObjectName("btnClose");
   m_btnExit->setFixedSize(32, 32);
   m_btnExit->setToolTip(QString::fromUtf8("\xEC\xA2\x85\xEB\xA3\x8C"));
@@ -399,13 +448,21 @@ void MainWindow::setupUi() {
   mainSplitter->setHandleWidth(4);
   mainSplitter->setChildrenCollapsible(false);
 
-  // ── Left Panel: Channel Controls ──
-  QFrame *channelPanel = new QFrame(this);
+  // ── Left Panel: Channel Controls (Scroll Area 적용 — 기존 테마 색상 유지) ──
+  QScrollArea *channelScrollArea = new QScrollArea(this);
+  channelScrollArea->setObjectName("channelScrollArea");
+  channelScrollArea->setWidgetResizable(true);
+  channelScrollArea->setMaximumWidth(400);
+  channelScrollArea->setFrameShape(QFrame::NoFrame);
+  channelScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  channelScrollArea->setStyleSheet(
+      "QScrollArea { background: transparent; border: none; }");
+
+  QFrame *channelPanel = new QFrame(channelScrollArea);
   channelPanel->setObjectName("channelPanel");
-  channelPanel->setMinimumWidth(160);
-  channelPanel->setMaximumWidth(320);
+  channelPanel->setMinimumWidth(0); // 접기 허용
   QVBoxLayout *channelPanelLayout = new QVBoxLayout(channelPanel);
-  channelPanelLayout->setContentsMargins(12, 12, 12, 12);
+  channelPanelLayout->setContentsMargins(12, 12, 4, 12);
   channelPanelLayout->setSpacing(8);
 
   QLabel *channelTitle = new QLabel(QString::fromUtf8("CHANNELS"), this);
@@ -413,40 +470,52 @@ void MainWindow::setupUi() {
   channelPanelLayout->addWidget(channelTitle);
   channelPanelLayout->addSpacing(4);
 
-  // 모드 선택
-  QLabel *viewModeLabel = new QLabel(QString::fromUtf8("모드"), this);
-  m_viewModeCombo = new QComboBox(this);
-  m_viewModeCombo->addItem(QStringLiteral("1채널"));
-  m_viewModeCombo->addItem(QStringLiteral("2채널 동시"));
-  channelPanelLayout->addWidget(viewModeLabel);
-  channelPanelLayout->addWidget(m_viewModeCombo);
-  channelPanelLayout->addSpacing(4);
+  // 채널 카드 (클릭으로 전환)
+  for (int i = 0; i < 4; ++i) {
+    QFrame *card = new QFrame(this);
+    card->setObjectName(QString("channelCard%1").arg(i));
+    card->setProperty("selected", i == 0);
+    card->setFixedHeight(90);
+    card->setCursor(Qt::PointingHandCursor);
+    card->setStyleSheet("QFrame { background: #1a1a2e; border: 2px solid #333; "
+                        "border-radius: 8px; }"
+                        "QFrame[selected=\"true\"] { border-color: #00e676; }");
 
-  // 카메라 A
-  QLabel *cameraPrimaryLabel = new QLabel(QString::fromUtf8("카메라 A"), this);
-  m_cameraPrimarySelectorCombo = new QComboBox(this);
-  m_cameraPrimarySelectorCombo->setSizeAdjustPolicy(
-      QComboBox::AdjustToContentsOnFirstShow);
-  channelPanelLayout->addWidget(cameraPrimaryLabel);
-  channelPanelLayout->addWidget(m_cameraPrimarySelectorCombo);
-  channelPanelLayout->addSpacing(4);
+    QHBoxLayout *cardLayout = new QHBoxLayout(card);
+    cardLayout->setContentsMargins(10, 8, 10, 8);
 
-  // 카메라 B
-  QLabel *cameraSecondaryLabel =
-      new QLabel(QString::fromUtf8("카메라 B"), this);
-  m_cameraSecondarySelectorCombo = new QComboBox(this);
-  m_cameraSecondarySelectorCombo->setSizeAdjustPolicy(
-      QComboBox::AdjustToContentsOnFirstShow);
-  m_cameraSecondarySelectorCombo->setEnabled(false);
-  channelPanelLayout->addWidget(cameraSecondaryLabel);
-  channelPanelLayout->addWidget(m_cameraSecondarySelectorCombo);
-  channelPanelLayout->addSpacing(8);
+    // 썸네일 노출용 QLabel
+    QLabel *thumbnailLabel = new QLabel(card);
+    thumbnailLabel->setFixedSize(120, 68);
+    thumbnailLabel->setStyleSheet("background: #000; border-radius: 4px;");
+    thumbnailLabel->setAlignment(Qt::AlignCenter);
 
-  // CCTV 보기 버튼
-  m_btnPlay = new QPushButton(QString::fromUtf8("▶ CCTV 보기"), this);
-  m_btnPlay->setObjectName("btnPlay");
-  m_btnPlay->setMinimumHeight(36);
-  channelPanelLayout->addWidget(m_btnPlay);
+    QVBoxLayout *infoLayout = new QVBoxLayout();
+    infoLayout->setContentsMargins(0, 0, 0, 0);
+
+    QLabel *nameLabel = new QLabel(QString("Ch%1").arg(i + 1), card);
+    nameLabel->setStyleSheet("color: #ccc; font-size: 13px; font-weight: bold; "
+                             "background: transparent; border: none;");
+
+    QLabel *statusDot = new QLabel(card);
+    statusDot->setFixedSize(10, 10);
+    statusDot->setStyleSheet(
+        "background: #10b981; border-radius: 5px; border: none;");
+
+    infoLayout->addWidget(nameLabel);
+    infoLayout->addStretch();
+    infoLayout->addWidget(statusDot);
+
+    cardLayout->addWidget(thumbnailLabel);
+    cardLayout->addSpacing(12);
+    cardLayout->addLayout(infoLayout, 1);
+
+    m_channelCards[i] = card;
+    m_channelNameLabels[i] = nameLabel;
+    m_channelStatusDots[i] = statusDot;
+    m_thumbnailLabels[i] = thumbnailLabel;
+    channelPanelLayout->addWidget(card);
+  }
   channelPanelLayout->addSpacing(12);
 
   // ── ROI Controls ──
@@ -458,8 +527,11 @@ void MainWindow::setupUi() {
   // ROI 대상
   QLabel *roiTargetLabel = new QLabel(QString::fromUtf8("ROI 대상"), this);
   m_roiTargetCombo = new QComboBox(this);
-  m_roiTargetCombo->addItem(QStringLiteral("카메라 A"));
-  m_roiTargetCombo->addItem(QStringLiteral("카메라 B"));
+  m_roiTargetCombo->addItem(QStringLiteral("Ch1"));
+  m_roiTargetCombo->addItem(QStringLiteral("Ch2"));
+  m_roiTargetCombo->addItem(QStringLiteral("Ch3"));
+  m_roiTargetCombo->addItem(QStringLiteral("Ch4"));
+  m_roiTargetCombo->installEventFilter(this);
   channelPanelLayout->addWidget(roiTargetLabel);
   channelPanelLayout->addWidget(m_roiTargetCombo);
 
@@ -472,6 +544,7 @@ void MainWindow::setupUi() {
   m_roiNameEdit->setValidator(new QRegularExpressionValidator(
       QRegularExpression(QStringLiteral("^[A-Za-z0-9가-힣 _-]{0,20}$")),
       m_roiNameEdit));
+  m_roiNameEdit->installEventFilter(this);
   channelPanelLayout->addWidget(nameLabel);
   channelPanelLayout->addWidget(m_roiNameEdit);
 
@@ -480,6 +553,7 @@ void MainWindow::setupUi() {
   m_roiPurposeCombo = new QComboBox(this);
   m_roiPurposeCombo->addItem(QStringLiteral("지정 주차"));
   m_roiPurposeCombo->addItem(QStringLiteral("일반 주차"));
+  m_roiPurposeCombo->installEventFilter(this);
   channelPanelLayout->addWidget(purposeLabel);
   channelPanelLayout->addWidget(m_roiPurposeCombo);
 
@@ -490,6 +564,7 @@ void MainWindow::setupUi() {
   m_roiSelectorCombo->setSizeAdjustPolicy(
       QComboBox::AdjustToMinimumContentsLengthWithIcon);
   m_roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
+  m_roiSelectorCombo->installEventFilter(this);
   channelPanelLayout->addWidget(roiLabel);
   channelPanelLayout->addWidget(m_roiSelectorCombo);
   channelPanelLayout->addSpacing(4);
@@ -527,12 +602,63 @@ void MainWindow::setupUi() {
   channelPanelLayout->addWidget(m_chkOther);
 
   channelPanelLayout->addStretch();
+  channelScrollArea->setWidget(channelPanel);
 
   // ── Center Panel: Video Feeds ──
   QWidget *centerPanel = new QWidget(this);
   QVBoxLayout *centerLayout = new QVBoxLayout(centerPanel);
-  centerLayout->setContentsMargins(8, 8, 8, 8);
-  centerLayout->setSpacing(8);
+  centerLayout->setContentsMargins(0, 0, 0, 0); // 공백 완전히 제거
+  centerLayout->setSpacing(4);
+
+  // 상단 토글 버튼 바 (좌우 패널 접기 제어 - 각 패널 상단 구석에 완벽히 밀착)
+  QHBoxLayout *toggleBarLayout = new QHBoxLayout();
+  toggleBarLayout->setContentsMargins(0, 0, 0, 0);
+  toggleBarLayout->setSpacing(0);
+
+  QPushButton *btnToggleChannel =
+      new QPushButton(QString::fromUtf8("\xE2\x97\x80"), this);
+  btnToggleChannel->setObjectName("btnToggleSidebar");
+  btnToggleChannel->setFixedSize(24, 24);
+  btnToggleChannel->setCursor(Qt::PointingHandCursor);
+  btnToggleChannel->setToolTip(QString::fromUtf8("채널 패널 보이기/숨기기"));
+  connect(btnToggleChannel, &QPushButton::clicked, this, [=]() {
+    QList<int> sizes = mainSplitter->sizes();
+    if (sizes[0] > 0) {
+      sizes[1] += sizes[0];
+      sizes[0] = 0;
+      btnToggleChannel->setText(QString::fromUtf8("\xE2\x96\xB6"));
+    } else {
+      sizes[1] -= 220;
+      sizes[0] = 220;
+      btnToggleChannel->setText(QString::fromUtf8("\xE2\x97\x80"));
+    }
+    mainSplitter->setSizes(sizes);
+  });
+
+  QPushButton *btnToggleEvent =
+      new QPushButton(QString::fromUtf8("\xE2\x96\xB6"), this);
+  btnToggleEvent->setObjectName("btnToggleSidebar");
+  btnToggleEvent->setFixedSize(24, 24);
+  btnToggleEvent->setCursor(Qt::PointingHandCursor);
+  btnToggleEvent->setToolTip(QString::fromUtf8("이벤트 로그 보이기/숨기기"));
+  connect(btnToggleEvent, &QPushButton::clicked, this, [=]() {
+    QList<int> sizes = mainSplitter->sizes();
+    if (sizes[2] > 0) {
+      sizes[1] += sizes[2];
+      sizes[2] = 0;
+      btnToggleEvent->setText(QString::fromUtf8("\xE2\x97\x80"));
+    } else {
+      sizes[1] -= 250;
+      sizes[2] = 250;
+      btnToggleEvent->setText(QString::fromUtf8("\xE2\x96\xB6"));
+    }
+    mainSplitter->setSizes(sizes);
+  });
+
+  toggleBarLayout->addWidget(btnToggleChannel);
+  toggleBarLayout->addStretch();
+  toggleBarLayout->addWidget(btnToggleEvent);
+  centerLayout->addLayout(toggleBarLayout);
 
   m_videoWidgetPrimary = new VideoWidget(this);
   m_videoWidgetSecondary = new VideoWidget(this);
@@ -571,47 +697,18 @@ void MainWindow::setupUi() {
   eventPanelLayout->addWidget(m_eventListWidget, 1);
 
   // 3-Panel 조합 (Splitter)
-  mainSplitter->addWidget(channelPanel);
+  mainSplitter->addWidget(channelScrollArea);
   mainSplitter->addWidget(centerPanel);
   mainSplitter->addWidget(eventPanel);
-  mainSplitter->setCollapsible(0, false); // 좌측 패널은 접히지 않음
+  mainSplitter->setCollapsible(0, true);  // 좌측 채널 패널 접기 가능
   mainSplitter->setCollapsible(1, false); // 중앙 패널은 접히지 않음
-  mainSplitter->setCollapsible(2, true);  // 우측 이벤트 패널은 접기 가능
+  mainSplitter->setCollapsible(2, true);  // 우측 이벤트 패널 접기 가능
+  mainSplitter->setStretchFactor(
+      1, 1); // 중앙 화면이 남는 공간을 모두 차지하도록 설정 (매우 중요)
   mainSplitter->setSizes({220, 600, 250});
 
-  // Event Log 토글 버튼 (Splitter 우측에 항상 고정)
-  QPushButton *btnToggleEvent =
-      new QPushButton(QString::fromUtf8("\xE2\x97\x80"), this);
-  btnToggleEvent->setObjectName("btnToggleEvent");
-  btnToggleEvent->setFixedSize(20, 60);
-  btnToggleEvent->setToolTip(QString::fromUtf8(
-      "\xEC\x9D\xB4\xEB\xB2\xA4\xED\x8A\xB8 \xEB\xA1\x9C\xEA\xB7\xB8 "
-      "\xEC\x97\xB4\xEA\xB8\xB0/\xEC\xA0\x91\xEA\xB8\xB0"));
-  btnToggleEvent->setCursor(Qt::PointingHandCursor);
-  connect(btnToggleEvent, &QPushButton::clicked, this, [=]() {
-    QList<int> sizes = mainSplitter->sizes();
-    if (sizes[2] > 0) {
-      // 접기: 크기를 0으로
-      sizes[1] += sizes[2];
-      sizes[2] = 0;
-      btnToggleEvent->setText(QString::fromUtf8("\xE2\x96\xB6"));
-    } else {
-      // 펼치기: 250px 복원
-      int restore = 250;
-      sizes[1] -= restore;
-      sizes[2] = restore;
-      btnToggleEvent->setText(QString::fromUtf8("\xE2\x97\x80"));
-    }
-    mainSplitter->setSizes(sizes);
-  });
-
-  // Splitter와 Toggle 버튼을 가로로 배치
-  QHBoxLayout *splitterWithToggle = new QHBoxLayout();
-  splitterWithToggle->setContentsMargins(0, 0, 0, 0);
-  splitterWithToggle->setSpacing(0);
-  splitterWithToggle->addWidget(mainSplitter, 1);
-  splitterWithToggle->addWidget(btnToggleEvent);
-  cctvLayout->addLayout(splitterWithToggle, 1);
+  // 이제 Splitter 전체를 꽉 차게 cctvLayout에 바로 추가 (여백 없음)
+  cctvLayout->addWidget(mainSplitter, 1);
 
   // ── Footer Bar ──
   QFrame *footerFrame = new QFrame(this);

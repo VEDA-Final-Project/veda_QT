@@ -467,3 +467,19 @@ QLabel#recordingLabel {
     color: #94A3B8;
     font-size: 9pt;
 }
+
+/* === Sidebar Toggle Buttons (Compact Icon style) === */
+QPushButton#btnToggleSidebar {
+    background-color: transparent;
+    color: #94A3B8;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    font-size: 8pt;
+    padding: 0;
+}
+
+QPushButton#btnToggleSidebar:hover {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+    border-color: rgba(16, 185, 129, 0.4);
+}
