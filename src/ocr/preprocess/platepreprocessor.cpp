@@ -11,9 +11,15 @@ namespace
 constexpr int kDefaultInputWidth = 320;
 constexpr int kDefaultInputHeight = 48;
 constexpr int kMinWarpWidth = 96;
-constexpr double kMinContourArea = 500.0;
-constexpr double kMinQuadArea = 400.0;
-constexpr double kMaxTopEdgeAngleDeg = 45.0;
+constexpr double kMinContourArea = 280.0;
+constexpr double kMinQuadArea = 220.0;
+constexpr double kMinContourAspect = 1.6;
+constexpr double kMaxContourAspect = 10.5;
+constexpr double kMinRectangularity = 0.32;
+constexpr double kMaxContourBoundsAreaRatio = 0.995;
+constexpr double kBorderPenaltyBoundsAreaRatio = 0.96;
+constexpr double kBorderPenaltyScore = 1.4;
+constexpr double kMaxTopEdgeAngleDeg = 60.0;
 constexpr double kLowQualitySharpness = 80.0;
 
 cv::Mat toRgbImage(const cv::Mat &src)
@@ -138,6 +144,44 @@ double estimateSharpness(const cv::Mat &gray)
   return stddev[0] * stddev[0];
 }
 
+double estimateIntensityStdDev(const cv::Mat &gray)
+{
+  if (gray.empty())
+  {
+    return 0.0;
+  }
+
+  cv::Scalar mean;
+  cv::Scalar stddev;
+  cv::meanStdDev(gray, mean, stddev);
+  return stddev[0];
+}
+
+double estimateDynamicRange(const cv::Mat &gray)
+{
+  if (gray.empty())
+  {
+    return 0.0;
+  }
+
+  double minVal = 0.0;
+  double maxVal = 0.0;
+  cv::minMaxLoc(gray, &minVal, &maxVal);
+  return maxVal - minVal;
+}
+
+bool shouldApplyClahe(const cv::Mat &gray)
+{
+  if (gray.empty())
+  {
+    return false;
+  }
+
+  const double intensityStdDev = estimateIntensityStdDev(gray);
+  const double dynamicRange = estimateDynamicRange(gray);
+  return (intensityStdDev < 52.0 || dynamicRange < 170.0);
+}
+
 cv::Mat upscaleForOcr(const cv::Mat &rgb, double *scaleOut)
 {
   if (scaleOut)
@@ -154,36 +198,27 @@ cv::Mat upscaleForOcr(const cv::Mat &rgb, double *scaleOut)
   const double sharpness = estimateSharpness(gray);
 
   double scale = 1.0;
-  if (rgb.cols < 110 || rgb.rows < 30)
+  if (rgb.cols < 60 || rgb.rows < 16)
   {
-    scale = 2.2;
+    scale = 1.35;
   }
-  else if (rgb.cols < 190 || rgb.rows < 44)
+  else if ((rgb.cols < 84 || rgb.rows < 22) && sharpness < 70.0)
   {
-    scale = 1.75;
-  }
-  else if (rgb.cols < 230 || sharpness < 110.0)
-  {
-    scale = 1.4;
+    scale = 1.2;
   }
 
-  if (sharpness < 45.0)
+  if (sharpness < 20.0 && (rgb.cols < 72 || rgb.rows < 20))
   {
-    scale = std::max(scale, 2.3);
+    scale = std::max(scale, 1.45);
   }
-  else if (sharpness < 80.0)
-  {
-    scale = std::max(scale, 1.9);
-  }
-
-  scale = std::clamp(scale, 1.0, 2.5);
+  scale = std::clamp(scale, 1.0, 1.5);
   if (scale <= 1.05)
   {
     return rgb.clone();
   }
 
   cv::Mat upscaled;
-  cv::resize(rgb, upscaled, cv::Size(), scale, scale, cv::INTER_CUBIC);
+  cv::resize(rgb, upscaled, cv::Size(), scale, scale, cv::INTER_LINEAR);
   if (scaleOut)
   {
     *scaleOut = scale;
@@ -545,10 +580,13 @@ bool buildOcrInput(const cv::Mat &normalizedRgb, cv::Mat *enhancedGrayOut,
   }
 
   cv::Mat ocrGray = gray.clone();
-  const cv::Mat claheGray = applyClahe(gray);
-  if (!claheGray.empty())
+  if (shouldApplyClahe(gray))
   {
-    ocrGray = claheGray;
+    const cv::Mat claheGray = applyClahe(gray);
+    if (!claheGray.empty())
+    {
+      ocrGray = claheGray;
+    }
   }
 
   *enhancedGrayOut = ocrGray.clone();
@@ -599,7 +637,7 @@ bool detectPlateContour(const cv::Mat &gray, std::vector<cv::Point> *contourOut)
     const cv::Rect bounds = cv::boundingRect(contour);
     const double boundsArea =
         static_cast<double>(std::max(1, bounds.width * bounds.height));
-    if (boundsArea >= (imageArea * 0.985))
+    if (boundsArea >= (imageArea * kMaxContourBoundsAreaRatio))
     {
       continue;
     }
@@ -617,13 +655,13 @@ bool detectPlateContour(const cv::Mat &gray, std::vector<cv::Point> *contourOut)
 
     const double aspect = std::max(rectWidth, rectHeight) /
                           std::max(1.0, std::min(rectWidth, rectHeight));
-    if (aspect < 2.0 || aspect > 8.5)
+    if (aspect < kMinContourAspect || aspect > kMaxContourAspect)
     {
       continue;
     }
 
     const double rectangularity = area / rectArea;
-    if (rectangularity < 0.45)
+    if (rectangularity < kMinRectangularity)
     {
       continue;
     }
@@ -636,7 +674,10 @@ bool detectPlateContour(const cv::Mat &gray, std::vector<cv::Point> *contourOut)
     const double areaScore = std::min(0.95, area / imageArea) * 6.0;
     const double rectScore = rectangularity * 2.0;
     const double quadBonus = likelyQuad ? 2.5 : 0.0;
-    const double borderPenalty = (boundsArea > (imageArea * 0.92)) ? 2.5 : 0.0;
+    const double borderPenalty =
+        (boundsArea > (imageArea * kBorderPenaltyBoundsAreaRatio))
+            ? kBorderPenaltyScore
+            : 0.0;
     const double score = areaScore + rectScore + quadBonus - borderPenalty;
 
     if (score > bestScore)
@@ -713,19 +754,26 @@ bool extractQuadPoints(const std::vector<cv::Point> &contour,
 
   std::vector<cv::Point2f> points;
 
-  std::vector<cv::Point> approx;
   const double perimeter = cv::arcLength(contour, true);
-  cv::approxPolyDP(contour, approx, 0.02 * perimeter, true);
-  if (approx.size() == 4)
+  for (const double epsilonScale : {0.018, 0.03, 0.045})
   {
+    std::vector<cv::Point> approx;
+    cv::approxPolyDP(contour, approx, epsilonScale * perimeter, true);
+    if (approx.size() != 4 || !cv::isContourConvex(approx))
+    {
+      continue;
+    }
+
     points.reserve(4);
     for (const cv::Point &pt : approx)
     {
       points.push_back(
           cv::Point2f(static_cast<float>(pt.x), static_cast<float>(pt.y)));
     }
+    break;
   }
-  else
+
+  if (points.empty())
   {
     const cv::RotatedRect rect = cv::minAreaRect(contour);
     if (std::min(rect.size.width, rect.size.height) < 4.0f)
@@ -780,6 +828,79 @@ bool validateQuadGeometry(const std::array<cv::Point2f, 4> &quad)
   }
 
   return true;
+}
+
+bool shouldWarpPerspective(const std::array<cv::Point2f, 4> &quad)
+{
+  const double topWidth = cv::norm(quad[1] - quad[0]);
+  const double bottomWidth = cv::norm(quad[2] - quad[3]);
+  const double leftHeight = cv::norm(quad[3] - quad[0]);
+  const double rightHeight = cv::norm(quad[2] - quad[1]);
+
+  const double minWidth = std::max(1.0, std::min(topWidth, bottomWidth));
+  const double minHeight = std::max(1.0, std::min(leftHeight, rightHeight));
+  const double widthRatio = std::max(topWidth, bottomWidth) / minWidth;
+  const double heightRatio = std::max(leftHeight, rightHeight) / minHeight;
+
+  const double topAngle = std::abs(
+      std::atan2(quad[1].y - quad[0].y, quad[1].x - quad[0].x) * 180.0 / CV_PI);
+  const double bottomAngle = std::abs(
+      std::atan2(quad[2].y - quad[3].y, quad[2].x - quad[3].x) * 180.0 / CV_PI);
+
+  const bool hasVisibleTilt = (topAngle > 7.0 || bottomAngle > 7.0);
+  const bool hasPerspectiveSkew = (widthRatio > 1.12 || heightRatio > 1.12);
+  return hasVisibleTilt || hasPerspectiveSkew;
+}
+
+bool extractDeskewQuadFromCrop(const cv::Mat &gray,
+                               std::array<cv::Point2f, 4> *quadOut)
+{
+  if (!quadOut || gray.empty())
+  {
+    return false;
+  }
+
+  const cv::Mat denoised = denoiseGray(gray);
+  const cv::Mat stretched = contrastStretch(denoised.empty() ? gray : denoised);
+  const cv::Mat base = stretched.empty() ? gray : stretched;
+
+  cv::Mat edges;
+  cv::Canny(base, edges, 40.0, 120.0);
+  cv::morphologyEx(edges, edges, cv::MORPH_CLOSE,
+                   cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+  cv::dilate(edges, edges, cv::Mat(), cv::Point(-1, -1), 1);
+
+  if (edges.cols > 2 && edges.rows > 2)
+  {
+    edges.row(0).setTo(0);
+    edges.row(edges.rows - 1).setTo(0);
+    edges.col(0).setTo(0);
+    edges.col(edges.cols - 1).setTo(0);
+  }
+
+  std::vector<cv::Point> points;
+  cv::findNonZero(edges, points);
+  if (points.size() < 24)
+  {
+    return false;
+  }
+
+  const cv::RotatedRect rect = cv::minAreaRect(points);
+  const double rectWidth = std::max(1.0f, rect.size.width);
+  const double rectHeight = std::max(1.0f, rect.size.height);
+  const double rectArea = rectWidth * rectHeight;
+  const double imageArea =
+      static_cast<double>(std::max(1, gray.cols * gray.rows));
+  if (rectArea < kMinQuadArea || rectArea < (imageArea * 0.22))
+  {
+    return false;
+  }
+
+  std::array<cv::Point2f, 4> rectPoints{};
+  rect.points(rectPoints.data());
+  *quadOut = orderQuadPoints(
+      std::vector<cv::Point2f>(rectPoints.begin(), rectPoints.end()));
+  return hasDistinctQuadPoints(*quadOut);
 }
 
 cv::Mat warpPlatePerspective(const cv::Mat &rgb,
@@ -857,38 +978,32 @@ bool preprocessPlateImage(const QImage &image, const int inputWidth,
   }
 
   resultOut->normalizedRgb = resultOut->roiRgb.clone();
-  const cv::Mat gray = toGrayImage(resultOut->roiRgb);
+  const cv::Mat gray = toGrayImage(resultOut->normalizedRgb);
   if (gray.empty())
   {
     return false;
   }
 
-  std::vector<cv::Point> plateContour;
-  if (detectPlateContour(gray, &plateContour))
+  std::array<cv::Point2f, 4> quad{};
+  if (extractDeskewQuadFromCrop(gray, &quad) && validateQuadGeometry(quad) &&
+      shouldWarpPerspective(quad))
   {
-    std::array<cv::Point2f, 4> quad{};
-    if (extractQuadPoints(plateContour, &quad) && validateQuadGeometry(quad))
+    const cv::Mat warpedRgb =
+        warpPlatePerspective(resultOut->normalizedRgb, quad, inputWidth, inputHeight);
+    if (!warpedRgb.empty())
     {
-      const cv::Mat warpedRgb =
-          warpPlatePerspective(resultOut->roiRgb, quad, inputWidth, inputHeight);
-      if (!warpedRgb.empty())
-      {
-        resultOut->normalizedRgb = warpedRgb;
-      }
+      resultOut->normalizedRgb = warpedRgb;
     }
   }
 
+  // Metadata already provides a LicensePlate crop, so keep straight plates
+  // intact and only restore lightweight OCR-oriented enhancement otherwise.
   double upscaleFactor = 1.0;
-  const cv::Mat upscaledRgb = upscaleForOcr(resultOut->normalizedRgb, &upscaleFactor);
+  const cv::Mat upscaledRgb =
+      upscaleForOcr(resultOut->normalizedRgb, &upscaleFactor);
   if (!upscaledRgb.empty())
   {
     resultOut->normalizedRgb = upscaledRgb;
-  }
-
-  const cv::Mat trimmedRgb = trimPlateToContent(resultOut->normalizedRgb, nullptr);
-  if (!trimmedRgb.empty())
-  {
-    resultOut->normalizedRgb = trimmedRgb;
   }
 
   if (!buildOcrInput(resultOut->normalizedRgb, &resultOut->enhancedGray,

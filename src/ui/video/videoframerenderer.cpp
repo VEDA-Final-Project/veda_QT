@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
+#include <algorithm>
 #include <QtGlobal>
 #include <opencv2/imgproc.hpp>
 
@@ -235,11 +236,12 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     if (obj.type == "LicensePlate" && ocrRequests != nullptr) {
       // 2. OCR Decoupling: Extract from original FULL RES frame, not
       // scaledFrame
-      // 2-1. 바운딩 박스 여백(Padding) 추가: 가로 약 3%, 세로 약 7%
-      int padX = static_cast<int>(candidate.srcRect.width() * 0.033);
-      int padY = static_cast<int>(candidate.srcRect.height() * 0.066);
-      QRect paddedRect = candidate.srcRect.adjusted(-padX, -padY, padX, padY);
-
+      const int padX =
+          std::max(1, static_cast<int>(candidate.srcRect.width() * 0.015));
+      const int padY =
+          std::max(1, static_cast<int>(candidate.srcRect.height() * 0.03));
+      const QRect paddedRect =
+          candidate.srcRect.adjusted(-padX, -padY, padX, padY);
       const QRect safeRect = paddedRect.intersected(frame.rect());
       if (!safeRect.isEmpty()) {
         ocrRequests->append(OcrRequest{obj.id, frame.copy(safeRect)});
