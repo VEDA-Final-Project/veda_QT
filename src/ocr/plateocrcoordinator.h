@@ -19,9 +19,11 @@ public:
   ~PlateOcrCoordinator() override;
 
   void requestOcr(int objectId, const QImage &crop);
+  void resetRuntimeState();
   void setStabilizationEnabled(bool enabled) {
     m_stabilizationEnabled = enabled;
   }
+  void setEmitPartialResults(bool enabled) { m_emitPartialResults = enabled; }
 
 signals:
   void ocrReady(int objectId, const OcrFullResult &result);
@@ -29,6 +31,7 @@ signals:
 private:
   static constexpr size_t kWorkerCount = 2;
   bool m_stabilizationEnabled = true;
+  bool m_emitPartialResults = false;
 
   struct PendingOcr {
     int objectId = -1;

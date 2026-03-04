@@ -2,6 +2,7 @@
 #include "ocr/debug/ocrdebugdumper.h"
 #include "ocr/postprocess/platepostprocessor.h"
 #include "ocr/preprocess/platepreprocessor.h"
+#include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QDirIterator>
@@ -15,6 +16,98 @@ namespace {
 constexpr int kDefaultInputWidth = 320;
 constexpr int kDefaultInputHeight = 48;
 constexpr int kRuntimeLogInterval = 10;
+
+bool looksLikeWindowsAbsolutePath(const QString &path) {
+  return path.size() >= 3 && path.at(0).isLetter() && path.at(1) == u':' &&
+         (path.at(2) == u'/' || path.at(2) == u'\\');
+}
+
+QString convertWindowsPathToWslMount(const QString &path) {
+#ifdef Q_OS_UNIX
+  if (!looksLikeWindowsAbsolutePath(path)) {
+    return QString();
+  }
+
+  QString normalized = QDir::fromNativeSeparators(path);
+  QString suffix = normalized.mid(2);
+  if (!suffix.startsWith(u'/')) {
+    suffix.prepend(u'/');
+  }
+  return QStringLiteral("/mnt/%1%2")
+      .arg(QString(path.at(0).toLower()))
+      .arg(QDir::cleanPath(suffix));
+#else
+  Q_UNUSED(path);
+  return QString();
+#endif
+}
+
+QStringList lookupRoots() {
+  QStringList roots;
+  roots << QDir::currentPath();
+
+  const QString appDir = QCoreApplication::applicationDirPath();
+  if (!appDir.isEmpty()) {
+    roots << appDir << QDir(appDir).absoluteFilePath(QStringLiteral(".."))
+          << QDir(appDir).absoluteFilePath(QStringLiteral("../.."));
+  }
+
+#ifdef PROJECT_SOURCE_DIR
+  roots << QStringLiteral(PROJECT_SOURCE_DIR);
+#endif
+
+  for (QString &root : roots) {
+    root = QDir::cleanPath(root);
+  }
+  roots.removeDuplicates();
+  return roots;
+}
+
+QStringList candidateLookupPaths(const QString &pathOrDir) {
+  QStringList candidates;
+  const QString trimmed = QDir::fromNativeSeparators(pathOrDir.trimmed());
+  if (trimmed.isEmpty()) {
+    return candidates;
+  }
+
+  candidates << QDir::cleanPath(trimmed);
+
+  const QString wslMountPath = convertWindowsPathToWslMount(trimmed);
+  if (!wslMountPath.isEmpty()) {
+    candidates << wslMountPath;
+  }
+
+  const QFileInfo rawInfo(trimmed);
+  if (rawInfo.isRelative()) {
+    const QStringList roots = lookupRoots();
+    for (const QString &root : roots) {
+      candidates << QDir(root).absoluteFilePath(trimmed);
+    }
+  }
+
+  for (QString &candidate : candidates) {
+    candidate = QDir::cleanPath(candidate);
+  }
+  candidates.removeDuplicates();
+  return candidates;
+}
+
+QStringList defaultOcrSearchDirs() {
+  QStringList searchDirs;
+  const QStringList roots = lookupRoots();
+  for (const QString &root : roots) {
+    searchDirs << root << QDir(root).absoluteFilePath(QStringLiteral("models"))
+               << QDir(root).absoluteFilePath(QStringLiteral("models/korean"))
+               << QDir(root).absoluteFilePath(QStringLiteral("model"));
+  }
+
+  searchDirs << QDir::home().filePath(QStringLiteral("Downloads"));
+  for (QString &dir : searchDirs) {
+    dir = QDir::cleanPath(dir);
+  }
+  searchDirs.removeDuplicates();
+  return searchDirs;
+}
 
 bool shouldLogRuntimeOcrMessage(const int objectId) {
   static std::mutex mutex;
@@ -61,23 +154,25 @@ QString OcrManager::findFirstFileRecursively(const QString &rootPath,
 
 QString OcrManager::resolveFilePath(const QString &pathOrDir,
                                     const QStringList &filters) {
-  const QString candidate = pathOrDir.trimmed();
-  if (candidate.isEmpty()) {
+  const QString trimmed = pathOrDir.trimmed();
+  if (trimmed.isEmpty()) {
     return QString();
   }
 
-  QFileInfo info(candidate);
-  if (!info.exists() && info.isRelative()) {
-    const QDir currentDir(QDir::currentPath());
-    info = QFileInfo(currentDir.absoluteFilePath(candidate));
-  }
+  const QStringList candidates = candidateLookupPaths(trimmed);
+  for (const QString &candidate : candidates) {
+    const QFileInfo info(candidate);
+    if (info.exists() && info.isFile()) {
+      return info.absoluteFilePath();
+    }
 
-  if (info.exists() && info.isFile()) {
-    return info.absoluteFilePath();
-  }
-
-  if (info.exists() && info.isDir()) {
-    return findFirstFileRecursively(info.absoluteFilePath(), filters);
+    if (info.exists() && info.isDir()) {
+      const QString found =
+          findFirstFileRecursively(info.absoluteFilePath(), filters);
+      if (!found.isEmpty()) {
+        return found;
+      }
+    }
   }
 
   return QString();
@@ -90,9 +185,16 @@ QString OcrManager::resolveModelPath(const QString &modelPath) const {
     return explicitPath;
   }
 
-  const QString downloadsDir =
-      QDir::home().filePath(QStringLiteral("Downloads"));
-  return resolveFilePath(downloadsDir, QStringList{QStringLiteral("*.onnx")});
+  const QStringList searchDirs = defaultOcrSearchDirs();
+  for (const QString &searchDir : searchDirs) {
+    const QString found =
+        resolveFilePath(searchDir, QStringList{QStringLiteral("*.onnx")});
+    if (!found.isEmpty()) {
+      return found;
+    }
+  }
+
+  return QString();
 }
 
 QString
@@ -116,10 +218,17 @@ OcrManager::resolveDictionaryPath(const QString &dictPath,
     }
   }
 
-  const QString downloadsDir =
-      QDir::home().filePath(QStringLiteral("Downloads"));
-  return resolveFilePath(downloadsDir, QStringList{QStringLiteral("dict.txt"),
-                                                   QStringLiteral("*.txt")});
+  const QStringList searchDirs = defaultOcrSearchDirs();
+  for (const QString &searchDir : searchDirs) {
+    const QString found = resolveFilePath(
+        searchDir, QStringList{QStringLiteral("dict.txt"),
+                               QStringLiteral("*.txt")});
+    if (!found.isEmpty()) {
+      return found;
+    }
+  }
+
+  return QString();
 }
 
 bool OcrManager::init(const QString &modelPath, const QString &dictPath,

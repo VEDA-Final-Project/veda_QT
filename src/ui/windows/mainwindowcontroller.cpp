@@ -919,14 +919,49 @@ void MainWindowController::onLogMessage(const QString &msg) {
   }
 }
 
+void MainWindowController::recordAuditResult(int objectId,
+                                             const OcrFullResult &result) {
+  if (!m_isBenchmarking || (result.filtered.isEmpty() && result.raw.isEmpty())) {
+    return;
+  }
+
+  OcrAuditResult audit;
+  audit.timestamp =
+      QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+  audit.objectId = objectId;
+  audit.truth = m_benchmarkTruth;
+  audit.raw = result.raw;
+  audit.filtered = result.filtered;
+  audit.latencyMs = result.latencyMs;
+  audit.isRawMatch = (audit.raw == audit.truth);
+  audit.isE2EMatch = (audit.filtered == audit.truth);
+  audit.cer = calculateCER(audit.truth, audit.filtered);
+
+  m_auditResults.append(audit);
+  const QString displayText =
+      !result.filtered.isEmpty() ? result.filtered : result.raw;
+  onLogMessage(QString("[OCR Audit] %1/%2 수집됨 (ID:%3, Res:%4, Latency:%5ms)")
+                   .arg(m_auditResults.size())
+                   .arg(m_benchmarkTargetCount)
+                   .arg(objectId)
+                   .arg(displayText)
+                   .arg(result.latencyMs));
+
+  if (m_auditResults.size() >= m_benchmarkTargetCount) {
+    onRunBenchmark();
+  }
+}
+
 void MainWindowController::onOcrResultPrimary(int objectId,
                                               const OcrFullResult &result) {
   if (!m_ui.logView) {
     return;
   }
+  const QString displayText =
+      !result.filtered.isEmpty() ? result.filtered : result.raw;
   const QString msg = QString("[OCR][A] ID:%1 Result:%2 (Latency:%3ms)")
                           .arg(objectId)
-                          .arg(result.filtered)
+                          .arg(displayText)
                           .arg(result.latencyMs);
   qDebug() << msg;
 
@@ -936,38 +971,11 @@ void MainWindowController::onOcrResultPrimary(int objectId,
   }
 
   // OCR 결과를 ParkingService에 전달하여 DB 기록 + 알림 처리
-  if (m_parkingServicePrimary) {
+  if (m_parkingServicePrimary && !result.filtered.isEmpty()) {
     m_parkingServicePrimary->processOcrResult(objectId, result.filtered);
   }
 
-  // Live Audit Logic
-  if (m_isBenchmarking && !result.filtered.isEmpty()) {
-    OcrAuditResult audit;
-    audit.timestamp =
-        QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
-    audit.objectId = objectId;
-    audit.truth = m_benchmarkTruth;
-    audit.raw = result.raw;
-    audit.filtered = result.filtered;
-    audit.latencyMs = result.latencyMs;
-    audit.isRawMatch = (audit.raw == audit.truth);
-    audit.isE2EMatch = (audit.filtered == audit.truth);
-    audit.cer = calculateCER(audit.truth, audit.filtered);
-
-    m_auditResults.append(audit);
-    onLogMessage(
-        QString("[OCR Audit] %1/%2 수집됨 (ID:%3, Res:%4, Latency:%5ms)")
-            .arg(m_auditResults.size())
-            .arg(m_benchmarkTargetCount)
-            .arg(objectId)
-            .arg(result.filtered)
-            .arg(result.latencyMs));
-
-    if (m_auditResults.size() >= m_benchmarkTargetCount) {
-      onRunBenchmark(); // Stop benchmarking
-      generateAuditReport();
-    }
-  }
+  recordAuditResult(objectId, result);
 }
 
 void MainWindowController::onOcrResultSecondary(int objectId,
@@ -975,9 +983,11 @@ void MainWindowController::onOcrResultSecondary(int objectId,
   if (!m_ui.logView) {
     return;
   }
+  const QString displayText =
+      !result.filtered.isEmpty() ? result.filtered : result.raw;
   const QString msg = QString("[OCR][B] ID:%1 Result:%2 (Latency:%3ms)")
                           .arg(objectId)
-                          .arg(result.filtered)
+                          .arg(displayText)
                           .arg(result.latencyMs);
   qDebug() << msg;
 
@@ -985,9 +995,11 @@ void MainWindowController::onOcrResultSecondary(int objectId,
     m_ui.logView->append(msg);
   }
 
-  if (m_parkingServiceSecondary) {
+  if (m_parkingServiceSecondary && !result.filtered.isEmpty()) {
     m_parkingServiceSecondary->processOcrResult(objectId, result.filtered);
   }
+
+  recordAuditResult(objectId, result);
 }
 
 void MainWindowController::onStartRoiDraw() {
@@ -1473,6 +1485,10 @@ void MainWindowController::onRunBenchmark() {
       m_ocrCoordinatorPrimary->setStabilizationEnabled(true);
     if (m_ocrCoordinatorSecondary)
       m_ocrCoordinatorSecondary->setStabilizationEnabled(true);
+    if (m_ocrCoordinatorPrimary)
+      m_ocrCoordinatorPrimary->setEmitPartialResults(false);
+    if (m_ocrCoordinatorSecondary)
+      m_ocrCoordinatorSecondary->setEmitPartialResults(false);
 
     m_ui.btnRunBenchmark->setText("실시간 평가 시작");
     m_ui.benchmarkTruthInput->setEnabled(true);
@@ -1495,9 +1511,17 @@ void MainWindowController::onRunBenchmark() {
   m_isBenchmarking = true;
 
   if (m_ocrCoordinatorPrimary)
+    m_ocrCoordinatorPrimary->resetRuntimeState();
+  if (m_ocrCoordinatorSecondary)
+    m_ocrCoordinatorSecondary->resetRuntimeState();
+  if (m_ocrCoordinatorPrimary)
     m_ocrCoordinatorPrimary->setStabilizationEnabled(false);
   if (m_ocrCoordinatorSecondary)
     m_ocrCoordinatorSecondary->setStabilizationEnabled(false);
+  if (m_ocrCoordinatorPrimary)
+    m_ocrCoordinatorPrimary->setEmitPartialResults(true);
+  if (m_ocrCoordinatorSecondary)
+    m_ocrCoordinatorSecondary->setEmitPartialResults(true);
 
   m_ui.btnRunBenchmark->setText("실시간 OCR 평가 중단");
   m_ui.benchmarkTruthInput->setEnabled(false);

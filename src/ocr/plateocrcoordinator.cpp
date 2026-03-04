@@ -111,6 +111,23 @@ PlateOcrCoordinator::~PlateOcrCoordinator() {
   }
 }
 
+void PlateOcrCoordinator::resetRuntimeState() {
+  m_pending.clear();
+  m_pendingObjectIds.clear();
+  m_histories.clear();
+
+  m_inflightObjectIds.clear();
+  for (WorkerState &worker : m_workers) {
+    if (!worker.watcher.isRunning()) {
+      worker.runningObjectId = -1;
+      worker.queuedAtMs = 0;
+      worker.startedAtMs = 0;
+    } else if (worker.runningObjectId >= 0) {
+      m_inflightObjectIds.insert(worker.runningObjectId);
+    }
+  }
+}
+
 void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop) {
   if (m_shuttingDown) {
     return;
@@ -162,6 +179,7 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
            << "filtered=" << result.filtered << "raw=" << result.raw
            << "processMs=" << processMs << "endToEndMs=" << endToEndMs;
 
+  m_inflightObjectIds.remove(objectId);
   worker.runningObjectId = -1;
   worker.queuedAtMs = 0;
   worker.startedAtMs = 0;
@@ -179,6 +197,9 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
   } else if (!result.raw.isEmpty()) {
     qDebug() << "[OCR] Raw result exists but filtered is empty. raw="
              << result.raw;
+    if (m_emitPartialResults) {
+      emit ocrReady(objectId, result);
+    }
   }
 
   startNext();
@@ -307,6 +328,7 @@ void PlateOcrCoordinator::startNext() {
     }
 
     const PendingOcr next = m_pending.dequeue();
+    m_pendingObjectIds.remove(next.objectId);
     const qint64 startMs = QDateTime::currentMSecsSinceEpoch();
     const qint64 queueWaitMs =
         (next.enqueuedAtMs > 0 && startMs > next.enqueuedAtMs)

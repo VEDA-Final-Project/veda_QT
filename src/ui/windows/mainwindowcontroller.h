@@ -100,6 +100,7 @@ private:
   ParkingService *parkingServiceForTarget(RoiTarget target);
   QString cameraKeyForTarget(RoiTarget target) const;
   void generateAuditReport();
+  void recordAuditResult(int objectId, const OcrFullResult &result);
 
   MainWindowUiRefs m_ui;
   ViewMode m_viewMode = ViewMode::Single;
