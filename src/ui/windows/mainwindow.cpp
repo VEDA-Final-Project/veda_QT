@@ -37,6 +37,8 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.roiSelectorCombo = m_roiSelectorCombo;
   uiRefs.logView = m_logView;
   uiRefs.btnPlay = m_btnPlay;
+  uiRefs.benchmarkTruthInput = m_benchmarkTruthInput;
+  uiRefs.btnRunBenchmark = m_btnRunBenchmark;
   uiRefs.btnApplyRoi = m_btnApplyRoi;
   uiRefs.btnFinishRoi = m_btnFinishRoi;
   uiRefs.btnDeleteRoi = m_btnDeleteRoi;
@@ -197,6 +199,10 @@ void MainWindow::setupUi() {
   m_cameraSecondarySelectorCombo->setEnabled(false);
 
   m_btnPlay = new QPushButton("CCTV 보기", this);
+  m_benchmarkTruthInput = new QLineEdit(this);
+  m_benchmarkTruthInput->setPlaceholderText("OCR 평가 정답 (예: 123가4567)");
+  m_benchmarkTruthInput->setMinimumWidth(180);
+  m_btnRunBenchmark = new QPushButton("실시간 OCR 평가 시작", this);
   m_btnExit = new QPushButton("종료", this);
   m_btnApplyRoi = new QPushButton("주차 구역 설정하기", this);
   m_btnFinishRoi = new QPushButton("ROI 완료", this);
@@ -242,6 +248,8 @@ void MainWindow::setupUi() {
   channelLayout->addWidget(m_cameraSecondarySelectorCombo);
   channelLayout->addSpacing(8);
   channelLayout->addWidget(m_btnPlay);
+  channelLayout->addWidget(m_benchmarkTruthInput);
+  channelLayout->addWidget(m_btnRunBenchmark);
   channelLayout->addWidget(m_btnExit);
   channelLayout->addStretch(1);
 

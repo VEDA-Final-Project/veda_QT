@@ -9,8 +9,7 @@
 #include <QSet>
 #include <QtConcurrent/QtConcurrent>
 
-class PlateOcrCoordinator : public QObject
-{
+class PlateOcrCoordinator : public QObject {
   Q_OBJECT
 
 public:
@@ -18,16 +17,16 @@ public:
   ~PlateOcrCoordinator() override;
 
   void requestOcr(int objectId, const QImage &crop);
+  OcrManager *getManager() { return &m_ocrManager; }
 
 signals:
-  void ocrReady(int objectId, const QString &text);
+  void ocrReady(int objectId, const OcrFullResult &result);
 
 private slots:
   void onOcrFinished();
 
 private:
-  struct PendingOcr
-  {
+  struct PendingOcr {
     int objectId = -1;
     QImage crop;
   };
@@ -35,7 +34,7 @@ private:
   void startNext();
 
   OcrManager m_ocrManager;
-  QFutureWatcher<QString> m_watcher;
+  QFutureWatcher<OcrFullResult> m_watcher;
   QQueue<PendingOcr> m_pending;
   QSet<int> m_inflightObjectIds;
   int m_runningObjectId = -1;

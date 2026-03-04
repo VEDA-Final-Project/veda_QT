@@ -24,6 +24,8 @@ struct MainWindowUiRefs {
   QComboBox *roiSelectorCombo = nullptr;
   QTextEdit *logView = nullptr;
   QPushButton *btnPlay = nullptr;
+  QLineEdit *benchmarkTruthInput = nullptr;
+  QPushButton *btnRunBenchmark = nullptr;
   QPushButton *btnApplyRoi = nullptr;
   QPushButton *btnFinishRoi = nullptr;
   QPushButton *btnDeleteRoi = nullptr;

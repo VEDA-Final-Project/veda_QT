@@ -38,6 +38,8 @@ qt_add_executable(rtsp_test
     src/ocr/ocrmanager.h
     src/ocr/plateocrcoordinator.cpp
     src/ocr/plateocrcoordinator.h
+    src/ocr/ocrevaluator.cpp
+    src/ocr/ocrevaluator.h
     # Core
     src/config/config.cpp
     src/config/config.h

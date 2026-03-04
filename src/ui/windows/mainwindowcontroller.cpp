@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "database/databasecontext.h"
 #include "dbpanelcontroller.h"
+#include "ocr/ocrevaluator.h"
 #include "rpipanelcontroller.h"
 #include "ui/video/videowidget.h"
 #include <QCheckBox>
@@ -12,6 +13,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QFileDialog>
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -261,6 +263,10 @@ void MainWindowController::connectSignals() {
     connect(m_ui.btnPlay, &QPushButton::clicked, this,
             &MainWindowController::playCctv);
   }
+  if (m_ui.btnRunBenchmark) {
+    connect(m_ui.btnRunBenchmark, &QPushButton::clicked, this,
+            &MainWindowController::onRunBenchmark);
+  }
   if (m_ui.btnApplyRoi) {
     connect(m_ui.btnApplyRoi, &QPushButton::clicked, this,
             &MainWindowController::onStartRoiDraw);
@@ -300,6 +306,8 @@ void MainWindowController::connectSignals() {
             &MainWindowController::onRoiPolygonChanged);
     connect(m_ui.videoWidgetPrimary, &VideoWidget::ocrRequested,
             m_ocrCoordinatorPrimary, &PlateOcrCoordinator::requestOcr);
+    connect(m_ui.videoWidgetPrimary, &VideoWidget::ocrRequested, this,
+            &MainWindowController::onBenchmarkCropReceived);
     connect(m_ui.videoWidgetPrimary, &VideoWidget::avgFpsUpdated, this,
             [this](double fps) {
               if (m_ui.lblAvgFps) {
@@ -916,13 +924,48 @@ void MainWindowController::onLogMessage(const QString &msg) {
 }
 
 void MainWindowController::onOcrResultPrimary(int objectId,
-                                              const QString &result) {
+                                              const OcrFullResult &result) {
   if (!m_ui.logView) {
     return;
   }
-  const QString msg =
-      QString("[OCR][A] ID:%1 Result:%2").arg(objectId).arg(result);
+  const QString msg = QString("[OCR][A] ID:%1 Result:%2 (Latency: %3ms)")
+                          .arg(objectId)
+                          .arg(result.filtered)
+                          .arg(result.latencyMs);
   qDebug() << msg;
+
+  if (m_isBenchmarking) {
+    OcrAuditResult audit;
+    audit.timestamp =
+        QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+    audit.objectId = objectId;
+    audit.truth = m_benchmarkTruth;
+    audit.raw = result.raw;
+    audit.filtered = result.filtered;
+    audit.latencyMs = result.latencyMs;
+    audit.isRawMatch = (audit.raw == audit.truth);
+    audit.isE2EMatch = (audit.filtered == audit.truth);
+    audit.cer = calculateCER(audit.truth, audit.filtered);
+
+    m_auditResults.append(audit);
+    int current = m_auditResults.size();
+
+    onLogMessage(
+        QString("[OCR Audit] %1/%2 기록 중... (ID:%3, Result:%4, CER:%5)")
+            .arg(current)
+            .arg(m_benchmarkTargetCount)
+            .arg(objectId)
+            .arg(result.filtered)
+            .arg(audit.cer));
+
+    if (current >= m_benchmarkTargetCount) {
+      m_isBenchmarking = false;
+      m_ui.btnRunBenchmark->setEnabled(true);
+      m_ui.benchmarkTruthInput->setEnabled(true);
+      onLogMessage("[OCR Audit] 100회 수집 완료! 보고서를 생성합니다...");
+      generateAuditReport();
+    }
+  }
 
   // 번호판 인식 로그 필터링
   if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
@@ -932,17 +975,19 @@ void MainWindowController::onOcrResultPrimary(int objectId,
 
   // OCR 결과를 ParkingService에 전달하여 DB 기록 + 알림 처리
   if (m_parkingServicePrimary) {
-    m_parkingServicePrimary->processOcrResult(objectId, result);
+    m_parkingServicePrimary->processOcrResult(objectId, result.filtered);
   }
 }
 
 void MainWindowController::onOcrResultSecondary(int objectId,
-                                                const QString &result) {
+                                                const OcrFullResult &result) {
   if (!m_ui.logView) {
     return;
   }
-  const QString msg =
-      QString("[OCR][B] ID:%1 Result:%2").arg(objectId).arg(result);
+  const QString msg = QString("[OCR][B] ID:%1 Result:%2 (Latency: %3ms)")
+                          .arg(objectId)
+                          .arg(result.filtered)
+                          .arg(result.latencyMs);
   qDebug() << msg;
 
   if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
@@ -951,8 +996,33 @@ void MainWindowController::onOcrResultSecondary(int objectId,
   m_ui.logView->append(msg);
 
   if (m_parkingServiceSecondary) {
-    m_parkingServiceSecondary->processOcrResult(objectId, result);
+    m_parkingServiceSecondary->processOcrResult(objectId, result.filtered);
   }
+}
+
+int MainWindowController::calculateCER(const QString &truth,
+                                       const QString &pred) {
+  int n = truth.length();
+  int m = pred.length();
+  if (n == 0)
+    return m;
+  if (m == 0)
+    return n;
+
+  std::vector<std::vector<int>> d(n + 1, std::vector<int>(m + 1));
+  for (int i = 0; i <= n; ++i)
+    d[i][0] = i;
+  for (int j = 0; j <= m; ++j)
+    d[0][j] = j;
+
+  for (int i = 1; i <= n; ++i) {
+    for (int j = 1; j <= m; ++j) {
+      int cost = (truth[i - 1] == pred[j - 1]) ? 0 : 1;
+      d[i][j] =
+          std::min({d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost});
+    }
+  }
+  return d[n][m];
 }
 
 void MainWindowController::onStartRoiDraw() {
@@ -1426,3 +1496,123 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
       QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
           .arg(name, chatId));
 }
+
+void MainWindowController::onRunBenchmark() {
+  if (!m_ui.benchmarkTruthInput || !m_ui.btnRunBenchmark) {
+    return;
+  }
+
+  if (m_isBenchmarking) {
+    m_isBenchmarking = false;
+    m_ui.btnRunBenchmark->setText("실시간 OCR 평가 시작");
+    m_ui.btnRunBenchmark->setEnabled(true);
+    m_ui.benchmarkTruthInput->setEnabled(true);
+    onLogMessage("[OCR Audit] 사용자에 의해 중단되었습니다.");
+    return;
+  }
+
+  QString truth = m_ui.benchmarkTruthInput->text().trimmed();
+  if (truth.isEmpty()) {
+    QMessageBox::warning(nullptr, "오류",
+                         "테스트할 정답(번호판)을 입력하세요.");
+    return;
+  }
+
+  m_benchmarkTruth = truth;
+  m_auditResults.clear();
+  m_isBenchmarking = true;
+  m_ui.btnRunBenchmark->setText("실시간 OCR 평가 중단");
+  m_ui.benchmarkTruthInput->setEnabled(false);
+
+  onLogMessage(
+      QString("[OCR Audit] '%1' 라벨로 실시간 성능 측정 시작 (100회 수집)")
+          .arg(truth));
+}
+
+void MainWindowController::onBenchmarkCropReceived(int objectId,
+                                                   const QImage &crop) {
+  // Live Auditing mode does not need independent collection.
+  // We use natural OCR flow.
+  Q_UNUSED(objectId);
+  Q_UNUSED(crop);
+}
+
+void MainWindowController::generateAuditReport() {
+  if (m_auditResults.isEmpty())
+    return;
+
+  QString fileName = "ocr_live_audit_report.csv";
+  QFile file(fileName);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    onLogMessage("[OCR Audit] 보고서 파일 생성 실패.");
+    return;
+  }
+
+  QTextStream out(&file);
+  out.setGenerateByteOrderMark(true); // Windows Excel support
+  out << "Timestamp,ID,Truth,Raw,Filtered,Latency(ms),RawMatch,E2EMatch,CER\n";
+
+  double totalLatency = 0;
+  int rawMatches = 0;
+  int e2eMatches = 0;
+  int totalCer = 0;
+  std::vector<int> latencies;
+
+  for (const auto &res : m_auditResults) {
+    out << res.timestamp << "," << res.objectId << "," << res.truth << ","
+        << res.raw << "," << res.filtered << "," << res.latencyMs << ","
+        << (res.isRawMatch ? "1" : "0") << "," << (res.isE2EMatch ? "1" : "0")
+        << "," << res.cer << "\n";
+
+    totalLatency += res.latencyMs;
+    latencies.push_back(res.latencyMs);
+    if (res.isRawMatch)
+      rawMatches++;
+    if (res.isE2EMatch)
+      e2eMatches++;
+    totalCer += res.cer;
+  }
+
+  std::sort(latencies.begin(), latencies.end());
+  double p50 = latencies[latencies.size() / 2];
+  double p95 = latencies[qMin((int)(latencies.size() * 0.95),
+                              (int)latencies.size() - 1)];
+  double avgLatency = totalLatency / m_auditResults.size();
+  double rawAcc = (double)rawMatches / m_auditResults.size() * 100.0;
+  double e2eAcc = (double)e2eMatches / m_auditResults.size() * 100.0;
+  double avgCer = (double)totalCer / m_auditResults.size();
+
+  // Summary Metrics Section
+  out << "\n[OCR Audit Summary]\n";
+  out << "Metric,Value\n";
+  out << "Sample Count," << m_auditResults.size() << "\n";
+  out << "Raw Match Rate," << QString::number(rawAcc, 'f', 1) << " %\n";
+  out << "E2E Match Rate," << QString::number(e2eAcc, 'f', 1) << " %\n";
+  out << "Average CER," << QString::number(avgCer, 'f', 2) << "\n";
+  out << "Avg Latency," << QString::number(avgLatency, 'f', 1) << " ms\n";
+  out << "p50 Latency," << QString::number(p50, 'f', 1) << " ms\n";
+  out << "p95 Latency," << QString::number(p95, 'f', 1) << " ms\n";
+
+  file.close();
+
+  QString summary = QString("\n[OCR Audit 결과 요약]\n"
+                            "- 샘플 수: %1\n"
+                            "- Raw Match: %2%\n"
+                            "- E2E Match: %3%\n"
+                            "- Avg CER: %4\n"
+                            "- Latency (Avg/p50/p95): %5ms / %6ms / %7ms\n"
+                            "👉 보고서 저장됨: %8")
+                        .arg(m_auditResults.size())
+                        .arg(rawAcc, 0, 'f', 1)
+                        .arg(e2eAcc, 0, 'f', 1)
+                        .arg(avgCer, 0, 'f', 2)
+                        .arg(avgLatency, 0, 'f', 1)
+                        .arg(p50, 0, 'f', 1)
+                        .arg(p95, 0, 'f', 1)
+                        .arg(QDir::current().absoluteFilePath(fileName));
+
+  onLogMessage(summary);
+  QMessageBox::information(nullptr, "평가 완료", summary);
+}
+
+// End of file

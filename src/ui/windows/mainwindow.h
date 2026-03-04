@@ -46,6 +46,8 @@ private:
   QComboBox *m_roiSelectorCombo = nullptr;
   QTextEdit *m_logView = nullptr;
   QPushButton *m_btnPlay = nullptr;
+  QLineEdit *m_benchmarkTruthInput = nullptr;
+  QPushButton *m_btnRunBenchmark = nullptr;
   QPushButton *m_btnExit = nullptr;
   QPushButton *m_btnApplyRoi = nullptr;
   QPushButton *m_btnFinishRoi = nullptr;
