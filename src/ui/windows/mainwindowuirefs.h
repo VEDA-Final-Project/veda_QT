@@ -6,6 +6,7 @@ class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
@@ -85,6 +86,9 @@ struct MainWindowUiRefs {
   QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
+
+  // CCTV Event Log Panel
+  QListWidget *eventListWidget = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

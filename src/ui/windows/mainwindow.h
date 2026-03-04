@@ -7,18 +7,25 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMainWindow>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QTabWidget>
+#include <QStackedWidget>
 #include <QTableWidget>
 #include <QTextEdit>
+#include <QTimer>
+#include <QToolButton>
 
 class MainWindowController;
+class QSplitter;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -31,10 +38,19 @@ public:
 
 protected:
   void closeEvent(QCloseEvent *event) override;
+  void mousePressEvent(QMouseEvent *event) override;
+  void mouseMoveEvent(QMouseEvent *event) override;
+  void mouseReleaseEvent(QMouseEvent *event) override;
+  bool eventFilter(QObject *watched, QEvent *event) override;
+#ifdef Q_OS_WIN
+  bool nativeEvent(const QByteArray &eventType, void *message,
+                   qintptr *result) override;
+#endif
 
 private:
   void setupUi();
 
+  QSplitter *m_videoSplitter = nullptr;
   VideoWidget *m_videoWidgetPrimary = nullptr;
   VideoWidget *m_videoWidgetSecondary = nullptr;
   QComboBox *m_viewModeCombo = nullptr;
@@ -121,6 +137,18 @@ private:
   QSpinBox *m_staleTimeoutInput = nullptr;
   QSpinBox *m_pruneTimeoutInput = nullptr;
   QCheckBox *m_chkShowStaleObjects = nullptr;
+
+  // Dashboard Header/Footer/Event Panel
+  QLabel *m_headerTitleLabel = nullptr;
+  QLabel *m_footerTimeLabel = nullptr;
+  QLabel *m_footerRecordingLabel = nullptr;
+  QLabel *m_recordingDot = nullptr;
+  QListWidget *m_eventListWidget = nullptr;
+  QTimer *m_clockTimer = nullptr;
+  QToolButton *m_menuButton = nullptr;
+  QMenu *m_navMenu = nullptr;
+  QStackedWidget *m_stackedWidget = nullptr;
+  QPoint m_dragPosition;
 
   MainWindowController *m_controller = nullptr;
 };

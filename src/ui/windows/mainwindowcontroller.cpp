@@ -14,6 +14,7 @@
 #include <QEvent>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRectF>
@@ -912,6 +913,31 @@ void MainWindowController::onLogMessage(const QString &msg) {
   qDebug() << "[Camera]" << msg;
   if (showInUi) {
     m_ui.logView->append(msg);
+  }
+
+  // 이벤트 로그 패널에도 주요 이벤트 추가
+  if (m_ui.eventListWidget) {
+    // 중요 이벤트만 표시 ([Camera], [Parking], [OCR], [ROI], [A], [B])
+    static const QStringList eventPrefixes = {"[Camera]", "[Parking]", "[OCR]",
+                                              "[ROI]",    "[A]",       "[B]"};
+    bool isEvent = false;
+    for (const QString &prefix : eventPrefixes) {
+      if (msg.contains(prefix)) {
+        isEvent = true;
+        break;
+      }
+    }
+    if (isEvent) {
+      const QString timestamp =
+          QDateTime::currentDateTime().toString("HH:mm:ss");
+      const QString eventText = QString("[%1] %2").arg(timestamp, msg);
+      m_ui.eventListWidget->insertItem(0, eventText);
+      // 최대 100개 유지
+      while (m_ui.eventListWidget->count() > 100) {
+        delete m_ui.eventListWidget->takeItem(m_ui.eventListWidget->count() -
+                                              1);
+      }
+    }
   }
 }
 
