@@ -7,8 +7,7 @@
 #include <QString>
 #include <QStringList>
 
-class OcrManager
-{
+class OcrManager {
 public:
   OcrManager();
   ~OcrManager();
@@ -18,7 +17,7 @@ public:
             int inputHeight = 48);
 
   OcrResult performOcrDetailed(const QImage &image, int objectId = -1);
-  QString performOcr(const QImage &image, int objectId = -1);
+  OcrFullResult performOcr(const QImage &image, int objectId = -1);
 
 private:
   static QString findFirstFileRecursively(const QString &rootPath,

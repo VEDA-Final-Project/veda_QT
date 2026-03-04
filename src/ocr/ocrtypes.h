@@ -3,13 +3,18 @@
 
 #include <QString>
 
-struct OcrResult
-{
+struct OcrResult {
   QString text;
   QString selectedRawText;
   QString selectedCandidate;
   int selectedScore = 0;
   int selectedConfidence = -1;
+};
+
+struct OcrFullResult {
+  QString raw;
+  QString filtered;
+  int latencyMs;
 };
 
 #endif // OCR_OCRTYPES_H

@@ -85,6 +85,10 @@ struct MainWindowUiRefs {
   QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
+
+  // Live Audit
+  QPushButton *btnRunBenchmark = nullptr;
+  QLineEdit *benchmarkTruthInput = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

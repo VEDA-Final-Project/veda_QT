@@ -122,6 +122,9 @@ private:
   QSpinBox *m_pruneTimeoutInput = nullptr;
   QCheckBox *m_chkShowStaleObjects = nullptr;
 
+  QPushButton *m_btnRunBenchmark = nullptr;
+  QLineEdit *m_benchmarkTruthInput = nullptr;
+
   MainWindowController *m_controller = nullptr;
 };
 

@@ -5,59 +5,53 @@
 #include <QDebug>
 #include <QDir>
 #include <QDirIterator>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <mutex>
 #include <unordered_map>
 
-namespace
-{
+
+namespace {
 constexpr int kDefaultInputWidth = 320;
 constexpr int kDefaultInputHeight = 48;
 constexpr int kRuntimeLogInterval = 10;
 
-bool shouldLogRuntimeOcrMessage(const int objectId)
-{
+bool shouldLogRuntimeOcrMessage(const int objectId) {
   static std::mutex mutex;
   static std::unordered_map<int, int> countsByObject;
 
   std::lock_guard<std::mutex> lock(mutex);
   int &count = countsByObject[objectId];
   ++count;
-  if (count < kRuntimeLogInterval)
-  {
+  if (count < kRuntimeLogInterval) {
     return false;
   }
 
   count = 0;
   return true;
 }
-}
+} // namespace
 
 OcrManager::OcrManager() = default;
 
 OcrManager::~OcrManager() = default;
 
 QString OcrManager::findFirstFileRecursively(const QString &rootPath,
-                                             const QStringList &filters)
-{
+                                             const QStringList &filters) {
   const QString trimmedRoot = rootPath.trimmed();
-  if (trimmedRoot.isEmpty() || filters.isEmpty())
-  {
+  if (trimmedRoot.isEmpty() || filters.isEmpty()) {
     return QString();
   }
 
   const QFileInfo rootInfo(trimmedRoot);
-  if (!rootInfo.exists() || !rootInfo.isDir())
-  {
+  if (!rootInfo.exists() || !rootInfo.isDir()) {
     return QString();
   }
 
-  for (const QString &filter : filters)
-  {
-    QDirIterator it(rootInfo.absoluteFilePath(), QStringList(filter), QDir::Files,
-                    QDirIterator::Subdirectories);
-    if (it.hasNext())
-    {
+  for (const QString &filter : filters) {
+    QDirIterator it(rootInfo.absoluteFilePath(), QStringList(filter),
+                    QDir::Files, QDirIterator::Subdirectories);
+    if (it.hasNext()) {
       return QFileInfo(it.next()).absoluteFilePath();
     }
   }
@@ -66,79 +60,70 @@ QString OcrManager::findFirstFileRecursively(const QString &rootPath,
 }
 
 QString OcrManager::resolveFilePath(const QString &pathOrDir,
-                                    const QStringList &filters)
-{
+                                    const QStringList &filters) {
   const QString candidate = pathOrDir.trimmed();
-  if (candidate.isEmpty())
-  {
+  if (candidate.isEmpty()) {
     return QString();
   }
 
   QFileInfo info(candidate);
-  if (!info.exists() && info.isRelative())
-  {
+  if (!info.exists() && info.isRelative()) {
     const QDir currentDir(QDir::currentPath());
     info = QFileInfo(currentDir.absoluteFilePath(candidate));
   }
 
-  if (info.exists() && info.isFile())
-  {
+  if (info.exists() && info.isFile()) {
     return info.absoluteFilePath();
   }
 
-  if (info.exists() && info.isDir())
-  {
+  if (info.exists() && info.isDir()) {
     return findFirstFileRecursively(info.absoluteFilePath(), filters);
   }
 
   return QString();
 }
 
-QString OcrManager::resolveModelPath(const QString &modelPath) const
-{
+QString OcrManager::resolveModelPath(const QString &modelPath) const {
   const QString explicitPath =
       resolveFilePath(modelPath, QStringList{QStringLiteral("*.onnx")});
-  if (!explicitPath.isEmpty())
-  {
+  if (!explicitPath.isEmpty()) {
     return explicitPath;
   }
 
-  const QString downloadsDir = QDir::home().filePath(QStringLiteral("Downloads"));
+  const QString downloadsDir =
+      QDir::home().filePath(QStringLiteral("Downloads"));
   return resolveFilePath(downloadsDir, QStringList{QStringLiteral("*.onnx")});
 }
 
-QString OcrManager::resolveDictionaryPath(const QString &dictPath,
-                                          const QString &resolvedModelPath) const
-{
+QString
+OcrManager::resolveDictionaryPath(const QString &dictPath,
+                                  const QString &resolvedModelPath) const {
   const QString explicitPath =
       resolveFilePath(dictPath, QStringList{QStringLiteral("dict.txt"),
                                             QStringLiteral("*.txt")});
-  if (!explicitPath.isEmpty())
-  {
+  if (!explicitPath.isEmpty()) {
     return explicitPath;
   }
 
   const QFileInfo modelInfo(resolvedModelPath);
-  if (!resolvedModelPath.isEmpty() && modelInfo.exists())
-  {
+  if (!resolvedModelPath.isEmpty() && modelInfo.exists()) {
     const QString modelDirPath = modelInfo.absoluteDir().absolutePath();
     const QString nearModel =
         resolveFilePath(modelDirPath, QStringList{QStringLiteral("dict.txt"),
                                                   QStringLiteral("*.txt")});
-    if (!nearModel.isEmpty())
-    {
+    if (!nearModel.isEmpty()) {
       return nearModel;
     }
   }
 
-  const QString downloadsDir = QDir::home().filePath(QStringLiteral("Downloads"));
+  const QString downloadsDir =
+      QDir::home().filePath(QStringLiteral("Downloads"));
   return resolveFilePath(downloadsDir, QStringList{QStringLiteral("dict.txt"),
                                                    QStringLiteral("*.txt")});
 }
 
 bool OcrManager::init(const QString &modelPath, const QString &dictPath,
-                      const int inputWidth, const int inputHeight)
-{
+                      const int inputWidth, const int inputHeight) {
   m_inputWidth = (inputWidth > 0) ? inputWidth : kDefaultInputWidth;
   m_inputHeight = (inputHeight > 0) ? inputHeight : kDefaultInputHeight;
 
@@ -152,29 +137,26 @@ bool OcrManager::init(const QString &modelPath, const QString &dictPath,
                                           : resolvedDictPath)
            << "input=" << m_inputWidth << "x" << m_inputHeight;
 
-  if (resolvedModelPath.isEmpty())
-  {
+  if (resolvedModelPath.isEmpty()) {
     qDebug() << "[OCR] Failed to resolve ONNX model path from:" << modelPath;
     return false;
   }
 
   const QFileInfo modelInfo(resolvedModelPath);
-  if (!modelInfo.exists() || !modelInfo.isFile())
-  {
+  if (!modelInfo.exists() || !modelInfo.isFile()) {
     qDebug() << "[OCR] ONNX model file not found:" << resolvedModelPath;
     return false;
   }
 
-  if (resolvedDictPath.isEmpty() && !dictPath.trimmed().isEmpty())
-  {
-    qDebug() << "[OCR] Dictionary path could not be resolved, using built-in fallback:"
+  if (resolvedDictPath.isEmpty() && !dictPath.trimmed().isEmpty()) {
+    qDebug() << "[OCR] Dictionary path could not be resolved, using built-in "
+                "fallback:"
              << dictPath;
   }
 
   QString error;
   if (!m_runner.init(resolvedModelPath, resolvedDictPath, m_inputWidth,
-                     m_inputHeight, &error))
-  {
+                     m_inputHeight, &error)) {
     qDebug() << "Could not initialize PaddleOCR:" << error;
     return false;
   }
@@ -182,14 +164,13 @@ bool OcrManager::init(const QString &modelPath, const QString &dictPath,
   return true;
 }
 
-OcrResult OcrManager::performOcrDetailed(const QImage &image, const int objectId)
-{
+OcrResult OcrManager::performOcrDetailed(const QImage &image,
+                                         const int objectId) {
   OcrResult out;
 
   ocr::preprocess::PlatePreprocessResult preprocessed;
   if (!ocr::preprocess::preprocessPlateImage(image, m_inputWidth, m_inputHeight,
-                                             &preprocessed))
-  {
+                                             &preprocessed)) {
     return out;
   }
 
@@ -197,19 +178,16 @@ OcrResult OcrManager::performOcrDetailed(const QImage &image, const int objectId
                             preprocessed.enhancedGray, preprocessed.ocrInputRgb,
                             objectId);
 
-  if (!m_runner.isReady())
-  {
+  if (!m_runner.isReady()) {
     return out;
   }
 
   const ocr::postprocess::OcrCandidate candidate =
       m_runner.runSingleCandidate(preprocessed.ocrInputRgb);
   const OcrResult result = ocr::postprocess::chooseBestPlateResult(candidate);
-  if (shouldLogRuntimeOcrMessage(objectId))
-  {
+  if (shouldLogRuntimeOcrMessage(objectId)) {
     qDebug() << "[OCR][Final] objectId=" << objectId
-             << "raw=" << result.selectedRawText
-             << "text=" << result.text
+             << "raw=" << result.selectedRawText << "text=" << result.text
              << "selected=" << result.selectedCandidate
              << "score=" << result.selectedScore
              << "confidence=" << result.selectedConfidence;
@@ -217,7 +195,16 @@ OcrResult OcrManager::performOcrDetailed(const QImage &image, const int objectId
   return result;
 }
 
-QString OcrManager::performOcr(const QImage &image, const int objectId)
-{
-  return performOcrDetailed(image, objectId).text;
+OcrFullResult OcrManager::performOcr(const QImage &image, const int objectId) {
+  QElapsedTimer timer;
+  timer.start();
+
+  OcrResult res = performOcrDetailed(image, objectId);
+
+  OcrFullResult out;
+  out.raw = res.selectedRawText;
+  out.filtered = res.text;
+  out.latencyMs = static_cast<int>(timer.elapsed());
+
+  return out;
 }
