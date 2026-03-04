@@ -8,6 +8,23 @@
 #include <opencv2/imgproc.hpp>
 
 namespace {
+QRect sourceRectForObject(const QImage &frame, const ObjectInfo &obj) {
+  const auto &cfg = Config::instance();
+  const double sourceHeight = static_cast<double>(cfg.sourceHeight());
+  const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
+  const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
+  const QRectF &nsRect = obj.rect;
+
+  const double srcX =
+      ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
+  const double srcY = (nsRect.y() / sourceHeight) * frame.height();
+  const double srcW = (nsRect.width() / effectiveWidth) * frame.width();
+  const double srcH = (nsRect.height() / sourceHeight) * frame.height();
+
+  return QRect(static_cast<int>(srcX), static_cast<int>(srcY),
+               static_cast<int>(srcW), static_cast<int>(srcH));
+}
+
 QRegion roiRegionOnFrame(const QRect &frameRect,
                          const QList<QPolygon> &roiPolygons) {
   QRegion region;
@@ -69,6 +86,29 @@ double regionPixelArea(const QRegion &region) {
 }
 } // namespace
 
+void VideoFrameRenderer::collectOcrRequests(const QImage &frame,
+                                            const QList<ObjectInfo> &objects,
+                                            QList<OcrRequest> *ocrRequests) const {
+  if (!ocrRequests || frame.isNull()) {
+    return;
+  }
+
+  for (const ObjectInfo &obj : objects) {
+    if (obj.type != "LicensePlate") {
+      continue;
+    }
+
+    const QRect srcRect = sourceRectForObject(frame, obj);
+    const int padX = std::max(1, static_cast<int>(srcRect.width() * 0.015));
+    const int padY = std::max(1, static_cast<int>(srcRect.height() * 0.03));
+    const QRect paddedRect = srcRect.adjusted(-padX, -padY, padX, padY);
+    const QRect safeRect = paddedRect.intersected(frame.rect());
+    if (!safeRect.isEmpty()) {
+      ocrRequests->append(OcrRequest{obj.id, frame.copy(safeRect)});
+    }
+  }
+}
+
 QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
@@ -76,6 +116,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    bool roiEnabled, bool showFps,
                                    int currentFps,
                                    QList<OcrRequest> *ocrRequests) const {
+  (void)ocrRequests;
   if (targetSize.isEmpty()) {
     return frame;
   }
@@ -231,21 +272,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     QString text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
     if (!obj.extraInfo.isEmpty()) {
       text += QString(" [%1]").arg(obj.extraInfo);
-    }
-
-    if (obj.type == "LicensePlate" && ocrRequests != nullptr) {
-      // 2. OCR Decoupling: Extract from original FULL RES frame, not
-      // scaledFrame
-      const int padX =
-          std::max(1, static_cast<int>(candidate.srcRect.width() * 0.015));
-      const int padY =
-          std::max(1, static_cast<int>(candidate.srcRect.height() * 0.03));
-      const QRect paddedRect =
-          candidate.srcRect.adjusted(-padX, -padY, padX, padY);
-      const QRect safeRect = paddedRect.intersected(frame.rect());
-      if (!safeRect.isEmpty()) {
-        ocrRequests->append(OcrRequest{obj.id, frame.copy(safeRect)});
-      }
     }
 
     QRect textRect = painter.fontMetrics().boundingRect(text);

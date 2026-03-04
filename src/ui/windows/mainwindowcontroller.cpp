@@ -338,12 +338,16 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onMetadataReceivedPrimary);
   connect(m_cameraManagerPrimary, &CameraManager::frameCaptured, this,
           &MainWindowController::onFrameCapturedPrimary);
+  connect(m_cameraManagerPrimary, &CameraManager::ocrFrameCaptured, this,
+          &MainWindowController::onOcrFrameCapturedPrimary);
   connect(m_cameraManagerPrimary, &CameraManager::logMessage, this,
           &MainWindowController::onLogMessage);
   connect(m_cameraManagerSecondary, &CameraManager::metadataReceived, this,
           &MainWindowController::onMetadataReceivedSecondary);
   connect(m_cameraManagerSecondary, &CameraManager::frameCaptured, this,
           &MainWindowController::onFrameCapturedSecondary);
+  connect(m_cameraManagerSecondary, &CameraManager::ocrFrameCaptured, this,
+          &MainWindowController::onOcrFrameCapturedSecondary);
   connect(m_cameraManagerSecondary, &CameraManager::logMessage, this,
           &MainWindowController::onLogMessage);
   connect(m_ocrCoordinatorPrimary, &PlateOcrCoordinator::ocrReady, this,
@@ -676,6 +680,7 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
       connectionInfo.profile = QStringLiteral("profile2/media.smp");
     }
   }
+  connectionInfo.subProfile = QStringLiteral("profile2/media.smp");
 
   if (!connectionInfo.isValid()) {
     onLogMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
@@ -1238,28 +1243,22 @@ void MainWindowController::onFrameCapturedPrimary(
     return;
   }
 
+  // OCR crop은 항상 원본 프레임 기준으로 생성되므로, UI 렌더링 스로틀과
+  // 분리해서 RGB 변환 및 메타데이터 동기화를 먼저 수행합니다.
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+
+  const QList<ObjectInfo> readyMetadata =
+      m_cameraSessionPrimary.consumeReadyMetadata(nowMs);
+  m_ui.videoWidgetPrimary->updateMetadata(readyMetadata);
+
   // 2. Render Throttling (UI 렌더링 부하 방지)
   // 60fps 수준인 16ms로 제한하여 부하와 부드러움의 타협점 적용
   if (m_renderTimerPrimary.isValid() && m_renderTimerPrimary.elapsed() < 16) {
     return;
   }
   m_renderTimerPrimary.restart();
-
-  // === 렌더링할 프레임에만 BGR → RGB 색상 변환 수행 ===
-  // 비디오 스레드에서 모든 프레임에 변환하면 불필요한 CPU 소모가 발생하므로,
-  // Throttle/Stale 판정을 통과한 프레임(초당 ~33개)에만 변환을 적용합니다.
-  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
-
-  // === Zero-Copy QImage 래핑 ===
-  // BGR→RGB 변환 완료 후, OpenCV 버퍼 데이터를 복사하지 않고
-  // 쳐다만 보는(shallow copy) QImage 객체를 생성합니다.
-  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
-              QImage::Format_RGB888);
-
-  // 프레임 갱신 직전에 "현재 시각 기준으로 준비된 메타데이터"만 소비한다.
-  // 이렇게 해야 박스/객체 정보와 비디오 프레임이 더 자연스럽게 맞는다.
-  m_ui.videoWidgetPrimary->updateMetadata(
-      m_cameraSessionPrimary.consumeReadyMetadata(nowMs));
 
   // QImage 참조 전달.
   // 내부에서 scaled 되거나 사용(복사)된 후 qimg 스코프 종료 시 framePtr.reset()
@@ -1277,19 +1276,55 @@ void MainWindowController::onFrameCapturedSecondary(
   if ((nowMs - timestampMs) > 60) {
     return;
   }
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+
+  const QList<ObjectInfo> readyMetadata =
+      m_cameraSessionSecondary.consumeReadyMetadata(nowMs);
+  m_ui.videoWidgetSecondary->updateMetadata(readyMetadata);
+
   if (m_renderTimerSecondary.isValid() &&
       m_renderTimerSecondary.elapsed() < 16) {
     return;
   }
   m_renderTimerSecondary.restart();
 
+  m_ui.videoWidgetSecondary->updateFrame(qimg);
+}
+
+void MainWindowController::onOcrFrameCapturedPrimary(
+    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
+  if (!m_ui.videoWidgetPrimary || !framePtr || framePtr->empty()) {
+    return;
+  }
+
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if ((nowMs - timestampMs) > 120) {
+    return;
+  }
+
   cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
+  m_ui.videoWidgetPrimary->dispatchOcrRequests(qimg);
+}
 
-  m_ui.videoWidgetSecondary->updateMetadata(
-      m_cameraSessionSecondary.consumeReadyMetadata(nowMs));
-  m_ui.videoWidgetSecondary->updateFrame(qimg);
+void MainWindowController::onOcrFrameCapturedSecondary(
+    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
+  if (!m_ui.videoWidgetSecondary || !framePtr || framePtr->empty()) {
+    return;
+  }
+
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if ((nowMs - timestampMs) > 120) {
+    return;
+  }
+
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+  m_ui.videoWidgetSecondary->dispatchOcrRequests(qimg);
 }
 
 void MainWindowController::onSendEntry() {

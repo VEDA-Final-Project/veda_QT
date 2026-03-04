@@ -69,6 +69,10 @@ public slots:
                               qint64 timestampMs);
   void onFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
                                 qint64 timestampMs);
+  void onOcrFrameCapturedPrimary(QSharedPointer<cv::Mat> framePtr,
+                                 qint64 timestampMs);
+  void onOcrFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
+                                   qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
 
   // Telegram Slots

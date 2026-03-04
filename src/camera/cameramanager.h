@@ -45,6 +45,7 @@ public:
 
 signals:
   void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
+  void ocrFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void metadataReceived(const QList<ObjectInfo> &objects);
   void logMessage(const QString &msg);
 
@@ -53,6 +54,7 @@ private:
 
   CameraConnectionInfo m_connectionInfo;
   VideoThread *m_videoThread;
+  VideoThread *m_ocrVideoThread;
   MetadataThread *m_metadataThread;
 };
 
