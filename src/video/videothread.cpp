@@ -29,6 +29,11 @@ void VideoThread::setUrl(const QString &url) {
   m_url = url;
 }
 
+void VideoThread::setTargetFps(int fps) {
+  QMutexLocker locker(&m_mutex);
+  m_targetFps = fps;
+}
+
 /**
  * @brief 비디오 스레드 종료 요청
  * - run() 루프에서 주기적으로 플래그 확인
@@ -113,10 +118,29 @@ void VideoThread::run() {
       QThread::msleep(100);
       continue;
     }
+
+    // === 타겟 FPS에 맞춘 프레임 스킵 최적화 (CPU/Memory 낭비 방지) ===
     const qint64 readEndMs = QDateTime::currentMSecsSinceEpoch();
+    int targetFps = 0;
+    {
+      QMutexLocker locker(&m_mutex);
+      targetFps = m_targetFps;
+    }
+
+    if (targetFps > 0) {
+      if (lastFpsTimeMs > 0) {
+        qint64 elapsedSinceLastEmitted = readEndMs - lastFpsTimeMs;
+        qint64 targetIntervalMs = 1000 / targetFps;
+        if (elapsedSinceLastEmitted < targetIntervalMs) {
+          // 아직 다음 프레임 보낼 타이밍이 아니면 스킵 (clone() 및 시그널 발생
+          // 안 함)
+          continue;
+        }
+      }
+    }
 
     frameCount++;
-    if (readEndMs - lastFpsTimeMs > 5000) {
+    if (targetFps == 0 && (readEndMs - lastFpsTimeMs > 5000)) {
       double actualFps = (frameCount * 1000.0) / (readEndMs - lastFpsTimeMs);
       qDebug() << "[Video] Incoming Frame Loop FPS for" << url << ":"
                << actualFps;
@@ -124,10 +148,16 @@ void VideoThread::run() {
       lastFpsTimeMs = readEndMs;
     }
 
+    if (targetFps > 0) {
+      lastFpsTimeMs = readEndMs;
+    }
+
     // === 메모리 보호: 빈 프레임 무시 ===
     if (frame.empty()) {
       continue;
-    } // === Zero-Copy 전송: clone()으로 독립 데이터 확보 ===
+    }
+
+    // === Zero-Copy 전송: clone()으로 독립 데이터 확보 ===
     // OpenCV의 frame 버퍼 재사용을 유지하면서, UI에 넘길 독립 복사본을
     // 생성합니다. BGR → RGB 색상 변환은 UI 스레드에서 렌더링할 프레임에만
     // 수행합니다. (불필요한 변환 방지)

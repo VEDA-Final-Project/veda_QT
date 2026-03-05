@@ -24,7 +24,6 @@ struct CameraConnectionInfo {
  * RTSP 비디오 스트림과 메타데이터 스트림의 시작/중지를 관리합니다.
  * MainWindow에서 카메라 관련 로직을 분리하여 단일 책임 원칙을 준수합니다.
  */
-
 class CameraManager : public QObject {
   Q_OBJECT
 
@@ -34,7 +33,9 @@ public:
 
   void setConnectionInfo(const CameraConnectionInfo &connectionInfo);
   void start();
+  void startVideoOnly();
   void stop();
+  void setTargetFps(int fps);
   void restart();
   bool isRunning() const;
 
