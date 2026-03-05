@@ -49,6 +49,13 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
 
     int prevRoi = vs.occupiedRoiIndex;
 
+    // AI 메타데이터 좌표(obj.rect)를 [0.0, 1.0] 정규화된 좌표로 변환
+    QRectF normRect((obj.rect.x() - cropOffsetX) /
+                        static_cast<double>(effectiveWidth),
+                    obj.rect.y() / static_cast<double>(sourceHeight),
+                    obj.rect.width() / static_cast<double>(effectiveWidth),
+                    obj.rect.height() / static_cast<double>(sourceHeight));
+
     // 각 ROI에 대해 점유율 확인 (Max Ratio 방식)
     double maxRatio = 0.0;
     int bestRoiIndex = -1;
