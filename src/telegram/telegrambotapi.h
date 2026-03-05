@@ -32,8 +32,9 @@ public:
   /// 해당 차량번호로 등록된 사용자에게 출차 + 요금 알림 전송
   void sendExitNotice(const QString &plateNumber, int fee);
 
-  /// 메인 메뉴 키보드 전송
-  void sendMainMenu(const QString &chatId);
+  /// 메인 메뉴 키보드 전송 (선택적으로 커스텀 메시지 문구 함께 전송)
+  void sendMainMenu(const QString &chatId,
+                    const QString &customMessage = QString());
 
   /// 시스템에서 사용자 삭제 시 메모리 맵 업데이트
   void removeUser(const QString &chatId);
@@ -80,8 +81,33 @@ private:
   QMap<QString, QString> m_plateToChat;
   QMap<QString, QString> m_chatToPlate; // 역방향 매핑 (ChatID -> 차량번호)
 
-  /// 차량 등록 진행 중인 ChatID 목록 (상태 관리)
-  QSet<QString> m_pendingRegistration;
+  /// 차량 등록 진행 상태
+  enum class RegistrationState {
+    IDLE,
+    WAIT_PLATE, // 차량번호 입력 대기
+    WAIT_PHONE, // 전화번호(연락처 공유) 대기
+    WAIT_CARD   // 카드번호 입력 대기
+  };
+
+  struct RegistrationData {
+    RegistrationState state = RegistrationState::IDLE;
+    QString plate;
+    QString phone;
+    QString name;
+  };
+
+  /// 차량 등록 진행 중인 세션 관리 (ChatID -> 등록 데이터)
+  QMap<QString, RegistrationData> m_registrationSessions;
+
+  /// 정보 수정 필드 상태
+  enum class EditField { NONE, NAME, PLATE, PHONE, CARD };
+
+  struct EditSession {
+    EditField field = EditField::NONE;
+  };
+
+  /// 정보 수정 세션 관리 (ChatID -> 수정 세션)
+  QMap<QString, EditSession> m_editSessions;
 
   /// 사용자 정보 리포지토리 (영속화)
   UserRepository m_userRepository;

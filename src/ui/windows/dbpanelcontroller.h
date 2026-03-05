@@ -34,6 +34,8 @@ public:
 
     QTableWidget *userDbTable = nullptr;
     QPushButton *btnRefreshUsers = nullptr;
+    QPushButton *btnAddUser = nullptr;
+    QPushButton *btnEditUser = nullptr;
     QPushButton *btnDeleteUser = nullptr;
 
     QTableWidget *hwLogTable = nullptr;
@@ -72,6 +74,8 @@ public slots:
   void onEditPlate();
   void deleteParkingLog();
   void refreshUserTable();
+  void addUser();
+  void editUser();
   void deleteUser();
   void refreshHwLogs();
   void clearHwLogs();
