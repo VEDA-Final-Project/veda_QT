@@ -3,8 +3,8 @@
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
-#include <algorithm>
 #include <QtGlobal>
+#include <algorithm>
 #include <opencv2/imgproc.hpp>
 
 namespace {
@@ -86,9 +86,9 @@ double regionPixelArea(const QRegion &region) {
 }
 } // namespace
 
-void VideoFrameRenderer::collectOcrRequests(const QImage &frame,
-                                            const QList<ObjectInfo> &objects,
-                                            QList<OcrRequest> *ocrRequests) const {
+void VideoFrameRenderer::collectOcrRequests(
+    const QImage &frame, const QList<ObjectInfo> &objects,
+    QList<OcrRequest> *ocrRequests) const {
   if (!ocrRequests || frame.isNull()) {
     return;
   }
@@ -114,7 +114,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
                                    bool roiEnabled, bool showFps,
-                                   int currentFps,
+                                   int currentFps, const QString &profileName,
                                    QList<OcrRequest> *ocrRequests) const {
   (void)ocrRequests;
   if (targetSize.isEmpty()) {
@@ -122,8 +122,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   }
 
   // 1. OpenCV INTER_AREA 기반 빠른 고화질 축소
-  // Qt::SmoothTransformation보다 2~3배 빠르면서 화질 차이가 거의 없습니다.
-  // frame(QImage)을 cv::Mat으로 래핑(Zero-Copy)한 뒤 OpenCV로 축소합니다.
   const QImage rgbFrame = frame.format() == QImage::Format_RGB888
                               ? frame
                               : frame.convertToFormat(QImage::Format_RGB888);
@@ -131,25 +129,21 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                        const_cast<uchar *>(rgbFrame.bits()),
                        static_cast<size_t>(rgbFrame.bytesPerLine()));
 
-  // KeepAspectRatio 계산
   const QSize scaledSize = frame.size().scaled(targetSize, Qt::KeepAspectRatio);
   cv::Mat dstMat;
   cv::resize(srcMat, dstMat, cv::Size(scaledSize.width(), scaledSize.height()),
              0, 0, cv::INTER_AREA);
 
-  // cv::Mat → QImage 래핑 (dstMat의 데이터를 복사하여 독립적인 QImage 생성)
   QImage scaledFrame(dstMat.data, dstMat.cols, dstMat.rows,
                      static_cast<int>(dstMat.step), QImage::Format_RGB888);
-  scaledFrame = scaledFrame.copy(); // dstMat 스코프 종료에 대비한 안전한 복사
+  scaledFrame = scaledFrame.copy();
 
   QPainter painter(&scaledFrame);
-
   QPen pen(Qt::green, 3);
   painter.setPen(pen);
 
   QFont font = painter.font();
-  font.setPointSize(14); // May need dynamic adjustment based on targetSize, but
-                         // 14 is a good start
+  font.setPointSize(14);
   font.setBold(true);
   painter.setFont(font);
 
@@ -166,8 +160,8 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
 
   struct RenderCandidate {
     ObjectInfo obj;
-    QRect scaledRect; // Used for UI drawing
-    QRect srcRect;    // Used for OCR Cropping (Full Res)
+    QRect scaledRect;
+    QRect srcRect;
     bool intersectsRoi = false;
   };
   QVector<RenderCandidate> candidates;
@@ -175,10 +169,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   bool hasAnyRoiMatch = false;
 
   for (const ObjectInfo &obj : objects) {
-    const QRectF &nsRect =
-        obj.rect; // Normalized-like source rect (from AI metadata)
-
-    // Calculate Coordinates for UI Rendering (Scaled)
+    const QRectF &nsRect = obj.rect;
     const double scaledX =
         ((nsRect.x() - cropOffsetX) / effectiveWidth) * scaledFrame.width();
     const double scaledY = (nsRect.y() / sourceHeight) * scaledFrame.height();
@@ -190,7 +181,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     const QRect uRect(static_cast<int>(scaledX), static_cast<int>(scaledY),
                       static_cast<int>(scaledW), static_cast<int>(scaledH));
 
-    // Calculate Coordinates for OCR Cropping (Full 4K Res)
     const double srcX =
         ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
     const double srcY = (nsRect.y() / sourceHeight) * frame.height();
@@ -205,17 +195,12 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     candidates.push_back(RenderCandidate{obj, uRect, fullSrcRect, intersects});
   }
 
-  // If ROI exists but no object intersects, fallback to full rendering/OCR.
-  const bool shouldFilterByRoi = hasActiveRoi && hasAnyRoiMatch;
-
   if (hasActiveRoi) {
     for (int i = 0; i < scaledRoiPolygons.size(); ++i) {
       const QPolygon &polygon = scaledRoiPolygons[i];
-      if (polygon.size() < 3) {
+      if (polygon.size() < 3)
         continue;
-      }
 
-      // ROI별 차량 점유 여부 판단 (50% 이상 점유 시 주차로 인식)
       const QRegion singleRoiRegion(polygon, Qt::WindingFill);
       const double roiArea = regionPixelArea(singleRoiRegion);
       bool occupied = false;
@@ -231,16 +216,13 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
         }
       }
 
-      // 점유 상태에 따라 색상 변경
       if (occupied) {
         painter.setPen(QPen(QColor(0, 200, 0), 3, Qt::SolidLine));
       } else {
         painter.setPen(QPen(Qt::red, 2, Qt::DashLine));
       }
-
       painter.drawPolygon(polygon);
 
-      // 라벨 텍스트
       const QString baseName =
           (i < roiLabels.size() && !roiLabels[i].trimmed().isEmpty())
               ? roiLabels[i].trimmed()
@@ -262,9 +244,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   }
 
   for (const RenderCandidate &candidate : candidates) {
-    // 사용자의 요청에 따라 ROI 점유 상태와 무관하게 모든 객체(바운딩 박스)를
-    // 항상 그립니다.
-
     const ObjectInfo &obj = candidate.obj;
     const QRect &uRect = candidate.scaledRect;
     painter.drawRect(uRect);
@@ -289,20 +268,37 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   }
 
   if (showFps) {
-    QString fpsText = QString("FPS: %1").arg(currentFps);
+    // === 우측 상단 정보 오버레이 강화 (프로파일 + 해상도 + FPS) ===
+    QString shortProfileName = profileName;
+    if (shortProfileName.contains('/')) {
+      shortProfileName = shortProfileName.split('/').first();
+    }
+    const QString overlayText = QString("%1(%2x%3) , FPS: %4")
+                                    .arg(shortProfileName)
+                                    .arg(frame.width())
+                                    .arg(frame.height())
+                                    .arg(currentFps);
+
     QFont fpsFont = painter.font();
-    fpsFont.setPointSize(16);
+    fpsFont.setPointSize(14);
     fpsFont.setBold(true);
     painter.setFont(fpsFont);
 
     const int margin = 10;
-    QRect textRect = painter.fontMetrics().boundingRect(fpsText);
-    textRect.moveTo(scaledFrame.width() - textRect.width() - margin, margin);
-    textRect.adjust(-4, -2, 4, 2);
+    const QFontMetrics metrics = painter.fontMetrics();
+    QRect textRect = metrics.boundingRect(overlayText);
 
-    painter.fillRect(textRect, QColor(0, 0, 0, 150));
-    painter.setPen(QColor(0, 255, 0)); // Green text
-    painter.drawText(textRect, Qt::AlignCenter, fpsText);
+    const int paddingX = 8;
+    const int paddingY = 4;
+    const int boxW = textRect.width() + (paddingX * 2);
+    const int boxH = textRect.height() + (paddingY * 2);
+
+    const QRect boxRect(scaledFrame.width() - boxW - margin, margin, boxW,
+                        boxH);
+
+    painter.fillRect(boxRect, QColor(0, 0, 0, 180));
+    painter.setPen(QColor(0, 255, 0));
+    painter.drawText(boxRect, Qt::AlignCenter, overlayText);
   }
 
   painter.end();
