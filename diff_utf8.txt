@@ -1,0 +1,599 @@
+﻿diff --git a/src/parking/parkingservice.cpp b/src/parking/parkingservice.cpp
+index d18e56c..13e711f 100644
+--- a/src/parking/parkingservice.cpp
++++ b/src/parking/parkingservice.cpp
+@@ -17,26 +17,25 @@ void ParkingService::setCameraKey(const QString &cameraKey) {
+ 
+ QString ParkingService::cameraKey() const { return m_cameraKey; }
+ 
+-void ParkingService::updateRoiPolygons(const QList<QPolygon> &polygons) {
++void ParkingService::updateRoiPolygons(const QList<QPolygonF> &polygons) {
+   m_tracker.setRoiPolygons(polygons);
+ }
+ 
+ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
+-                                     int frameWidth, int frameHeight,
+-                                     qint64 pruneTimeoutMs) {
++                                     int cropOffsetX, int effectiveWidth,
++                                     int sourceHeight, qint64 pruneTimeoutMs) {
+   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+ 
+   // 1. 李⑤웾 異붿쟻 ?낅뜲?댄듃 ???덈줈 ROI??吏꾩엯??李⑤웾 媛먯?
+-  QList<VehicleState> newEntries =
+-      m_tracker.update(objects, frameWidth, frameHeight, nowMs);
++  QList<VehicleState> newEntries = m_tracker.update(
++      objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
+ 
+   // 2. ?덈줈 吏꾩엯??李⑤웾 ?대깽??濡쒓퉭
+   for (const VehicleState &vs : newEntries) {
+     if (!vs.ocrRequested) {
+-      emit logMessage(
+-          QString("[Parking] Vehicle ID:%1 entered ROI #%2")
+-              .arg(vs.objectId)
+-              .arg(vs.occupiedRoiIndex + 1));
++      emit logMessage(QString("[Parking] Vehicle ID:%1 entered ROI #%2")
++                          .arg(vs.objectId)
++                          .arg(vs.occupiedRoiIndex + 1));
+     }
+   }
+ 
+diff --git a/src/parking/parkingservice.h b/src/parking/parkingservice.h
+index 0174558..539aa57 100644
+--- a/src/parking/parkingservice.h
++++ b/src/parking/parkingservice.h
+@@ -38,13 +38,14 @@ public:
+   /**
+    * @brief ROI ?대━怨?紐⑸줉 媛깆떊 (MainWindowController?먯꽌 ?몄텧)
+    */
+-  void updateRoiPolygons(const QList<QPolygon> &polygons);
++  void updateRoiPolygons(const QList<QPolygonF> &polygons);
+ 
+   /**
+    * @brief ??硫뷀??곗씠???꾨젅??泥섎━ (?낆텧李??먮떒??吏꾩엯??
+    */
+-  void processMetadata(const QList<ObjectInfo> &objects, int frameWidth,
+-                       int frameHeight, qint64 pruneTimeoutMs = 5000);
++  void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
++                       int effectiveWidth, int sourceHeight,
++                       qint64 pruneTimeoutMs = 5000);
+ 
+   /**
+    * @brief OCR 寃곌낵 ?섏떊 泥섎━
+diff --git a/src/parking/vehicletracker.cpp b/src/parking/vehicletracker.cpp
+index eb1a742..0577d82 100644
+--- a/src/parking/vehicletracker.cpp
++++ b/src/parking/vehicletracker.cpp
+@@ -1,22 +1,26 @@
+ #include "parking/vehicletracker.h"
+ #include <QDateTime>
+-#include <QRegion>
++#include <QMap>
++#include <QPainterPath>
++#include <QPolygonF>
++#include <algorithm>
+ 
+-void VehicleTracker::setRoiPolygons(const QList<QPolygon> &polygons) {
++void VehicleTracker::setRoiPolygons(const QList<QPolygonF> &polygons) {
+   m_roiPolygons = polygons;
+ }
+ 
+ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
+-                                           int frameWidth, int frameHeight,
+-                                           qint64 nowMs) {
+-  Q_UNUSED(frameWidth);
+-  Q_UNUSED(frameHeight);
++                                           int cropOffsetX, int effectiveWidth,
++                                           int sourceHeight, qint64 nowMs) {
++  // 諛⑹뼱 肄붾뱶
++  if (effectiveWidth <= 0)
++    effectiveWidth = 1;
++  if (sourceHeight <= 0)
++    sourceHeight = 1;
+ 
+   QList<VehicleState> newEntries;
+ 
+   for (const ObjectInfo &obj : objects) {
+-    // ReID ?꾪솴?먯뿉?쒕뒗 紐⑤뱺 ?몄떇??媛앹껜瑜?愿由ы븯??寃껋씠 醫뗭쑝誘濡?-    // ????꾪꽣留곸쓣 ?꾪솕?섍굅???쒓굅?⑸땲??
+     if (obj.type == "Unknown") {
+       continue;
+     }
+@@ -26,46 +30,83 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
+     if (vs.objectId < 0) {
+       vs.objectId = obj.id;
+       vs.firstSeenMs = nowMs;
+-      // 珥덇린 ?깅줉 ?쒖뿉??臾댁“嫄??곗씠??諛섏쁺
+       vs.type = obj.type;
+       vs.plateNumber = obj.plate.isEmpty() ? obj.extraInfo : obj.plate;
+       vs.score = obj.score;
+     } else {
+-      // ?대? 議댁옱?섎뒗 李⑤웾 update
+-      // ?섎룞 ?ㅻ쾭?쇱씠?쒓? ?꾨땺 ?뚮쭔 AI 媛믪쑝濡???뼱?
+       if (!vs.manualOverride) {
+         vs.type = obj.type;
+         if (!obj.plate.isEmpty())
+           vs.plateNumber = obj.plate;
+         else if (!obj.extraInfo.isEmpty())
+           vs.plateNumber = obj.extraInfo;
+-        // score??蹂?숈씠 ?ы븯誘濡?怨꾩냽 ?낅뜲?댄듃? ?뱀? 理쒓퀬???좎?? -> 怨꾩냽
+-        // ?낅뜲?댄듃
+         vs.score = obj.score;
+       }
+     }
+ 
+-    // BBox???대룞 異붿쟻???꾪빐 ?ㅻ쾭?쇱씠???щ? ?곴??놁씠(?먮뒗 蹂꾨룄 泥섎━) ?낅뜲?댄듃
+-    // ?? 媛뺤젣 吏?뺣맂 ?꾨젅?꾩뿉?쒕뒗 ??뼱?곗? ?딆븘???섎뒗??
+-    // forceTrackState媛 ?몄텧??吏곹썑???꾨젅?꾩씤吏 ?뚭린 ?대젮?.
+-    // ?ш린?쒕뒗 BBox??AI瑜??곕Ⅴ?? ?ъ슜?먭? ?섎룞 ?낅젰???쒓컙?
+-    // forceTrackState?먯꽌 泥섎━??
+     vs.boundingBox = obj.rect;
+     vs.lastSeenMs = nowMs;
+ 
+-    // 媛?ROI??????먯쑀???뺤씤
+     int prevRoi = vs.occupiedRoiIndex;
+-    vs.occupiedRoiIndex = -1;
++
++    // 媛?ROI??????먯쑀???뺤씤 (Max Ratio 諛⑹떇)
++    double maxRatio = 0.0;
++    int bestRoiIndex = -1;
+ 
+     for (int i = 0; i < m_roiPolygons.size(); ++i) {
+-      const QRect vehicleRect = obj.rect.toRect();
+-      double ratio = computeOccupancyRatio(vehicleRect, m_roiPolygons[i]);
+-      if (ratio >= 0.5) {
+-        vs.occupiedRoiIndex = i;
++      // AI 硫뷀??곗씠??醫뚰몴(obj.rect)瑜?[0.0, 1.0] ?뺢퇋?붾맂 醫뚰몴濡?蹂??+      QRectF normRect((obj.rect.x() - cropOffsetX) /
++                          static_cast<double>(effectiveWidth),
++                      obj.rect.y() / static_cast<double>(sourceHeight),
++                      obj.rect.width() / static_cast<double>(effectiveWidth),
++                      obj.rect.height() / static_cast<double>(sourceHeight));
++
++      double ratio = computeOccupancyRatio(normRect, m_roiPolygons[i]);
++      if (ratio > maxRatio) {
++        maxRatio = ratio;
++        bestRoiIndex = i;
++      }
++    }
++
++    // 1. ?숈쟻 ?꾧퀎媛??곸슜 (Dynamic Perspective Thresholding)
++    int currentFrameRoiIndex = -1;
++    if (bestRoiIndex >= 0) {
++      // ROI 以묒떖?먯쓽 Y醫뚰몴??鍮꾨? (0.25 ~ 0.5)
++      double roiCenterY =
++          m_roiPolygons[bestRoiIndex].boundingRect().center().y();
++      double dynamicThreshold =
++          std::max(0.25, std::min(0.5, 0.25 + roiCenterY * 0.25));
++
++      if (maxRatio >= dynamicThreshold) {
++        currentFrameRoiIndex = bestRoiIndex;
++      }
++    }
++
++    // 2. ?쒓퀎?????꾪꽣留?(Temporal Hysteresis Queue)
++    vs.roiHistory.append(currentFrameRoiIndex);
++    const int HISTORY_SIZE = 15;
++    if (vs.roiHistory.size() > HISTORY_SIZE) {
++      vs.roiHistory.removeFirst();
++    }
++
++    QMap<int, int> counts;
++    for (int roi : vs.roiHistory) {
++      counts[roi]++;
++    }
++
++    int requiredVotes =
++        static_cast<int>(vs.roiHistory.size() * 0.8); // 80% ?숈쓽
++    int stableRoiIndex = vs.occupiedRoiIndex;         // 湲곕낯 ?곹깭 ?좎?
++
++    for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
++      if (it.value() >= requiredVotes) {
++        stableRoiIndex = it.key();
+         break;
+       }
+     }
+ 
++    vs.occupiedRoiIndex = stableRoiIndex;
++
+     // ?덈줈 ROI??吏꾩엯??寃쎌슦 (?댁쟾??ROI 諛?-> 吏湲?ROI ??
+     if (prevRoi < 0 && vs.occupiedRoiIndex >= 0) {
+       newEntries.append(vs);
+@@ -82,7 +123,6 @@ void VehicleTracker::setPlateNumber(int objectId, const QString &plate) {
+ }
+ 
+ void VehicleTracker::forceTrackState(int objectId, const ObjectInfo &info) {
+-  // ?몃옒??以묒씤 媛앹껜媛 ?놁쑝硫??덈줈 ?앹꽦 (?ㅽ뿕??
+   if (!m_vehicles.contains(objectId)) {
+     VehicleState vs;
+     vs.objectId = objectId;
+@@ -95,7 +135,7 @@ void VehicleTracker::forceTrackState(int objectId, const ObjectInfo &info) {
+   vs.plateNumber = info.plate;
+   vs.score = info.score;
+   vs.boundingBox = info.rect;
+-  vs.manualOverride = true; // 媛뺤젣 ?낅뜲?댄듃???쒖떆
++  vs.manualOverride = true;
+ 
+   vs.lastSeenMs = QDateTime::currentMSecsSinceEpoch();
+ }
+@@ -124,26 +164,53 @@ QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs) {
+   return departed;
+ }
+ 
+-double VehicleTracker::computeOccupancyRatio(const QRect &vehicleRect,
+-                                             const QPolygon &roiPolygon) const {
+-  const QRegion roiRegion(roiPolygon, Qt::WindingFill);
+-  const double roiArea = [&]() {
+-    double a = 0.0;
+-    for (const QRect &r : roiRegion) {
+-      a += static_cast<double>(r.width()) * r.height();
+-    }
+-    return a;
+-  }();
++double
++VehicleTracker::computeOccupancyRatio(const QRectF &vehicleRect,
++                                      const QPolygonF &roiPolygon) const {
++  // AABB ?ъ쟾 ?꾪꽣留? 諛붿슫??諛뺤뒪媛 寃뱀튂吏 ?딆쑝硫?利됱떆 0 諛섑솚
++  if (!vehicleRect.intersects(roiPolygon.boundingRect()))
++    return 0.0;
++
++  // 李⑤웾 諛붿슫??諛뺤뒪???섎떒 ?쇨컖???앹꽦 (醫뚰븯?? ?고븯?? 以묒떖??
++  QPolygonF vehicleTriangle;
++  vehicleTriangle << QPointF(vehicleRect.left(), vehicleRect.bottom())
++                  << QPointF(vehicleRect.right(), vehicleRect.bottom())
++                  << QPointF(vehicleRect.center().x(),
++                             vehicleRect.center().y());
++
++  // QPainterPath瑜??ъ슜?섏뿬 ?뺥솗??遺?숈냼?섏젏 ?ㅺ컖??援먯쭛??怨꾩궛
++  QPainterPath roiPath;
++  roiPath.addPolygon(roiPolygon);
+ 
+-  if (roiArea <= 0) {
++  QPainterPath vehiclePath;
++  vehiclePath.addPolygon(vehicleTriangle);
++
++  // 李⑥껜 ?섎떒 ?쇨컖?뺤쓽 珥?硫댁쟻 (0.5 * base * height)
++  const double triangleArea =
++      0.5 * vehicleRect.width() * (vehicleRect.height() / 2.0);
++
++  if (triangleArea <= 0) {
+     return 0.0;
+   }
+ 
+-  const QRegion intersection = roiRegion.intersected(QRegion(vehicleRect));
++  // 援먯쭛??硫댁쟻 怨꾩궛 (QPainterPath::intersected ?ъ슜)
++  QPainterPath intersection = roiPath.intersected(vehiclePath);
++
++  // Shoelace formula濡??뺥솗??硫댁쟻 怨꾩궛
+   double interArea = 0.0;
+-  for (const QRect &r : intersection) {
+-    interArea += static_cast<double>(r.width()) * r.height();
++  const QList<QPolygonF> polygons = intersection.toSubpathPolygons();
++  for (const QPolygonF &poly : polygons) {
++    double polyArea = 0.0;
++    int n = poly.size();
++    if (n >= 3) {
++      for (int i = 0; i < n; ++i) {
++        int j = (i + 1) % n;
++        polyArea += (poly[i].x() * poly[j].y()) - (poly[j].x() * poly[i].y());
++      }
++      interArea += std::abs(polyArea) / 2.0;
++    }
+   }
+ 
+-  return interArea / roiArea;
++  // 李⑤웾 ?섎떒遺媛 二쇱감 援ъ뿭???ы븿??鍮꾩쑉 諛섑솚
++  return interArea / triangleArea;
+ }
+diff --git a/src/parking/vehicletracker.h b/src/parking/vehicletracker.h
+index 95c84b9..63b16df 100644
+--- a/src/parking/vehicletracker.h
++++ b/src/parking/vehicletracker.h
+@@ -23,6 +23,7 @@ struct VehicleState {
+   bool manualOverride = false; // ?섎룞?쇰줈 ?뺣낫媛 ?섏젙?섏뿀?붿? ?щ?
+   qint64 firstSeenMs = 0;      // 理쒖큹 媛먯? ?쒓컖 (ms)
+   qint64 lastSeenMs = 0;       // 留덉?留?媛먯? ?쒓컖 (ms)
++  QList<int> roiHistory; // 理쒓렐 N?꾨젅???숈븞???먯쑀 ?곹깭 (?덉뒪?뚮━?쒖뒪 ?꾪꽣??
+ };
+ 
+ /**
+@@ -36,18 +37,20 @@ public:
+   /**
+    * @brief ROI ?대━怨?紐⑸줉???ㅼ젙?⑸땲??(二쇱감 援ъ뿭 ?뺣낫).
+    */
+-  void setRoiPolygons(const QList<QPolygon> &polygons);
++  void setRoiPolygons(const QList<QPolygonF> &polygons);
+ 
+   /**
+    * @brief ?덈줈??硫뷀??곗씠???꾨젅?꾩쓣 泥섎━?섏뿬 李⑤웾 ?곹깭瑜??낅뜲?댄듃?⑸땲??
+    * @param objects AI媛 媛먯???媛앹껜 紐⑸줉
+-   * @param frameWidth ?꾨젅???덈퉬 (ROI 留ㅽ븨 ???꾩슂)
+-   * @param frameHeight ?꾨젅???믪씠
++   * @param cropOffsetX AI ?몄떇 醫뚰몴 蹂댁젙媛?+   * @param effectiveWidth ?뺢퇋?붾? ?꾪븳 ?꾨젅???덈퉬
++   * @param sourceHeight ?뺢퇋?붾? ?꾪븳 ?꾨젅???믪씠
+    * @param nowMs ?꾩옱 ?쒓컖 (ms)
+    * @return ?대쾲 ?꾨젅?꾩뿉???덈줈 ROI??吏꾩엯??李⑤웾 紐⑸줉
+    */
+-  QList<VehicleState> update(const QList<ObjectInfo> &objects, int frameWidth,
+-                             int frameHeight, qint64 nowMs);
++  QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
++                             int effectiveWidth, int sourceHeight,
++                             qint64 nowMs);
+ 
+   /**
+    * @brief ?뱀젙 李⑤웾??OCR 寃곌낵瑜?諛섏쁺?⑸땲??
+@@ -79,11 +82,11 @@ public:
+   QList<VehicleState> pruneStale(qint64 nowMs, qint64 timeoutMs = 5000);
+ 
+ private:
+-  double computeOccupancyRatio(const QRect &vehicleRect,
+-                               const QPolygon &roiPolygon) const;
++  double computeOccupancyRatio(const QRectF &vehicleRect,
++                               const QPolygonF &roiPolygon) const;
+ 
+   QHash<int, VehicleState> m_vehicles;
+-  QList<QPolygon> m_roiPolygons;
++  QList<QPolygonF> m_roiPolygons;
+ };
+ 
+ #endif // VEHICLETRACKER_H
+diff --git a/src/ui/windows/mainwindowcontroller.cpp b/src/ui/windows/mainwindowcontroller.cpp
+index e35b799..d53d7cc 100644
+--- a/src/ui/windows/mainwindowcontroller.cpp
++++ b/src/ui/windows/mainwindowcontroller.cpp
+@@ -130,7 +130,9 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
+   dbContext.secondaryZoneRecordsProvider = [this]() {
+     return m_roiServiceSecondary.records();
+   };
+-  dbContext.logMessage = [this](const QString &message) { onLogMessage(message); };
++  dbContext.logMessage = [this](const QString &message) {
++    onLogMessage(message);
++  };
+   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+ 
+   initRoiDbForChannels();
+@@ -212,8 +214,7 @@ void MainWindowController::connectSignals() {
+     connect(m_ui.videoWidgetPrimary, &VideoWidget::roiPolygonChanged, this,
+             &MainWindowController::onRoiPolygonChanged);
+     connect(m_ui.videoWidgetPrimary, &VideoWidget::ocrRequested,
+-            m_ocrCoordinatorPrimary,
+-            &PlateOcrCoordinator::requestOcr);
++            m_ocrCoordinatorPrimary, &PlateOcrCoordinator::requestOcr);
+   }
+   if (m_ui.videoWidgetSecondary) {
+     connect(m_ui.videoWidgetSecondary, &VideoWidget::roiChanged, this,
+@@ -221,8 +222,7 @@ void MainWindowController::connectSignals() {
+     connect(m_ui.videoWidgetSecondary, &VideoWidget::roiPolygonChanged, this,
+             &MainWindowController::onRoiPolygonChanged);
+     connect(m_ui.videoWidgetSecondary, &VideoWidget::ocrRequested,
+-            m_ocrCoordinatorSecondary,
+-            &PlateOcrCoordinator::requestOcr);
++            m_ocrCoordinatorSecondary, &PlateOcrCoordinator::requestOcr);
+   }
+   if (m_ui.reidTable) {
+     connect(m_ui.reidTable, &QTableWidget::cellClicked, this,
+@@ -272,14 +272,12 @@ void MainWindowController::connectSignals() {
+   }
+ 
+   // ParkingService -> Controller (濡쒓렇 ?대깽??
+-  connect(m_parkingServicePrimary, &ParkingService::logMessage, this,
+-          [this](const QString &msg) {
+-            onLogMessage(QString("[A] %1").arg(msg));
+-          });
+-  connect(m_parkingServiceSecondary, &ParkingService::logMessage, this,
+-          [this](const QString &msg) {
+-            onLogMessage(QString("[B] %1").arg(msg));
+-          });
++  connect(
++      m_parkingServicePrimary, &ParkingService::logMessage, this,
++      [this](const QString &msg) { onLogMessage(QString("[A] %1").arg(msg)); });
++  connect(
++      m_parkingServiceSecondary, &ParkingService::logMessage, this,
++      [this](const QString &msg) { onLogMessage(QString("[B] %1").arg(msg)); });
+ 
+   if (m_dbPanelController) {
+     m_dbPanelController->connectSignals();
+@@ -329,10 +327,10 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
+   widget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
+ 
+   if (m_ui.logView && writeLog) {
+-    m_ui.logView->append(QString("[ROI][DB] %1 梨꾨꼸 '%2' ROI %3媛?濡쒕뱶 ?꾨즺")
+-                             .arg(target == RoiTarget::Primary ? "A" : "B",
+-                                  cameraKey)
+-                             .arg(initResult.loadedCount));
++    m_ui.logView->append(
++        QString("[ROI][DB] %1 梨꾨꼸 '%2' ROI %3媛?濡쒕뱶 ?꾨즺")
++            .arg(target == RoiTarget::Primary ? "A" : "B", cameraKey)
++            .arg(initResult.loadedCount));
+   }
+ }
+ 
+@@ -372,7 +370,8 @@ void MainWindowController::refreshRoiSelector() {
+   refreshRoiSelectorForTarget();
+ }
+ 
+-VideoWidget *MainWindowController::videoWidgetForTarget(RoiTarget target) const {
++VideoWidget *
++MainWindowController::videoWidgetForTarget(RoiTarget target) const {
+   return (target == RoiTarget::Primary) ? m_ui.videoWidgetPrimary
+                                         : m_ui.videoWidgetSecondary;
+ }
+@@ -388,7 +387,8 @@ MainWindowController::roiServiceForTarget(RoiTarget target) const {
+                                         : &m_roiServiceSecondary;
+ }
+ 
+-ParkingService *MainWindowController::parkingServiceForTarget(RoiTarget target) {
++ParkingService *
++MainWindowController::parkingServiceForTarget(RoiTarget target) {
+   return (target == RoiTarget::Primary) ? m_parkingServicePrimary
+                                         : m_parkingServiceSecondary;
+ }
+@@ -399,10 +399,9 @@ QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
+ }
+ 
+ void MainWindowController::playCctv() {
+-  const bool primaryReady =
+-      refreshCameraConnectionFromConfig(m_cameraManagerPrimary,
+-                                        m_selectedCameraKeyPrimary,
+-                                        &m_selectedCameraKeyPrimary, true);
++  const bool primaryReady = refreshCameraConnectionFromConfig(
++      m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
++      &m_selectedCameraKeyPrimary, true);
+   if (!primaryReady) {
+     onLogMessage("[Camera] ?곌껐 ?ㅼ젙???щ컮瑜댁? ?딆뒿?덈떎.");
+     return;
+@@ -417,13 +416,13 @@ void MainWindowController::playCctv() {
+     return;
+   }
+ 
+-  const bool secondaryReady =
+-      refreshCameraConnectionFromConfig(m_cameraManagerSecondary,
+-                                        m_selectedCameraKeySecondary,
+-                                        &m_selectedCameraKeySecondary, false);
++  const bool secondaryReady = refreshCameraConnectionFromConfig(
++      m_cameraManagerSecondary, m_selectedCameraKeySecondary,
++      &m_selectedCameraKeySecondary, false);
+   if (!secondaryReady) {
+-    onLogMessage(QString("[Camera] '%1' ?곌껐 ?ㅼ젙???щ컮瑜댁? ?딆븘 B 梨꾨꼸? 以묒??⑸땲??")
+-                     .arg(m_selectedCameraKeySecondary));
++    onLogMessage(
++        QString("[Camera] '%1' ?곌껐 ?ㅼ젙???щ컮瑜댁? ?딆븘 B 梨꾨꼸? 以묒??⑸땲??")
++            .arg(m_selectedCameraKeySecondary));
+     m_cameraSessionSecondary.stop();
+     return;
+   }
+@@ -479,7 +478,8 @@ void MainWindowController::refreshCameraSelectors() {
+       }
+     }
+   }
+-  bindSelector(m_ui.cameraSecondarySelectorCombo, &m_selectedCameraKeySecondary);
++  bindSelector(m_ui.cameraSecondarySelectorCombo,
++               &m_selectedCameraKeySecondary);
+ }
+ 
+ void MainWindowController::applyViewModeUiState() {
+@@ -498,9 +498,8 @@ void MainWindowController::applyViewModeUiState() {
+   if (m_ui.roiTargetCombo) {
+     {
+       QSignalBlocker blocker(m_ui.roiTargetCombo);
+-      m_ui.roiTargetCombo->setCurrentIndex(m_roiTarget == RoiTarget::Secondary
+-                                               ? 1
+-                                               : 0);
++      m_ui.roiTargetCombo->setCurrentIndex(
++          m_roiTarget == RoiTarget::Secondary ? 1 : 0);
+     }
+     m_ui.roiTargetCombo->setEnabled(dualMode);
+     if (!dualMode && m_ui.roiTargetCombo->currentIndex() != 0) {
+@@ -527,9 +526,9 @@ void MainWindowController::onRoiTargetChanged(int index) {
+ 
+   m_roiTarget = newTarget;
+   refreshRoiSelectorForTarget();
+-  onLogMessage(QString("[ROI] ?몄쭛 ???蹂寃? %1")
+-                   .arg(m_roiTarget == RoiTarget::Primary ? "移대찓??A"
+-                                                          : "移대찓??B"));
++  onLogMessage(
++      QString("[ROI] ?몄쭛 ???蹂寃? %1")
++          .arg(m_roiTarget == RoiTarget::Primary ? "移대찓??A" : "移대찓??B"));
+ }
+ 
+ bool MainWindowController::refreshCameraConnectionFromConfig(
+@@ -544,9 +543,9 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
+   }
+ 
+   const auto &cfg = Config::instance();
+-  const QString selectedKey =
+-      cameraKey.trimmed().isEmpty() ? QStringLiteral("camera")
+-                                    : cameraKey.trimmed();
++  const QString selectedKey = cameraKey.trimmed().isEmpty()
++                                  ? QStringLiteral("camera")
++                                  : cameraKey.trimmed();
+   CameraConnectionInfo connectionInfo;
+   connectionInfo.cameraId = selectedKey;
+   connectionInfo.ip = cfg.cameraIp(selectedKey).trimmed();
+@@ -621,8 +620,7 @@ void MainWindowController::onViewModeChanged(int index) {
+   m_viewMode = newMode;
+   applyViewModeUiState();
+   onLogMessage(QString("[Camera] 酉?紐⑤뱶 蹂寃? %1")
+-                   .arg(m_viewMode == ViewMode::Dual ? "2梨꾨꼸 ?숈떆"
+-                                                     : "1梨꾨꼸"));
++                   .arg(m_viewMode == ViewMode::Dual ? "2梨꾨꼸 ?숈떆" : "1梨꾨꼸"));
+ 
+   const bool wasRunningPrimary =
+       m_cameraManagerPrimary && m_cameraManagerPrimary->isRunning();
+@@ -649,10 +647,10 @@ void MainWindowController::onCameraPrimarySelectionChanged(int index) {
+   }
+   if (m_viewMode == ViewMode::Dual &&
+       selectedKey == m_selectedCameraKeySecondary) {
+-    onLogMessage(
+-        "[Camera] A/B 梨꾨꼸? ?쒕줈 ?ㅻⅨ 移대찓?쇰? ?좏깮?댁빞 ?⑸땲??");
++    onLogMessage("[Camera] A/B 梨꾨꼸? ?쒕줈 ?ㅻⅨ 移대찓?쇰? ?좏깮?댁빞 ?⑸땲??");
+     QSignalBlocker blocker(m_ui.cameraPrimarySelectorCombo);
+-    const int previousIndex = m_ui.cameraPrimarySelectorCombo->findData(previousKey);
++    const int previousIndex =
++        m_ui.cameraPrimarySelectorCombo->findData(previousKey);
+     if (previousIndex >= 0) {
+       m_ui.cameraPrimarySelectorCombo->setCurrentIndex(previousIndex);
+     }
+@@ -691,8 +689,7 @@ void MainWindowController::onCameraSecondarySelectionChanged(int index) {
+   }
+   if (m_viewMode == ViewMode::Dual &&
+       selectedKey == m_selectedCameraKeyPrimary) {
+-    onLogMessage(
+-        "[Camera] A/B 梨꾨꼸? ?쒕줈 ?ㅻⅨ 移대찓?쇰? ?좏깮?댁빞 ?⑸땲??");
++    onLogMessage("[Camera] A/B 梨꾨꼸? ?쒕줈 ?ㅻⅨ 移대찓?쇰? ?좏깮?댁빞 ?⑸땲??");
+     QSignalBlocker blocker(m_ui.cameraSecondarySelectorCombo);
+     const int previousIndex =
+         m_ui.cameraSecondarySelectorCombo->findData(previousKey);
+@@ -896,9 +893,9 @@ void MainWindowController::onRoiChanged(const QRect &roi) {
+     return;
+   }
+   const VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
+-  const QString channel =
+-      (sourceWidget == m_ui.videoWidgetSecondary) ? QStringLiteral("B")
+-                                                  : QStringLiteral("A");
++  const QString channel = (sourceWidget == m_ui.videoWidgetSecondary)
++                              ? QStringLiteral("B")
++                              : QStringLiteral("A");
+   m_ui.logView->append(QString("[ROI][%1] bbox x:%2 y:%3 w:%4 h:%5")
+                            .arg(channel)
+                            .arg(roi.x())
+@@ -976,13 +973,17 @@ void MainWindowController::onMetadataReceivedPrimary(
+   // ParkingService?먮룄 硫뷀??곗씠?곕? ?꾨떖?섏뿬 ?낆텧李?媛먯? ?섑뻾
+   // 留??꾨젅?꾨쭏??ROI ?대━怨ㅼ쓣 ?숆린??(DB 濡쒕뱶/?ъ슜??洹몃━湲?諛섏쁺)
+   if (m_ui.videoWidgetPrimary && m_parkingServicePrimary) {
+-    m_parkingServicePrimary->updateRoiPolygons(
+-        m_ui.videoWidgetPrimary->roiPolygons());
++    const auto intPolygons = m_ui.videoWidgetPrimary->roiPolygons();
++    QList<QPolygonF> floatPolygons;
++    floatPolygons.reserve(intPolygons.size());
++    for (const QPolygon &p : intPolygons)
++      floatPolygons.append(QPolygonF(p));
++    m_parkingServicePrimary->updateRoiPolygons(floatPolygons);
+   }
+   const auto &cfg = Config::instance();
+   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
+   if (m_parkingServicePrimary) {
+-    m_parkingServicePrimary->processMetadata(objects, cfg.effectiveWidth(),
++    m_parkingServicePrimary->processMetadata(objects, 0, cfg.effectiveWidth(),
+                                              cfg.sourceHeight(), pruneMs);
+   }
+ 
+@@ -1003,14 +1004,18 @@ void MainWindowController::onMetadataReceivedSecondary(
+                                         QDateTime::currentMSecsSinceEpoch());
+ 
+   if (m_ui.videoWidgetSecondary && m_parkingServiceSecondary) {
+-    m_parkingServiceSecondary->updateRoiPolygons(
+-        m_ui.videoWidgetSecondary->roiPolygons());
++    const auto intPolygons = m_ui.videoWidgetSecondary->roiPolygons();
++    QList<QPolygonF> floatPolygons;
++    floatPolygons.reserve(intPolygons.size());
++    for (const QPolygon &p : intPolygons)
++      floatPolygons.append(QPolygonF(p));
++    m_parkingServiceSecondary->updateRoiPolygons(floatPolygons);
+   }
+ 
+   const auto &cfg = Config::instance();
+   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
+   if (m_parkingServiceSecondary) {
+-    m_parkingServiceSecondary->processMetadata(objects, cfg.effectiveWidth(),
++    m_parkingServiceSecondary->processMetadata(objects, 0, cfg.effectiveWidth(),
+                                                cfg.sourceHeight(), pruneMs);
+   }
+ 

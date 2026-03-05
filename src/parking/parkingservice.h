@@ -38,13 +38,14 @@ public:
   /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
    */
-  void updateRoiPolygons(const QList<QPolygon> &polygons);
+  void updateRoiPolygons(const QList<QPolygonF> &polygons);
 
   /**
    * @brief 새 메타데이터 프레임 처리 (입출차 판단의 진입점)
    */
-  void processMetadata(const QList<ObjectInfo> &objects, int frameWidth,
-                       int frameHeight, qint64 pruneTimeoutMs = 5000);
+  void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
+                       int effectiveWidth, int sourceHeight,
+                       qint64 pruneTimeoutMs = 5000);
 
   /**
    * @brief OCR 결과 수신 처리

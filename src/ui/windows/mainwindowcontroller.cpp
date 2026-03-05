@@ -1124,14 +1124,18 @@ void MainWindowController::onMetadataReceivedPrimary(
   if (!roiSyncTimer.isValid() || roiSyncTimer.elapsed() >= 1000) {
     roiSyncTimer.restart();
     if (m_ui.videoWidgetPrimary && m_parkingServicePrimary) {
-      m_parkingServicePrimary->updateRoiPolygons(
-          m_ui.videoWidgetPrimary->roiPolygons());
+      const auto intPolygons = m_ui.videoWidgetPrimary->roiPolygons();
+      QList<QPolygonF> floatPolygons;
+      floatPolygons.reserve(intPolygons.size());
+      for (const QPolygon &p : intPolygons)
+        floatPolygons.append(QPolygonF(p));
+      m_parkingServicePrimary->updateRoiPolygons(floatPolygons);
     }
   }
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
   if (m_parkingServicePrimary) {
-    m_parkingServicePrimary->processMetadata(objects, cfg.effectiveWidth(),
+    m_parkingServicePrimary->processMetadata(objects, 0, cfg.effectiveWidth(),
                                              cfg.sourceHeight(), pruneMs);
   }
 
@@ -1165,15 +1169,19 @@ void MainWindowController::onMetadataReceivedSecondary(
   if (!roiSyncTimerSec.isValid() || roiSyncTimerSec.elapsed() >= 1000) {
     roiSyncTimerSec.restart();
     if (m_ui.videoWidgetSecondary && m_parkingServiceSecondary) {
-      m_parkingServiceSecondary->updateRoiPolygons(
-          m_ui.videoWidgetSecondary->roiPolygons());
+      const auto intPolygons = m_ui.videoWidgetSecondary->roiPolygons();
+      QList<QPolygonF> floatPolygons;
+      floatPolygons.reserve(intPolygons.size());
+      for (const QPolygon &p : intPolygons)
+        floatPolygons.append(QPolygonF(p));
+      m_parkingServiceSecondary->updateRoiPolygons(floatPolygons);
     }
   }
 
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
   if (m_parkingServiceSecondary) {
-    m_parkingServiceSecondary->processMetadata(objects, cfg.effectiveWidth(),
+    m_parkingServiceSecondary->processMetadata(objects, 0, cfg.effectiveWidth(),
                                                cfg.sourceHeight(), pruneMs);
   }
 
