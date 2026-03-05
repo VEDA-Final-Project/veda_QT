@@ -44,6 +44,7 @@ public:
 public slots:
   void updateFrame(const QImage &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
+  void dispatchOcrRequests(const QImage &frame);
   void setShowFps(bool show);
 
 signals:

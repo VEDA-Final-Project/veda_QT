@@ -88,7 +88,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   }
   uiRefs.roiTargetCombo = m_roiTargetCombo;
   uiRefs.roiNameEdit = m_roiNameEdit;
-  uiRefs.roiPurposeCombo = m_roiPurposeCombo;
   uiRefs.roiSelectorCombo = m_roiSelectorCombo;
   uiRefs.logView = m_logView;
   for (int i = 0; i < 4; ++i) {
@@ -983,10 +982,10 @@ void MainWindow::setupUi() {
   zoneToolBar->addStretch();
 
   m_zoneTable = new QTableWidget(this);
-  m_zoneTable->setColumnCount(5);
+  m_zoneTable->setColumnCount(4);
   m_zoneTable->setHorizontalHeaderLabels(QStringList()
                                          << "카메라" << "구역 ID" << "이름"
-                                         << "용도" << "생성일");
+                                         << "생성일");
   m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_zoneTable->setSelectionBehavior(QAbstractItemView::SelectRows);

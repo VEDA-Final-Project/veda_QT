@@ -23,7 +23,6 @@ struct MainWindowUiRefs {
   QLabel *thumbnailLabels[4] = {nullptr, nullptr, nullptr, nullptr};
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
-  QComboBox *roiPurposeCombo = nullptr;
   QComboBox *roiSelectorCombo = nullptr;
   QTextEdit *logView = nullptr;
   QPushButton *btnPlay = nullptr;

@@ -300,12 +300,16 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onMetadataReceivedPrimary);
   connect(m_cameraManagerPrimary, &CameraManager::frameCaptured, this,
           &MainWindowController::onFrameCapturedPrimary);
+  connect(m_cameraManagerPrimary, &CameraManager::ocrFrameCaptured, this,
+          &MainWindowController::onOcrFrameCapturedPrimary);
   connect(m_cameraManagerPrimary, &CameraManager::logMessage, this,
           &MainWindowController::onLogMessage);
   connect(m_cameraManagerSecondary, &CameraManager::metadataReceived, this,
           &MainWindowController::onMetadataReceivedSecondary);
   connect(m_cameraManagerSecondary, &CameraManager::frameCaptured, this,
           &MainWindowController::onFrameCapturedSecondary);
+  connect(m_cameraManagerSecondary, &CameraManager::ocrFrameCaptured, this,
+          &MainWindowController::onOcrFrameCapturedSecondary);
   connect(m_cameraManagerSecondary, &CameraManager::logMessage, this,
           &MainWindowController::onLogMessage);
   connect(m_ocrCoordinatorPrimary, &PlateOcrCoordinator::ocrReady, this,
@@ -388,7 +392,7 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
   const QVector<QJsonObject> &records = service->records();
   roiLabels.reserve(records.size());
   for (const QJsonObject &record : records) {
-    roiLabels.append(record["rod_name"].toString().trimmed());
+    roiLabels.append(record["zone_name"].toString().trimmed());
   }
   widget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
 
@@ -416,9 +420,8 @@ void MainWindowController::refreshRoiSelectorForTarget() {
   for (int i = 0; i < records.size(); ++i) {
     const QJsonObject &record = records[i];
     const QString name =
-        record["rod_name"].toString(QString("rod_%1").arg(i + 1));
-    const QString purpose = record["rod_purpose"].toString();
-    m_ui.roiSelectorCombo->addItem(QString("%1 | %2").arg(name, purpose), i);
+        record["zone_name"].toString(QString("zone_%1").arg(i + 1));
+    m_ui.roiSelectorCombo->addItem(name, i);
   }
 }
 
@@ -591,6 +594,7 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
       connectionInfo.profile = QStringLiteral("profile2/media.smp");
     }
   }
+  connectionInfo.subProfile = QStringLiteral("profile2/media.smp");
 
   if (!connectionInfo.isValid()) {
     onLogMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
@@ -833,44 +837,87 @@ void MainWindowController::onLogMessage(const QString &msg) {
   }
 }
 
-void MainWindowController::onOcrResultPrimary(int objectId,
-                                              const QString &result) {
-  if (!m_ui.logView) {
+void MainWindowController::recordAuditResult(int objectId,
+                                             const OcrFullResult &result) {
+  if (!m_isBenchmarking || (result.filtered.isEmpty() && result.raw.isEmpty())) {
     return;
   }
-  const QString msg =
-      QString("[OCR][A] ID:%1 Result:%2").arg(objectId).arg(result);
-  qDebug() << msg;
 
-  // 번호판 인식 로그 필터링
-  if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
-    return;
-  }
-  m_ui.logView->append(msg);
+  OcrAuditResult audit;
+  audit.timestamp =
+      QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+  audit.objectId = objectId;
+  audit.truth = m_benchmarkTruth;
+  audit.raw = result.raw;
+  audit.filtered = result.filtered;
+  audit.latencyMs = result.latencyMs;
+  audit.isRawMatch = (audit.raw == audit.truth);
+  audit.isE2EMatch = (audit.filtered == audit.truth);
+  audit.cer = calculateCER(audit.truth, audit.filtered);
 
-  // OCR 결과를 ParkingService에 전달하여 DB 기록 + 알림 처리
-  if (m_parkingServicePrimary) {
-    m_parkingServicePrimary->processOcrResult(objectId, result);
+  m_auditResults.append(audit);
+  const QString displayText =
+      !result.filtered.isEmpty() ? result.filtered : result.raw;
+  onLogMessage(QString("[OCR Audit] %1/%2 수집됨 (ID:%3, Res:%4, Latency:%5ms)")
+                   .arg(m_auditResults.size())
+                   .arg(m_benchmarkTargetCount)
+                   .arg(objectId)
+                   .arg(displayText)
+                   .arg(result.latencyMs));
+
+  if (m_auditResults.size() >= m_benchmarkTargetCount) {
+    onRunBenchmark();
   }
 }
 
-void MainWindowController::onOcrResultSecondary(int objectId,
-                                                const QString &result) {
+void MainWindowController::onOcrResultPrimary(int objectId,
+                                              const OcrFullResult &result) {
   if (!m_ui.logView) {
     return;
   }
-  const QString msg =
-      QString("[OCR][B] ID:%1 Result:%2").arg(objectId).arg(result);
+  const QString displayText =
+      !result.filtered.isEmpty() ? result.filtered : result.raw;
+  const QString msg = QString("[OCR][A] ID:%1 Result:%2 (Latency:%3ms)")
+                          .arg(objectId)
+                          .arg(displayText)
+                          .arg(result.latencyMs);
   qDebug() << msg;
 
-  if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
+  // 번호판 인식 로그 필터링
+  if (!(m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked())) {
+    m_ui.logView->append(msg);
+  }
+
+  // OCR 결과를 ParkingService에 전달하여 DB 기록 + 알림 처리
+  if (m_parkingServicePrimary && !result.filtered.isEmpty()) {
+    m_parkingServicePrimary->processOcrResult(objectId, result.filtered);
+  }
+
+  recordAuditResult(objectId, result);
+}
+
+void MainWindowController::onOcrResultSecondary(int objectId,
+                                                const OcrFullResult &result) {
+  if (!m_ui.logView) {
     return;
   }
-  m_ui.logView->append(msg);
+  const QString displayText =
+      !result.filtered.isEmpty() ? result.filtered : result.raw;
+  const QString msg = QString("[OCR][B] ID:%1 Result:%2 (Latency:%3ms)")
+                          .arg(objectId)
+                          .arg(displayText)
+                          .arg(result.latencyMs);
+  qDebug() << msg;
 
-  if (m_parkingServiceSecondary) {
-    m_parkingServiceSecondary->processOcrResult(objectId, result);
+  if (!(m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked())) {
+    m_ui.logView->append(msg);
   }
+
+  if (m_parkingServiceSecondary && !result.filtered.isEmpty()) {
+    m_parkingServiceSecondary->processOcrResult(objectId, result.filtered);
+  }
+
+  recordAuditResult(objectId, result);
 }
 
 void MainWindowController::onStartRoiDraw() {
@@ -985,8 +1032,6 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
 
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
-  const QString purpose =
-      m_ui.roiPurposeCombo ? m_ui.roiPurposeCombo->currentText() : QString();
 
   VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
   RoiTarget target = m_roiTarget;
@@ -1003,7 +1048,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   }
 
   const RoiService::CreateResult createResult =
-      targetService->createFromPolygon(polygon, frameSize, typedName, purpose);
+      targetService->createFromPolygon(polygon, frameSize, typedName);
   if (!createResult.ok) {
     // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
     if (targetWidget->roiCount() > 0) {
@@ -1027,7 +1072,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   if (targetWidget) {
     const int recordIndex = targetService->count() - 1;
     targetWidget->setRoiLabelAt(
-        recordIndex, createResult.record["rod_name"].toString().trimmed());
+        recordIndex, createResult.record["zone_name"].toString().trimmed());
   }
   appendRoiStructuredLog(createResult.record);
 }
@@ -1135,28 +1180,22 @@ void MainWindowController::onFrameCapturedPrimary(
     return;
   }
 
+  // OCR crop은 항상 원본 프레임 기준으로 생성되므로, UI 렌더링 스로틀과
+  // 분리해서 RGB 변환 및 메타데이터 동기화를 먼저 수행합니다.
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+
+  const QList<ObjectInfo> readyMetadata =
+      m_cameraSessionPrimary.consumeReadyMetadata(nowMs);
+  m_ui.videoWidgetPrimary->updateMetadata(readyMetadata);
+
   // 2. Render Throttling (UI 렌더링 부하 방지)
   // 60fps 수준인 16ms로 제한하여 부하와 부드러움의 타협점 적용
   if (m_renderTimerPrimary.isValid() && m_renderTimerPrimary.elapsed() < 33) {
     return;
   }
   m_renderTimerPrimary.restart();
-
-  // === 렌더링할 프레임에만 BGR → RGB 색상 변환 수행 ===
-  // 비디오 스레드에서 모든 프레임에 변환하면 불필요한 CPU 소모가 발생하므로,
-  // Throttle/Stale 판정을 통과한 프레임(초당 ~33개)에만 변환을 적용합니다.
-  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
-
-  // === Zero-Copy QImage 래핑 ===
-  // BGR→RGB 변환 완료 후, OpenCV 버퍼 데이터를 복사하지 않고
-  // 쳐다만 보는(shallow copy) QImage 객체를 생성합니다.
-  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
-              QImage::Format_RGB888);
-
-  // 프레임 갱신 직전에 "현재 시각 기준으로 준비된 메타데이터"만 소비한다.
-  // 이렇게 해야 박스/객체 정보와 비디오 프레임이 더 자연스럽게 맞는다.
-  m_ui.videoWidgetPrimary->updateMetadata(
-      m_cameraSessionPrimary.consumeReadyMetadata(nowMs));
 
   // QImage 참조 전달.
   // 내부에서 scaled 되거나 사용(복사)된 후 qimg 스코프 종료 시 framePtr.reset()
@@ -1192,15 +1231,39 @@ void MainWindowController::onFrameCapturedSecondary(
   if ((nowMs - timestampMs) > 60) {
     return;
   }
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+
+  const QList<ObjectInfo> readyMetadata =
+      m_cameraSessionSecondary.consumeReadyMetadata(nowMs);
+  m_ui.videoWidgetSecondary->updateMetadata(readyMetadata);
+
   if (m_renderTimerSecondary.isValid() &&
       m_renderTimerSecondary.elapsed() < 33) {
     return;
   }
   m_renderTimerSecondary.restart();
 
+  m_ui.videoWidgetSecondary->updateFrame(qimg);
+}
+
+void MainWindowController::onOcrFrameCapturedPrimary(
+    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
+  if (!m_ui.videoWidgetPrimary || !framePtr || framePtr->empty()) {
+    return;
+  }
+
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if ((nowMs - timestampMs) > 120) {
+    return;
+  }
+
   cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
+  m_ui.videoWidgetPrimary->dispatchOcrRequests(qimg);
+}
 
   m_ui.videoWidgetSecondary->updateMetadata(
       m_cameraSessionSecondary.consumeReadyMetadata(nowMs));
@@ -1441,4 +1504,161 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
       nullptr, "관리자 호출",
       QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
           .arg(name, chatId));
+}
+
+void MainWindowController::onRunBenchmark() {
+  if (!m_ui.benchmarkTruthInput || !m_ui.btnRunBenchmark) {
+    return;
+  }
+
+  if (m_isBenchmarking) {
+    m_isBenchmarking = false;
+    if (m_ocrCoordinatorPrimary)
+      m_ocrCoordinatorPrimary->setStabilizationEnabled(true);
+    if (m_ocrCoordinatorSecondary)
+      m_ocrCoordinatorSecondary->setStabilizationEnabled(true);
+    if (m_ocrCoordinatorPrimary)
+      m_ocrCoordinatorPrimary->setEmitPartialResults(false);
+    if (m_ocrCoordinatorSecondary)
+      m_ocrCoordinatorSecondary->setEmitPartialResults(false);
+
+    m_ui.btnRunBenchmark->setText("실시간 평가 시작");
+    m_ui.benchmarkTruthInput->setEnabled(true);
+    onLogMessage("[OCR Audit] 사용자에 의해 중단되었습니다.");
+    if (!m_auditResults.isEmpty()) {
+      generateAuditReport();
+    }
+    return;
+  }
+
+  QString truth = m_ui.benchmarkTruthInput->text().trimmed();
+  if (truth.isEmpty()) {
+    QMessageBox::warning(nullptr, "오류",
+                         "테스트할 정답(번호판)을 입력하세요.");
+    return;
+  }
+
+  m_benchmarkTruth = truth;
+  m_auditResults.clear();
+  m_isBenchmarking = true;
+
+  if (m_ocrCoordinatorPrimary)
+    m_ocrCoordinatorPrimary->resetRuntimeState();
+  if (m_ocrCoordinatorSecondary)
+    m_ocrCoordinatorSecondary->resetRuntimeState();
+  if (m_ocrCoordinatorPrimary)
+    m_ocrCoordinatorPrimary->setStabilizationEnabled(false);
+  if (m_ocrCoordinatorSecondary)
+    m_ocrCoordinatorSecondary->setStabilizationEnabled(false);
+  if (m_ocrCoordinatorPrimary)
+    m_ocrCoordinatorPrimary->setEmitPartialResults(true);
+  if (m_ocrCoordinatorSecondary)
+    m_ocrCoordinatorSecondary->setEmitPartialResults(true);
+
+  m_ui.btnRunBenchmark->setText("실시간 OCR 평가 중단");
+  m_ui.benchmarkTruthInput->setEnabled(false);
+
+  onLogMessage(
+      QString("[OCR Audit] '%1' 라벨로 실시간 성능 측정 시작 (100회 수집)")
+          .arg(truth));
+}
+
+void MainWindowController::generateAuditReport() {
+  if (m_auditResults.isEmpty())
+    return;
+
+  QString fileName = "ocr_live_audit_report_paddle.csv";
+  QFile file(fileName);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    onLogMessage("[OCR Audit] 보고서 파일 생성 실패.");
+    return;
+  }
+
+  QTextStream out(&file);
+  out.setGenerateByteOrderMark(true);
+  out << "Timestamp,ID,Truth,Raw,Filtered,Latency(ms),RawMatch,E2EMatch,CER\n";
+
+  double totalLatency = 0;
+  int rawMatches = 0;
+  int e2eMatches = 0;
+  int totalCer = 0;
+  std::vector<int> latencies;
+
+  for (const auto &res : m_auditResults) {
+    out << res.timestamp << "," << res.objectId << "," << res.truth << ","
+        << res.raw << "," << res.filtered << "," << res.latencyMs << ","
+        << (res.isRawMatch ? "1" : "0") << "," << (res.isE2EMatch ? "1" : "0")
+        << "," << res.cer << "\n";
+
+    totalLatency += res.latencyMs;
+    latencies.push_back(res.latencyMs);
+    if (res.isRawMatch)
+      rawMatches++;
+    if (res.isE2EMatch)
+      e2eMatches++;
+    totalCer += res.cer;
+  }
+
+  std::sort(latencies.begin(), latencies.end());
+  double p50 = latencies[latencies.size() / 2];
+  double p95 = latencies[qMin((int)(latencies.size() * 0.95),
+                              (int)latencies.size() - 1)];
+  double avgLatency = totalLatency / m_auditResults.size();
+  double rawAcc = (double)rawMatches / m_auditResults.size() * 100.0;
+  double e2eAcc = (double)e2eMatches / m_auditResults.size() * 100.0;
+  double avgCer = (double)totalCer / m_auditResults.size();
+
+  out << "\n[OCR Audit Summary]\n";
+  out << "Metric,Value\n";
+  out << "Sample Count," << m_auditResults.size() << "\n";
+  out << "Raw Match Rate," << QString::number(rawAcc, 'f', 1) << " %\n";
+  out << "E2E Match Rate," << QString::number(e2eAcc, 'f', 1) << " %\n";
+  out << "Average CER," << QString::number(avgCer, 'f', 2) << "\n";
+  out << "Avg Latency," << QString::number(avgLatency, 'f', 1) << " ms\n";
+  out << "p50 Latency," << QString::number(p50, 'f', 1) << " ms\n";
+  out << "p95 Latency," << QString::number(p95, 'f', 1) << " ms\n";
+
+  file.close();
+
+  QString summary = QString("\n[OCR Audit 결과 요약 (PaddleOCR)]\n"
+                            "- 샘플 수: %1\n"
+                            "- Raw Match: %2%\n"
+                            "- E2E Match: %3%\n"
+                            "- Avg CER: %4\n"
+                            "- Latency (Avg/p50/p95): %5ms / %6ms / %7ms\n"
+                            "👉 보고서 저장됨: %8")
+                        .arg(m_auditResults.size())
+                        .arg(rawAcc, 0, 'f', 1)
+                        .arg(e2eAcc, 0, 'f', 1)
+                        .arg(avgCer, 0, 'f', 2)
+                        .arg(avgLatency, 0, 'f', 1)
+                        .arg(p50, 0, 'f', 1)
+                        .arg(p95, 0, 'f', 1)
+                        .arg(QDir::current().absoluteFilePath(fileName));
+
+  onLogMessage(summary);
+  QMessageBox::information(nullptr, "평가 완료", summary);
+}
+
+int MainWindowController::calculateCER(const QString &truth,
+                                       const QString &pred) {
+  int n = truth.length();
+  int m = pred.length();
+  if (n == 0)
+    return m;
+  if (m == 0)
+    return n;
+  QVector<QVector<int>> d(n + 1, QVector<int>(m + 1));
+  for (int i = 0; i <= n; ++i)
+    d[i][0] = i;
+  for (int j = 0; j <= m; ++j)
+    d[0][j] = j;
+  for (int i = 1; i <= n; ++i) {
+    for (int j = 1; j <= m; ++j) {
+      int cost = (truth[i - 1] == pred[j - 1]) ? 0 : 1;
+      d[i][j] =
+          qMin(qMin(d[i - 1][j] + 1, d[i][j - 1] + 1), d[i - 1][j - 1] + cost);
+    }
+  }
+  return d[n][m];
 }

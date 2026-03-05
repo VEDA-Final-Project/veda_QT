@@ -226,23 +226,28 @@ int Config::cropOffsetX() const { return m_video["cropOffsetX"].toInt(480); }
  * OCR 관련 설정
  * ========================= */
 
-/**
- * @brief OCR 언어 설정
- */
-QString Config::ocrLanguage() const {
-  return m_ocr["language"].toString("kor");
-}
-
-/**
- * @brief Tesseract tessdata 경로
- * - 비어있으면 시스템 기본 경로 사용
- */
-QString Config::tessdataPath() const {
-  QString path = m_ocr["tessdataPath"].toString();
+QString Config::ocrModelPath() const {
+  const QString path = m_ocr["modelPath"].toString();
   if (path.isEmpty() || path == "null") {
     return QString();
   }
   return path;
+}
+
+QString Config::ocrDictPath() const {
+  const QString path = m_ocr["dictPath"].toString();
+  if (path.isEmpty() || path == "null") {
+    return QString();
+  }
+  return path;
+}
+
+int Config::ocrInputWidth() const {
+  return std::max(16, m_ocr["inputWidth"].toInt(320));
+}
+
+int Config::ocrInputHeight() const {
+  return std::max(16, m_ocr["inputHeight"].toInt(48));
 }
 
 /* =========================

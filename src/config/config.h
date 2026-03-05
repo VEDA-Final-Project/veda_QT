@@ -35,8 +35,10 @@ public:
   int cropOffsetX() const;
 
   // OCR
-  QString ocrLanguage() const;
-  QString tessdataPath() const;
+  QString ocrModelPath() const;
+  QString ocrDictPath() const;
+  int ocrInputWidth() const;
+  int ocrInputHeight() const;
 
   // Sync
   int defaultDelayMs() const;

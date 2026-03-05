@@ -122,6 +122,18 @@ void VideoWidget::updateMetadata(const QList<ObjectInfo> &objects) {
   m_currentObjects = objects;
 }
 
+void VideoWidget::dispatchOcrRequests(const QImage &frame) {
+  if (frame.isNull()) {
+    return;
+  }
+
+  QList<OcrRequest> ocrRequests;
+  m_frameRenderer.collectOcrRequests(frame, m_currentObjects, &ocrRequests);
+  for (const OcrRequest &req : ocrRequests) {
+    emit ocrRequested(req.objectId, req.crop);
+  }
+}
+
 void VideoWidget::updateFrame(const QImage &frame) { renderFrame(frame); }
 
 void VideoWidget::renderFrame(const QImage &frame) {
@@ -178,15 +190,10 @@ void VideoWidget::renderFrame(const QImage &frame) {
   emit avgFpsUpdated(avgFps);
   // -----------------------
 
-  QList<OcrRequest> ocrRequests;
   const QImage composed = m_frameRenderer.compose(
       frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
       m_roiState.roiEnabled() && !m_roiState.isDrawing(), m_showFps,
-      static_cast<int>(m_currentFps), &ocrRequests);
-
-  for (const OcrRequest &req : ocrRequests) {
-    emit ocrRequested(req.objectId, req.crop);
-  }
+      static_cast<int>(m_currentFps), nullptr);
 
   // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
   m_currentFrame = composed;

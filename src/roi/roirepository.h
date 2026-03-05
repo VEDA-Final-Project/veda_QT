@@ -16,7 +16,7 @@ public:
   QVector<QJsonObject> loadByCameraKey(const QString &cameraKey,
                                        QString *errorMessage = nullptr) const;
   bool upsert(const QJsonObject &roiData, QString *errorMessage = nullptr);
-  bool removeById(const QString &rodId, QString *errorMessage = nullptr);
+  bool removeById(const QString &zoneId, QString *errorMessage = nullptr);
 
 private:
   bool ensureSchema(QString *errorMessage = nullptr);

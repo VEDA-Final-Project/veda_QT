@@ -13,10 +13,12 @@ constexpr unsigned long kForceStopWaitMs = 500;
 CameraManager::CameraManager(QObject *parent)
     : QObject(parent), m_videoThread(nullptr), m_metadataThread(nullptr) {}
 
-/**
- * @brief CameraManager 소멸자
- */
-CameraManager::~CameraManager() { stop(); }
+  // === 스레드 생성 (QObject 부모 설정으로 메모리 관리) ===
+  m_videoThread = nullptr;
+  m_ocrVideoThread = nullptr;
+  m_metadataThread = nullptr;
+  createThreads();
+}
 
 void CameraManager::createThreads() {
   if (!m_videoThread) {
@@ -24,6 +26,14 @@ void CameraManager::createThreads() {
     connect(m_videoThread, &VideoThread::frameCaptured, this,
             &CameraManager::frameCaptured);
     connect(m_videoThread, &VideoThread::logMessage, this,
+            &CameraManager::logMessage);
+  }
+
+  if (!m_ocrVideoThread) {
+    m_ocrVideoThread = new VideoThread(this);
+    connect(m_ocrVideoThread, &VideoThread::frameCaptured, this,
+            &CameraManager::ocrFrameCaptured);
+    connect(m_ocrVideoThread, &VideoThread::logMessage, this,
             &CameraManager::logMessage);
   }
 
@@ -55,6 +65,12 @@ void CameraManager::start() {
   const QString url =
       buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
                    m_connectionInfo.password, m_connectionInfo.profile);
+  const QString ocrProfile = m_connectionInfo.subProfile.trimmed().isEmpty()
+                                 ? m_connectionInfo.profile
+                                 : m_connectionInfo.subProfile.trimmed();
+  const QString ocrUrl =
+      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
+                   m_connectionInfo.password, ocrProfile);
 
   emit logMessage(QString("Starting camera[%1] with IP=%2, profile=%3")
                       .arg(m_connectionInfo.cameraId.isEmpty()
@@ -65,6 +81,14 @@ void CameraManager::start() {
   m_videoThread->setUrl(url);
   m_videoThread->start();
 
+  // === OCR 전용 비디오 스트림 시작 ===
+  if (m_ocrVideoThread) {
+    m_ocrVideoThread->setUrl(ocrUrl);
+    m_ocrVideoThread->start();
+  }
+
+  // === 메타데이터 스트림 시작 ===
+  // 비디오와 동일한 profile 사용 → 싱크 유지
   m_metadataThread->setConnectionInfo(
       m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
       m_connectionInfo.profile);
@@ -119,6 +143,21 @@ void CameraManager::stop() {
     }
   }
 
+  if (m_ocrVideoThread && m_ocrVideoThread->isRunning()) {
+    m_ocrVideoThread->stop();
+    if (!m_ocrVideoThread->wait(kThreadStopTimeoutMs)) {
+      emit logMessage(
+          QString("Warning: OCR video thread stop timeout (%1 ms). Forcing "
+                  "terminate.")
+              .arg(kThreadStopTimeoutMs));
+      m_ocrVideoThread->terminate();
+      if (!m_ocrVideoThread->wait(kForceStopWaitMs)) {
+        emit logMessage("Error: OCR video thread did not terminate cleanly.");
+      }
+    }
+  }
+
+  // === 메타데이터 스레드 종료 ===
   if (m_metadataThread && m_metadataThread->isRunning()) {
     m_metadataThread->stop();
     if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
@@ -132,6 +171,11 @@ void CameraManager::stop() {
     m_videoThread = nullptr;
   }
 
+  if (m_ocrVideoThread) {
+    m_ocrVideoThread->deleteLater();
+    m_ocrVideoThread = nullptr;
+  }
+
   if (m_metadataThread) {
     m_metadataThread->deleteLater();
     m_metadataThread = nullptr;
@@ -143,6 +187,7 @@ void CameraManager::stop() {
 
 bool CameraManager::isRunning() const {
   bool videoRunning = m_videoThread && m_videoThread->isRunning();
+  bool ocrVideoRunning = m_ocrVideoThread && m_ocrVideoThread->isRunning();
   bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
-  return videoRunning || metaRunning;
+  return videoRunning || ocrVideoRunning || metaRunning;
 }
