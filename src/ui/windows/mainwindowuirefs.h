@@ -78,6 +78,8 @@ struct MainWindowUiRefs {
   // New DB sub-tab refs
   QTableWidget *userDbTable = nullptr;
   QPushButton *btnRefreshUsers = nullptr;
+  QPushButton *btnAddUser = nullptr;
+  QPushButton *btnEditUser = nullptr;
   QPushButton *btnDeleteUser = nullptr;
   QTableWidget *hwLogTable = nullptr;
   QPushButton *btnRefreshHwLogs = nullptr;

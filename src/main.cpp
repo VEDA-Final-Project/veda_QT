@@ -1,16 +1,52 @@
 #include "config/config.h"
+#include "config/logfilterconfig.h"
 #include "ui/windows/loginpage.h"
 #include "ui/windows/mainwindow.h"
 #include "ui/windows/mainwindowcontroller.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
-#include <QDebug>
+
+// ── 카테고리 기반 로그 필터 핸들러 ──
+static QtMessageHandler s_defaultHandler = nullptr;
+static thread_local bool s_insideHandler = false;
+
+static void filteredMessageHandler(QtMsgType type,
+                                   const QMessageLogContext &ctx,
+                                   const QString &msg) {
+  if (s_insideHandler) {
+    if (s_defaultHandler) {
+      s_defaultHandler(type, ctx, msg);
+    }
+    return;
+  }
+
+  s_insideHandler = true;
+  // 카테고리 감지 (싱글턴이 이미 초기화되어 있음을 가정)
+  const QString cat = LogFilterConfig::instance().detectCategory(msg);
+  s_insideHandler = false;
+
+  if (!cat.isEmpty() && !LogFilterConfig::instance().isEnabled(cat)) {
+    return; // 비활성화된 카테고리 → 출력 무시
+  }
+
+  // 기본 핸들러로 전달
+  if (s_defaultHandler) {
+    s_defaultHandler(type, ctx, msg);
+  }
+}
 
 int main(int argc, char *argv[]) {
+  // 싱글턴 강제 초기화 (메시지 핸들러 내 재귀 초기화 방지)
+  LogFilterConfig::instance();
+
+  // 메시지 핸들러 설치
+  s_defaultHandler = qInstallMessageHandler(filteredMessageHandler);
+
   QApplication a(argc, argv);
 
   // Load Hanwha fonts

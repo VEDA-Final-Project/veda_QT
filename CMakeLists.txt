@@ -52,6 +52,8 @@ qt_add_executable(rtsp_test
     # Core
     src/config/config.cpp
     src/config/config.h
+    src/config/logfilterconfig.cpp
+    src/config/logfilterconfig.h
     src/camera/cameramanager.cpp
     src/camera/cameramanager.h
     src/camera/camerasessionservice.cpp

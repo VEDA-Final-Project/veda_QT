@@ -34,6 +34,8 @@ public:
 
     QTableWidget *userDbTable = nullptr;
     QPushButton *btnRefreshUsers = nullptr;
+    QPushButton *btnAddUser = nullptr;
+    QPushButton *btnEditUser = nullptr;
     QPushButton *btnDeleteUser = nullptr;
 
     QTableWidget *hwLogTable = nullptr;
@@ -55,6 +57,7 @@ public:
     std::function<QVector<QJsonObject>()> primaryZoneRecordsProvider;
     std::function<QVector<QJsonObject>()> secondaryZoneRecordsProvider;
     std::function<void(const QString &)> logMessage;
+    std::function<void(const QString &)> userDeleted;
   };
 
   explicit DbPanelController(const UiRefs &uiRefs, Context context,
@@ -71,6 +74,8 @@ public slots:
   void onEditPlate();
   void deleteParkingLog();
   void refreshUserTable();
+  void addUser();
+  void editUser();
   void deleteUser();
   void refreshHwLogs();
   void clearHwLogs();

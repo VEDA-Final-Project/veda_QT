@@ -281,8 +281,14 @@ QTableWidget, QTableView {
     gridline-color: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 6px;
-    selection-background-color: rgba(16, 185, 129, 0.25);
-    selection-color: #F1F5F9;
+    selection-background-color: #10B981;
+    selection-color: #0F172A;
+}
+
+QTableWidget::item:selected {
+    background-color: #10B981;
+    color: #0F172A;
+    font-weight: bold;
 }
 
 QTableWidget::item:hover {
