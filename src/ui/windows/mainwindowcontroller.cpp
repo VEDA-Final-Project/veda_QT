@@ -138,6 +138,11 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbContext.logMessage = [this](const QString &message) {
     onLogMessage(message);
   };
+  dbContext.userDeleted = [this](const QString &chatId) {
+    if (m_telegramApi) {
+      m_telegramApi->removeUser(chatId);
+    }
+  };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
 
   m_resizeDebounceTimer = new QTimer(this);

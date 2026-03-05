@@ -35,6 +35,9 @@ public:
   /// 메인 메뉴 키보드 전송
   void sendMainMenu(const QString &chatId);
 
+  /// 시스템에서 사용자 삭제 시 메모리 맵 업데이트
+  void removeUser(const QString &chatId);
+
 signals:
   /// 로그 메시지 전달용 시그널
   void logMessage(const QString &msg);

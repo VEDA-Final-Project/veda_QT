@@ -164,6 +164,28 @@ void TelegramBotAPI::sendMainMenu(const QString &chatId) {
   sendMessage(chatId, "원하시는 메뉴를 선택해주세요.", replyMarkup);
 }
 
+void TelegramBotAPI::removeUser(const QString &chatId) {
+  if (m_chatToPlate.contains(chatId)) {
+    QString plate = m_chatToPlate.value(chatId);
+    m_chatToPlate.remove(chatId);
+    // 한 차량에 여러 ChatID가 매핑될 수 있는 구조라면 value로 키 찾기
+    QString keyToRemove;
+    for (auto it = m_plateToChat.begin(); it != m_plateToChat.end(); ++it) {
+      if (it.value() == chatId) {
+        keyToRemove = it.key();
+        break;
+      }
+    }
+    if (!keyToRemove.isEmpty()) {
+      m_plateToChat.remove(keyToRemove);
+    }
+    emit logMessage(QString("[Telegram] 🗑️ 메모리에서 사용자 동기화 삭제 완료 "
+                            "(ChatID: %1, 차량: %2)")
+                        .arg(chatId, plate));
+    emit usersUpdated(m_chatToPlate.size());
+  }
+}
+
 /* ============================================================
  * 유틸리티
  * ============================================================ */

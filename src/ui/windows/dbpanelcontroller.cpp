@@ -16,7 +16,8 @@
 #include <utility>
 
 namespace {
-void populateParkingTable(QTableWidget *table, const QVector<QJsonObject> &logs) {
+void populateParkingTable(QTableWidget *table,
+                          const QVector<QJsonObject> &logs) {
   if (!table) {
     return;
   }
@@ -26,9 +27,11 @@ void populateParkingTable(QTableWidget *table, const QVector<QJsonObject> &logs)
   for (int i = 0; i < logs.size(); ++i) {
     const QJsonObject &row = logs[i];
     table->insertRow(i);
-    table->setItem(i, 0, new QTableWidgetItem(QString::number(row["id"].toInt())));
+    table->setItem(i, 0,
+                   new QTableWidgetItem(QString::number(row["id"].toInt())));
     table->setItem(i, 1, new QTableWidgetItem(row["plate_number"].toString()));
-    table->setItem(i, 2, new QTableWidgetItem(QString::number(row["roi_index"].toInt())));
+    table->setItem(
+        i, 2, new QTableWidgetItem(QString::number(row["roi_index"].toInt())));
     table->setItem(i, 3, new QTableWidgetItem(row["entry_time"].toString()));
     table->setItem(i, 4, new QTableWidgetItem(row["exit_time"].toString()));
   }
@@ -110,9 +113,9 @@ void DbPanelController::appendLog(const QString &message) const {
 }
 
 void DbPanelController::onRefreshParkingLogs() {
-  ParkingService *service =
-      m_context.parkingServiceProvider ? m_context.parkingServiceProvider()
-                                       : nullptr;
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
   if (!service) {
     return;
   }
@@ -135,9 +138,9 @@ void DbPanelController::onSearchParkingLogs() {
     return;
   }
 
-  ParkingService *service =
-      m_context.parkingServiceProvider ? m_context.parkingServiceProvider()
-                                       : nullptr;
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
   if (!service) {
     return;
   }
@@ -150,8 +153,8 @@ void DbPanelController::onSearchParkingLogs() {
 }
 
 void DbPanelController::onForcePlate() {
-  if (!m_ui.forceObjectIdInput || !m_ui.forceTypeInput || !m_ui.forcePlateInput ||
-      !m_ui.forceScoreInput || !m_ui.forceBBoxInput) {
+  if (!m_ui.forceObjectIdInput || !m_ui.forceTypeInput ||
+      !m_ui.forcePlateInput || !m_ui.forceScoreInput || !m_ui.forceBBoxInput) {
     return;
   }
 
@@ -176,9 +179,9 @@ void DbPanelController::onForcePlate() {
     bbox.setHeight(parts[3].toDouble());
   }
 
-  ParkingService *service =
-      m_context.parkingServiceProvider ? m_context.parkingServiceProvider()
-                                       : nullptr;
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
   if (!service) {
     return;
   }
@@ -209,11 +212,13 @@ void DbPanelController::onEditPlate() {
   }
 
   const int recordId = idItem->text().toInt();
-  ParkingService *service =
-      m_context.parkingServiceProvider ? m_context.parkingServiceProvider()
-                                       : nullptr;
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
   if (service && service->updatePlate(recordId, newPlate)) {
-    appendLog(QString("[DB] 번호판 수정 완료: ID=%1 → %2").arg(recordId).arg(newPlate));
+    appendLog(QString("[DB] 번호판 수정 완료: ID=%1 → %2")
+                  .arg(recordId)
+                  .arg(newPlate));
     onRefreshParkingLogs();
     return;
   }
@@ -236,9 +241,9 @@ void DbPanelController::deleteParkingLog() {
   }
   const int id = idItem->text().toInt();
 
-  ParkingService *service =
-      m_context.parkingServiceProvider ? m_context.parkingServiceProvider()
-                                       : nullptr;
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
   QString error;
   if (service && service->deleteLog(id, &error)) {
     appendLog(QString("[DB][%1] 주차 기록 삭제 완료: ID=%2")
@@ -249,7 +254,8 @@ void DbPanelController::deleteParkingLog() {
   }
 
   const QString reason = error.isEmpty() ? QStringLiteral("unknown") : error;
-  appendLog(QString("[DB] 주차 기록 삭제 실패: ID=%1 (%2)").arg(id).arg(reason));
+  appendLog(
+      QString("[DB] 주차 기록 삭제 실패: ID=%1 (%2)").arg(id).arg(reason));
 }
 
 void DbPanelController::refreshUserTable() {
@@ -267,10 +273,12 @@ void DbPanelController::refreshUserTable() {
     m_ui.userDbTable->insertRow(i);
     m_ui.userDbTable->setItem(i, 0,
                               new QTableWidgetItem(user["chat_id"].toString()));
-    m_ui.userDbTable->setItem(i, 1,
-                              new QTableWidgetItem(user["plate_number"].toString()));
-    m_ui.userDbTable->setItem(i, 2, new QTableWidgetItem(user["name"].toString()));
-    m_ui.userDbTable->setItem(i, 3, new QTableWidgetItem(user["phone"].toString()));
+    m_ui.userDbTable->setItem(
+        i, 1, new QTableWidgetItem(user["plate_number"].toString()));
+    m_ui.userDbTable->setItem(i, 2,
+                              new QTableWidgetItem(user["name"].toString()));
+    m_ui.userDbTable->setItem(i, 3,
+                              new QTableWidgetItem(user["phone"].toString()));
     m_ui.userDbTable->setItem(
         i, 4, new QTableWidgetItem(user["created_at"].toString()));
   }
@@ -295,6 +303,9 @@ void DbPanelController::deleteUser() {
   QString error;
   if (repo.deleteUser(chatId, &error)) {
     appendLog(QString("[DB] 사용자 삭제 완료: ChatID=%1").arg(chatId));
+    if (m_context.userDeleted) {
+      m_context.userDeleted(chatId);
+    }
     refreshUserTable();
     return;
   }
@@ -318,8 +329,8 @@ void DbPanelController::refreshHwLogs() {
         i, 0, new QTableWidgetItem(QString::number(row["log_id"].toInt())));
     m_ui.hwLogTable->setItem(i, 1,
                              new QTableWidgetItem(row["zone_id"].toString()));
-    m_ui.hwLogTable->setItem(i, 2,
-                             new QTableWidgetItem(row["device_type"].toString()));
+    m_ui.hwLogTable->setItem(
+        i, 2, new QTableWidgetItem(row["device_type"].toString()));
     m_ui.hwLogTable->setItem(i, 3,
                              new QTableWidgetItem(row["action"].toString()));
     m_ui.hwLogTable->setItem(i, 4,
@@ -353,10 +364,10 @@ void DbPanelController::refreshVehicleTable() {
     m_ui.vehicleTable->insertRow(i);
     m_ui.vehicleTable->setItem(
         i, 0, new QTableWidgetItem(row["plate_number"].toString()));
-    m_ui.vehicleTable->setItem(i, 1,
-                               new QTableWidgetItem(row["car_type"].toString()));
-    m_ui.vehicleTable->setItem(i, 2,
-                               new QTableWidgetItem(row["car_color"].toString()));
+    m_ui.vehicleTable->setItem(
+        i, 1, new QTableWidgetItem(row["car_type"].toString()));
+    m_ui.vehicleTable->setItem(
+        i, 2, new QTableWidgetItem(row["car_color"].toString()));
     m_ui.vehicleTable->setItem(
         i, 3, new QTableWidgetItem(row["is_assigned"].toBool() ? "Yes" : "No"));
     m_ui.vehicleTable->setItem(
@@ -413,8 +424,9 @@ void DbPanelController::refreshZoneTable() {
   };
 
   const QVector<QJsonObject> primaryRecords =
-      m_context.primaryZoneRecordsProvider ? m_context.primaryZoneRecordsProvider()
-                                           : QVector<QJsonObject>();
+      m_context.primaryZoneRecordsProvider
+          ? m_context.primaryZoneRecordsProvider()
+          : QVector<QJsonObject>();
   const QVector<QJsonObject> secondaryRecords =
       m_context.secondaryZoneRecordsProvider
           ? m_context.secondaryZoneRecordsProvider()

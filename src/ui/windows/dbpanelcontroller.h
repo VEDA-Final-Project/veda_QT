@@ -55,6 +55,7 @@ public:
     std::function<QVector<QJsonObject>()> primaryZoneRecordsProvider;
     std::function<QVector<QJsonObject>()> secondaryZoneRecordsProvider;
     std::function<void(const QString &)> logMessage;
+    std::function<void(const QString &)> userDeleted;
   };
 
   explicit DbPanelController(const UiRefs &uiRefs, Context context,
