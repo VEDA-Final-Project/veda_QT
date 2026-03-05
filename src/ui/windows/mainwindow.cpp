@@ -547,15 +547,6 @@ void MainWindow::setupUi() {
   channelPanelLayout->addWidget(nameLabel);
   channelPanelLayout->addWidget(m_roiNameEdit);
 
-  // 목적
-  QLabel *purposeLabel = new QLabel(QString::fromUtf8("목적"), this);
-  m_roiPurposeCombo = new QComboBox(this);
-  m_roiPurposeCombo->addItem(QStringLiteral("지정 주차"));
-  m_roiPurposeCombo->addItem(QStringLiteral("일반 주차"));
-  m_roiPurposeCombo->installEventFilter(this);
-  channelPanelLayout->addWidget(purposeLabel);
-  channelPanelLayout->addWidget(m_roiPurposeCombo);
-
   // ROI 선택
   QLabel *roiLabel = new QLabel("ROI", this);
   m_roiSelectorCombo = new QComboBox(this);

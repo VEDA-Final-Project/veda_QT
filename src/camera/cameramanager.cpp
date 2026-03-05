@@ -11,14 +11,12 @@ constexpr unsigned long kForceStopWaitMs = 500;
  * @brief CameraManager 생성자
  */
 CameraManager::CameraManager(QObject *parent)
-    : QObject(parent), m_videoThread(nullptr), m_metadataThread(nullptr) {}
-
-  // === 스레드 생성 (QObject 부모 설정으로 메모리 관리) ===
-  m_videoThread = nullptr;
-  m_ocrVideoThread = nullptr;
-  m_metadataThread = nullptr;
+    : QObject(parent), m_videoThread(nullptr), m_ocrVideoThread(nullptr),
+      m_metadataThread(nullptr) {
   createThreads();
 }
+
+CameraManager::~CameraManager() { stop(); }
 
 void CameraManager::createThreads() {
   if (!m_videoThread) {

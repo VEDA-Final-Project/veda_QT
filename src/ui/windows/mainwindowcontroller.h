@@ -20,18 +20,6 @@
 class RpiPanelController;
 class DbPanelController;
 
-struct OcrAuditResult {
-  QString timestamp;
-  int objectId;
-  QString truth;
-  QString raw;
-  QString filtered;
-  int latencyMs;
-  bool isRawMatch;
-  bool isE2EMatch;
-  int cer;
-};
-
 class MainWindowController : public QObject {
   Q_OBJECT
 
@@ -51,7 +39,6 @@ public slots:
   void onLogMessage(const QString &msg);
   void onOcrResultPrimary(int objectId, const OcrFullResult &result);
   void onOcrResultSecondary(int objectId, const OcrFullResult &result);
-  void onRunBenchmark();
   void onStartRoiDraw();
   void onCompleteRoiDraw();   // Renamed from onFinishRoiDraw
   void onDeleteSelectedRoi(); // Renamed from onDeleteRoi
@@ -65,6 +52,10 @@ public slots:
                               qint64 timestampMs);
   void onFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
                                 qint64 timestampMs);
+  void onOcrFrameCapturedPrimary(QSharedPointer<cv::Mat> framePtr,
+                                 qint64 timestampMs);
+  void onOcrFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
+                                   qint64 timestampMs);
   void onFrameCapturedThumb(int index, QSharedPointer<cv::Mat> framePtr,
                             qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
@@ -96,8 +87,6 @@ private:
   const RoiService *roiServiceForTarget(RoiTarget target) const;
   ParkingService *parkingServiceForTarget(RoiTarget target);
   QString cameraKeyForTarget(RoiTarget target) const;
-  void generateAuditReport();
-  void recordAuditResult(int objectId, const OcrFullResult &result);
 
   MainWindowUiRefs m_ui;
   RoiTarget m_roiTarget = RoiTarget::Primary;
@@ -129,13 +118,6 @@ private:
   QTimer *m_resizeDebounceTimer = nullptr;
   QString m_currentProfilePrimary;
   QString m_currentProfileSecondary;
-
-  bool m_isBenchmarking = false;
-  int m_benchmarkTargetCount = 100;
-  QString m_benchmarkTruth;
-  QList<OcrAuditResult> m_auditResults;
-
-  static int calculateCER(const QString &truth, const QString &pred);
 };
 
 #endif // MAINWINDOWCONTROLLER_H

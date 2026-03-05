@@ -1,11 +1,14 @@
 #include "config/config.h"
+#include "ui/windows/loginpage.h"
 #include "ui/windows/mainwindow.h"
 #include "ui/windows/mainwindowcontroller.h"
 
-
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
+#include <QDebug>
 
 int main(int argc, char *argv[]) {
   QApplication a(argc, argv);

@@ -172,7 +172,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
   if (event->type() == QEvent::Resize) {
     if (obj == m_ui.videoWidgetPrimary || obj == m_ui.videoWidgetSecondary) {
-      m_resizeDebounceTimer->start(500);
+      m_resizeDebounceTimer->start(150);
     }
   }
 
@@ -191,8 +191,43 @@ bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
 }
 
 void MainWindowController::onVideoWidgetResizedSlot() {
-  // 해상도 조절로 인한 잦은 재시작 및 멈춤 방지를 위해 비활성화 (Config 설정값
-  // 유지)
+  auto reconnectIfProfileChanged = [this](int selectedChannelIndex,
+                                          VideoWidget *videoWidget,
+                                          CameraManager *cameraManager,
+                                          const QString &cameraKey,
+                                          QString *currentProfile,
+                                          CameraSessionService &sessionService,
+                                          const QString &targetName) {
+    if (selectedChannelIndex == -1 || !videoWidget || !cameraManager ||
+        !currentProfile) {
+      return;
+    }
+    if (cameraKey.trimmed().isEmpty() || !cameraManager->isRunning()) {
+      return;
+    }
+
+    const QString newProfile = getBestProfileForSize(videoWidget->size());
+    if (newProfile.isEmpty() || newProfile == *currentProfile) {
+      return;
+    }
+
+    if (refreshCameraConnectionFromConfig(cameraManager, cameraKey, nullptr,
+                                          newProfile, false)) {
+      *currentProfile = newProfile;
+      sessionService.playOrRestart();
+      onLogMessage(QString("[Camera] %1 리사이즈 재연결: %2")
+                       .arg(targetName, newProfile));
+    }
+  };
+
+  reconnectIfProfileChanged(
+      m_selectedChannelIndex, m_ui.videoWidgetPrimary, m_cameraManagerPrimary,
+      m_selectedCameraKeyPrimary, &m_currentProfilePrimary, m_cameraSessionPrimary,
+      QStringLiteral("Primary"));
+  reconnectIfProfileChanged(
+      m_secondaryChannelIndex, m_ui.videoWidgetSecondary, m_cameraManagerSecondary,
+      m_selectedCameraKeySecondary, &m_currentProfileSecondary,
+      m_cameraSessionSecondary, QStringLiteral("Secondary"));
 }
 
 void MainWindowController::shutdown() {
@@ -594,7 +629,7 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
       connectionInfo.profile = QStringLiteral("profile2/media.smp");
     }
   }
-  connectionInfo.subProfile = QStringLiteral("profile2/media.smp");
+  connectionInfo.subProfile = connectionInfo.profile;
 
   if (!connectionInfo.isValid()) {
     onLogMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
@@ -837,39 +872,6 @@ void MainWindowController::onLogMessage(const QString &msg) {
   }
 }
 
-void MainWindowController::recordAuditResult(int objectId,
-                                             const OcrFullResult &result) {
-  if (!m_isBenchmarking || (result.filtered.isEmpty() && result.raw.isEmpty())) {
-    return;
-  }
-
-  OcrAuditResult audit;
-  audit.timestamp =
-      QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
-  audit.objectId = objectId;
-  audit.truth = m_benchmarkTruth;
-  audit.raw = result.raw;
-  audit.filtered = result.filtered;
-  audit.latencyMs = result.latencyMs;
-  audit.isRawMatch = (audit.raw == audit.truth);
-  audit.isE2EMatch = (audit.filtered == audit.truth);
-  audit.cer = calculateCER(audit.truth, audit.filtered);
-
-  m_auditResults.append(audit);
-  const QString displayText =
-      !result.filtered.isEmpty() ? result.filtered : result.raw;
-  onLogMessage(QString("[OCR Audit] %1/%2 수집됨 (ID:%3, Res:%4, Latency:%5ms)")
-                   .arg(m_auditResults.size())
-                   .arg(m_benchmarkTargetCount)
-                   .arg(objectId)
-                   .arg(displayText)
-                   .arg(result.latencyMs));
-
-  if (m_auditResults.size() >= m_benchmarkTargetCount) {
-    onRunBenchmark();
-  }
-}
-
 void MainWindowController::onOcrResultPrimary(int objectId,
                                               const OcrFullResult &result) {
   if (!m_ui.logView) {
@@ -892,8 +894,6 @@ void MainWindowController::onOcrResultPrimary(int objectId,
   if (m_parkingServicePrimary && !result.filtered.isEmpty()) {
     m_parkingServicePrimary->processOcrResult(objectId, result.filtered);
   }
-
-  recordAuditResult(objectId, result);
 }
 
 void MainWindowController::onOcrResultSecondary(int objectId,
@@ -916,8 +916,6 @@ void MainWindowController::onOcrResultSecondary(int objectId,
   if (m_parkingServiceSecondary && !result.filtered.isEmpty()) {
     m_parkingServiceSecondary->processOcrResult(objectId, result.filtered);
   }
-
-  recordAuditResult(objectId, result);
 }
 
 void MainWindowController::onStartRoiDraw() {
@@ -1265,26 +1263,21 @@ void MainWindowController::onOcrFrameCapturedPrimary(
   m_ui.videoWidgetPrimary->dispatchOcrRequests(qimg);
 }
 
-  m_ui.videoWidgetSecondary->updateMetadata(
-      m_cameraSessionSecondary.consumeReadyMetadata(nowMs));
-  m_ui.videoWidgetSecondary->updateFrame(qimg);
-
-  // === 썸네일 레이블 재사용 (디코딩 중복 방지 대응) ===
-  if (m_secondaryChannelIndex >= 0 && m_secondaryChannelIndex < 4 &&
-      m_ui.thumbnailLabels[m_secondaryChannelIndex]) {
-    if (!m_renderTimerThumbs[m_secondaryChannelIndex].isValid() ||
-        m_renderTimerThumbs[m_secondaryChannelIndex].elapsed() >= 200) {
-      m_renderTimerThumbs[m_secondaryChannelIndex].restart();
-
-      const QSize tSize = m_ui.thumbnailLabels[m_secondaryChannelIndex]->size();
-      QImage thumbImg =
-          qimg.scaled(tSize, Qt::KeepAspectRatio, Qt::FastTransformation);
-      QPixmap pix = QPixmap::fromImage(thumbImg.copy());
-      QMetaObject::invokeMethod(m_ui.thumbnailLabels[m_secondaryChannelIndex],
-                                "setPixmap", Qt::QueuedConnection,
-                                Q_ARG(QPixmap, pix));
-    }
+void MainWindowController::onOcrFrameCapturedSecondary(
+    QSharedPointer<cv::Mat> framePtr, qint64 timestampMs) {
+  if (!m_ui.videoWidgetSecondary || !framePtr || framePtr->empty()) {
+    return;
   }
+
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if ((nowMs - timestampMs) > 120) {
+    return;
+  }
+
+  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
+              QImage::Format_RGB888);
+  m_ui.videoWidgetSecondary->dispatchOcrRequests(qimg);
 }
 
 void MainWindowController::onFrameCapturedThumb(
@@ -1504,161 +1497,4 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
       nullptr, "관리자 호출",
       QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
           .arg(name, chatId));
-}
-
-void MainWindowController::onRunBenchmark() {
-  if (!m_ui.benchmarkTruthInput || !m_ui.btnRunBenchmark) {
-    return;
-  }
-
-  if (m_isBenchmarking) {
-    m_isBenchmarking = false;
-    if (m_ocrCoordinatorPrimary)
-      m_ocrCoordinatorPrimary->setStabilizationEnabled(true);
-    if (m_ocrCoordinatorSecondary)
-      m_ocrCoordinatorSecondary->setStabilizationEnabled(true);
-    if (m_ocrCoordinatorPrimary)
-      m_ocrCoordinatorPrimary->setEmitPartialResults(false);
-    if (m_ocrCoordinatorSecondary)
-      m_ocrCoordinatorSecondary->setEmitPartialResults(false);
-
-    m_ui.btnRunBenchmark->setText("실시간 평가 시작");
-    m_ui.benchmarkTruthInput->setEnabled(true);
-    onLogMessage("[OCR Audit] 사용자에 의해 중단되었습니다.");
-    if (!m_auditResults.isEmpty()) {
-      generateAuditReport();
-    }
-    return;
-  }
-
-  QString truth = m_ui.benchmarkTruthInput->text().trimmed();
-  if (truth.isEmpty()) {
-    QMessageBox::warning(nullptr, "오류",
-                         "테스트할 정답(번호판)을 입력하세요.");
-    return;
-  }
-
-  m_benchmarkTruth = truth;
-  m_auditResults.clear();
-  m_isBenchmarking = true;
-
-  if (m_ocrCoordinatorPrimary)
-    m_ocrCoordinatorPrimary->resetRuntimeState();
-  if (m_ocrCoordinatorSecondary)
-    m_ocrCoordinatorSecondary->resetRuntimeState();
-  if (m_ocrCoordinatorPrimary)
-    m_ocrCoordinatorPrimary->setStabilizationEnabled(false);
-  if (m_ocrCoordinatorSecondary)
-    m_ocrCoordinatorSecondary->setStabilizationEnabled(false);
-  if (m_ocrCoordinatorPrimary)
-    m_ocrCoordinatorPrimary->setEmitPartialResults(true);
-  if (m_ocrCoordinatorSecondary)
-    m_ocrCoordinatorSecondary->setEmitPartialResults(true);
-
-  m_ui.btnRunBenchmark->setText("실시간 OCR 평가 중단");
-  m_ui.benchmarkTruthInput->setEnabled(false);
-
-  onLogMessage(
-      QString("[OCR Audit] '%1' 라벨로 실시간 성능 측정 시작 (100회 수집)")
-          .arg(truth));
-}
-
-void MainWindowController::generateAuditReport() {
-  if (m_auditResults.isEmpty())
-    return;
-
-  QString fileName = "ocr_live_audit_report_paddle.csv";
-  QFile file(fileName);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    onLogMessage("[OCR Audit] 보고서 파일 생성 실패.");
-    return;
-  }
-
-  QTextStream out(&file);
-  out.setGenerateByteOrderMark(true);
-  out << "Timestamp,ID,Truth,Raw,Filtered,Latency(ms),RawMatch,E2EMatch,CER\n";
-
-  double totalLatency = 0;
-  int rawMatches = 0;
-  int e2eMatches = 0;
-  int totalCer = 0;
-  std::vector<int> latencies;
-
-  for (const auto &res : m_auditResults) {
-    out << res.timestamp << "," << res.objectId << "," << res.truth << ","
-        << res.raw << "," << res.filtered << "," << res.latencyMs << ","
-        << (res.isRawMatch ? "1" : "0") << "," << (res.isE2EMatch ? "1" : "0")
-        << "," << res.cer << "\n";
-
-    totalLatency += res.latencyMs;
-    latencies.push_back(res.latencyMs);
-    if (res.isRawMatch)
-      rawMatches++;
-    if (res.isE2EMatch)
-      e2eMatches++;
-    totalCer += res.cer;
-  }
-
-  std::sort(latencies.begin(), latencies.end());
-  double p50 = latencies[latencies.size() / 2];
-  double p95 = latencies[qMin((int)(latencies.size() * 0.95),
-                              (int)latencies.size() - 1)];
-  double avgLatency = totalLatency / m_auditResults.size();
-  double rawAcc = (double)rawMatches / m_auditResults.size() * 100.0;
-  double e2eAcc = (double)e2eMatches / m_auditResults.size() * 100.0;
-  double avgCer = (double)totalCer / m_auditResults.size();
-
-  out << "\n[OCR Audit Summary]\n";
-  out << "Metric,Value\n";
-  out << "Sample Count," << m_auditResults.size() << "\n";
-  out << "Raw Match Rate," << QString::number(rawAcc, 'f', 1) << " %\n";
-  out << "E2E Match Rate," << QString::number(e2eAcc, 'f', 1) << " %\n";
-  out << "Average CER," << QString::number(avgCer, 'f', 2) << "\n";
-  out << "Avg Latency," << QString::number(avgLatency, 'f', 1) << " ms\n";
-  out << "p50 Latency," << QString::number(p50, 'f', 1) << " ms\n";
-  out << "p95 Latency," << QString::number(p95, 'f', 1) << " ms\n";
-
-  file.close();
-
-  QString summary = QString("\n[OCR Audit 결과 요약 (PaddleOCR)]\n"
-                            "- 샘플 수: %1\n"
-                            "- Raw Match: %2%\n"
-                            "- E2E Match: %3%\n"
-                            "- Avg CER: %4\n"
-                            "- Latency (Avg/p50/p95): %5ms / %6ms / %7ms\n"
-                            "👉 보고서 저장됨: %8")
-                        .arg(m_auditResults.size())
-                        .arg(rawAcc, 0, 'f', 1)
-                        .arg(e2eAcc, 0, 'f', 1)
-                        .arg(avgCer, 0, 'f', 2)
-                        .arg(avgLatency, 0, 'f', 1)
-                        .arg(p50, 0, 'f', 1)
-                        .arg(p95, 0, 'f', 1)
-                        .arg(QDir::current().absoluteFilePath(fileName));
-
-  onLogMessage(summary);
-  QMessageBox::information(nullptr, "평가 완료", summary);
-}
-
-int MainWindowController::calculateCER(const QString &truth,
-                                       const QString &pred) {
-  int n = truth.length();
-  int m = pred.length();
-  if (n == 0)
-    return m;
-  if (m == 0)
-    return n;
-  QVector<QVector<int>> d(n + 1, QVector<int>(m + 1));
-  for (int i = 0; i <= n; ++i)
-    d[i][0] = i;
-  for (int j = 0; j <= m; ++j)
-    d[0][j] = j;
-  for (int i = 1; i <= n; ++i) {
-    for (int j = 1; j <= m; ++j) {
-      int cost = (truth[i - 1] == pred[j - 1]) ? 0 : 1;
-      d[i][j] =
-          qMin(qMin(d[i - 1][j] + 1, d[i][j - 1] + 1), d[i - 1][j - 1] + cost);
-    }
-  }
-  return d[n][m];
 }
