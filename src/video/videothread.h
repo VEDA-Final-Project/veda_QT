@@ -9,7 +9,6 @@
 #include <QThread>
 #include <opencv2/opencv.hpp>
 
-
 class VideoThread : public QThread {
   Q_OBJECT
 public:
@@ -17,6 +16,7 @@ public:
   ~VideoThread();
 
   void setUrl(const QString &url);
+  void setTargetFps(int fps); // 타겟 FPS 설정 (프레임 스킵용)
   void stop();
 
 signals:
@@ -28,6 +28,7 @@ protected:
 
 private:
   QString m_url;
+  int m_targetFps = 0; // 0이면 스킵 없음
   bool m_stop;
   QMutex m_mutex;
   cv::VideoCapture m_cap;

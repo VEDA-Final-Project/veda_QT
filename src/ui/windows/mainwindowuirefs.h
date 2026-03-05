@@ -6,18 +6,21 @@ class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
 class QTextEdit;
 class VideoWidget;
+class QFrame;
 
 struct MainWindowUiRefs {
   VideoWidget *videoWidgetPrimary = nullptr;
   VideoWidget *videoWidgetSecondary = nullptr;
-  QComboBox *viewModeCombo = nullptr;
-  QComboBox *cameraPrimarySelectorCombo = nullptr;
-  QComboBox *cameraSecondarySelectorCombo = nullptr;
+  QFrame *channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
+  QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
+  QLabel *channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};
+  QLabel *thumbnailLabels[4] = {nullptr, nullptr, nullptr, nullptr};
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
   QComboBox *roiPurposeCombo = nullptr;
@@ -85,6 +88,9 @@ struct MainWindowUiRefs {
   QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
+
+  // CCTV Event Log Panel
+  QListWidget *eventListWidget = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H
