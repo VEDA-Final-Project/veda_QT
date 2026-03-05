@@ -191,43 +191,43 @@ bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
 }
 
 void MainWindowController::onVideoWidgetResizedSlot() {
-  auto reconnectIfProfileChanged = [this](int selectedChannelIndex,
-                                          VideoWidget *videoWidget,
-                                          CameraManager *cameraManager,
-                                          const QString &cameraKey,
-                                          QString *currentProfile,
-                                          CameraSessionService &sessionService,
-                                          const QString &targetName) {
-    if (selectedChannelIndex == -1 || !videoWidget || !cameraManager ||
-        !currentProfile) {
-      return;
-    }
-    if (cameraKey.trimmed().isEmpty() || !cameraManager->isRunning()) {
-      return;
-    }
+  auto reconnectIfProfileChanged =
+      [this](int selectedChannelIndex, VideoWidget *videoWidget,
+             CameraManager *cameraManager, const QString &cameraKey,
+             QString *currentProfile, CameraSessionService &sessionService,
+             const QString &targetName) {
+        if (selectedChannelIndex == -1 || !videoWidget || !cameraManager ||
+            !currentProfile) {
+          return;
+        }
+        if (cameraKey.trimmed().isEmpty() || !cameraManager->isRunning()) {
+          return;
+        }
 
-    const QString newProfile = getBestProfileForSize(videoWidget->size());
-    if (newProfile.isEmpty() || newProfile == *currentProfile) {
-      return;
-    }
+        const QString newProfile = getBestProfileForSize(videoWidget->size());
+        if (newProfile.isEmpty() || newProfile == *currentProfile) {
+          return;
+        }
 
-    if (refreshCameraConnectionFromConfig(cameraManager, cameraKey, nullptr,
-                                          newProfile, false)) {
-      *currentProfile = newProfile;
-      sessionService.playOrRestart();
-      onLogMessage(QString("[Camera] %1 리사이즈 재연결: %2")
-                       .arg(targetName, newProfile));
-    }
-  };
+        if (refreshCameraConnectionFromConfig(cameraManager, cameraKey, nullptr,
+                                              newProfile, false)) {
+          *currentProfile = newProfile;
+          videoWidget->setProfileName(newProfile);
+          sessionService.playOrRestart();
+          onLogMessage(QString("[Camera] %1 리사이즈 재연결: %2")
+                           .arg(targetName, newProfile));
+        }
+      };
 
+  reconnectIfProfileChanged(m_selectedChannelIndex, m_ui.videoWidgetPrimary,
+                            m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
+                            &m_currentProfilePrimary, m_cameraSessionPrimary,
+                            QStringLiteral("Primary"));
   reconnectIfProfileChanged(
-      m_selectedChannelIndex, m_ui.videoWidgetPrimary, m_cameraManagerPrimary,
-      m_selectedCameraKeyPrimary, &m_currentProfilePrimary, m_cameraSessionPrimary,
-      QStringLiteral("Primary"));
-  reconnectIfProfileChanged(
-      m_secondaryChannelIndex, m_ui.videoWidgetSecondary, m_cameraManagerSecondary,
-      m_selectedCameraKeySecondary, &m_currentProfileSecondary,
-      m_cameraSessionSecondary, QStringLiteral("Secondary"));
+      m_secondaryChannelIndex, m_ui.videoWidgetSecondary,
+      m_cameraManagerSecondary, m_selectedCameraKeySecondary,
+      &m_currentProfileSecondary, m_cameraSessionSecondary,
+      QStringLiteral("Secondary"));
 }
 
 void MainWindowController::shutdown() {
@@ -629,7 +629,13 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
       connectionInfo.profile = QStringLiteral("profile2/media.smp");
     }
   }
-  connectionInfo.subProfile = connectionInfo.profile;
+
+  // === OCR 전용 스트림은 설정 파일의 원본 고해상도를 고정 사용 (UI 크기 무관)
+  // ===
+  connectionInfo.subProfile = cfg.cameraProfile(selectedKey).trimmed();
+  if (connectionInfo.subProfile.isEmpty()) {
+    connectionInfo.subProfile = QStringLiteral("profile2/media.smp");
+  }
 
   if (!connectionInfo.isValid()) {
     onLogMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
@@ -644,16 +650,21 @@ bool MainWindowController::refreshCameraConnectionFromConfig(
 }
 
 QString MainWindowController::getBestProfileForSize(const QSize &size) const {
+  // 위젯의 16:9 가로세로비 고려한 유효 너비 계산
   int effectiveWidth = std::min(size.width(), size.height() * 16 / 9);
 
-  // profile2~5만 사용 (profile6/7은 일부 카메라에서 미지원)
-  if (effectiveWidth >= 2560)
-    return QStringLiteral("profile2/media.smp"); // 3840x2160
-  if (effectiveWidth >= 1920)
-    return QStringLiteral("profile3/media.smp"); // 3072x1728
-  if (effectiveWidth >= 1280)
-    return QStringLiteral("profile4/media.smp"); // 2560x1440
-  return QStringLiteral("profile5/media.smp");   // 1920x1080
+  // profile2~7 지원 및 1:1 매칭 최적화 (프레임 드랍 방지)
+  if (effectiveWidth > 3072)
+    return QStringLiteral("profile2/media.smp"); // 4K (3K 초과 시)
+  if (effectiveWidth > 2560)
+    return QStringLiteral("profile3/media.smp"); // 3K (2.5K 초과 시)
+  if (effectiveWidth > 1920)
+    return QStringLiteral("profile4/media.smp"); // 2.5K (FHD 초과 시)
+  if (effectiveWidth > 1280)
+    return QStringLiteral("profile5/media.smp"); // FHD (HD 초과 시)
+  if (effectiveWidth > 640)
+    return QStringLiteral("profile6/media.smp"); // HD (SD 초과 시)
+  return QStringLiteral("profile7/media.smp");   // SD/Thumbnail (640px 이하)
 }
 
 void MainWindowController::onChannelCardClicked(int index) {
@@ -738,6 +749,9 @@ void MainWindowController::onChannelCardClicked(int index) {
               ? getBestProfileForSize(m_ui.videoWidgetPrimary->size())
               : QString();
       m_currentProfilePrimary = profile;
+      if (m_ui.videoWidgetPrimary) {
+        m_ui.videoWidgetPrimary->setProfileName(profile);
+      }
       if (refreshCameraConnectionFromConfig(
               m_cameraManagerPrimary, m_selectedCameraKeyPrimary,
               &m_selectedCameraKeyPrimary, profile)) {
@@ -785,6 +799,9 @@ void MainWindowController::onChannelCardClicked(int index) {
               ? getBestProfileForSize(m_ui.videoWidgetSecondary->size())
               : QString();
       m_currentProfileSecondary = profile;
+      if (m_ui.videoWidgetSecondary) {
+        m_ui.videoWidgetSecondary->setProfileName(profile);
+      }
       if (refreshCameraConnectionFromConfig(
               m_cameraManagerSecondary, m_selectedCameraKeySecondary,
               &m_selectedCameraKeySecondary, profile)) {
@@ -1252,8 +1269,10 @@ void MainWindowController::onOcrFrameCapturedPrimary(
     return;
   }
 
-  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > 120) {
+  // === 성능 최적화: 현재 감지된 객체가 없으면 무거운 4K 변환/디스패치 생략 ===
+  if (!m_parkingServicePrimary ||
+      m_parkingServicePrimary->activeVehicles().isEmpty()) {
+    // ROI 내에 차량이 하나도 없으면 4K 처리가 불필요함
     return;
   }
 
@@ -1269,8 +1288,9 @@ void MainWindowController::onOcrFrameCapturedSecondary(
     return;
   }
 
-  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > 120) {
+  // === 성능 최적화: 현재 감지된 객체가 없으면 무거운 4K 변환/디스패치 생략 ===
+  if (!m_parkingServiceSecondary ||
+      m_parkingServiceSecondary->activeVehicles().isEmpty()) {
     return;
   }
 

@@ -590,6 +590,18 @@ void MainWindow::setupUi() {
   channelPanelLayout->addWidget(m_chkFace);
   channelPanelLayout->addWidget(m_chkPlate);
   channelPanelLayout->addWidget(m_chkOther);
+  channelPanelLayout->addSpacing(12);
+
+  // ── 디스플레이 설정 ──
+  QLabel *displayTitle = new QLabel(QString::fromUtf8("DISPLAY"), this);
+  displayTitle->setObjectName("panelTitle");
+  channelPanelLayout->addWidget(displayTitle);
+  channelPanelLayout->addSpacing(4);
+
+  m_chkShowFps = new QCheckBox(QString::fromUtf8("FPS 표시"), this);
+  m_lblAvgFps = new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
+  channelPanelLayout->addWidget(m_chkShowFps);
+  channelPanelLayout->addWidget(m_lblAvgFps);
 
   channelPanelLayout->addStretch();
   channelScrollArea->setWidget(channelPanel);
@@ -1098,12 +1110,6 @@ void MainWindow::setupUi() {
       new QCheckBox(QString::fromUtf8("번호판 인식 로그 표시"), this);
   m_chkShowPlateLogs->setChecked(true);
   m_chkShowPlateLogs->setVisible(false);
-
-  m_chkShowFps = new QCheckBox(QString::fromUtf8("FPS 표시"), this);
-  m_chkShowFps->setVisible(false);
-
-  m_lblAvgFps = new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
-  m_lblAvgFps->setVisible(false);
 
   m_logView = new QTextEdit(this);
   m_logView->setReadOnly(true);

@@ -82,6 +82,8 @@ void CameraManager::start() {
   // === OCR 전용 비디오 스트림 시작 ===
   if (m_ocrVideoThread) {
     m_ocrVideoThread->setUrl(ocrUrl);
+    m_ocrVideoThread->setTargetFps(
+        2); // 4K OCR은 초당 2프레임이면 충분함 (CPU 부하 대폭 감소)
     m_ocrVideoThread->start();
   }
 

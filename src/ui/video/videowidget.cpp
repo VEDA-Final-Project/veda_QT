@@ -193,7 +193,7 @@ void VideoWidget::renderFrame(const QImage &frame) {
   const QImage composed = m_frameRenderer.compose(
       frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
       m_roiState.roiEnabled() && !m_roiState.isDrawing(), m_showFps,
-      static_cast<int>(m_currentFps), nullptr);
+      static_cast<int>(m_currentFps), m_profileName, nullptr);
 
   // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
   m_currentFrame = composed;

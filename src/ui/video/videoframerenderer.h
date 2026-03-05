@@ -20,7 +20,8 @@ public:
                  const QList<ObjectInfo> &objects,
                  const QList<QPolygon> &roiPolygons,
                  const QStringList &roiLabels, bool roiEnabled, bool showFps,
-                 int currentFps, QList<OcrRequest> *ocrRequests) const;
+                 int currentFps, const QString &profileName,
+                 QList<OcrRequest> *ocrRequests) const;
 };
 
 #endif // VIDEOFRAMERENDERER_H

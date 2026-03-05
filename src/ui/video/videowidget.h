@@ -14,7 +14,6 @@
 #include <QStringList>
 #include <QWidget>
 
-
 /**
  * @brief 비디오 렌더링 위젯
  *
@@ -46,6 +45,7 @@ public slots:
   void updateMetadata(const QList<ObjectInfo> &objects);
   void dispatchOcrRequests(const QImage &frame);
   void setShowFps(bool show);
+  void setProfileName(const QString &name) { m_profileName = name; }
 
 signals:
   void ocrRequested(int objectId, const QImage &crop);
@@ -72,6 +72,7 @@ private:
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
+  QString m_profileName;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;
 };
