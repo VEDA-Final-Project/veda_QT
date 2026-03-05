@@ -26,8 +26,23 @@ public:
    * @param plateNumber 차량번호
    */
   bool registerUser(const QString &chatId, const QString &plateNumber,
-                    const QString &name = "", const QString &phone = "",
+                    const QString &name, const QString &phone,
+                    const QString &paymentInfo,
                     QString *errorMessage = nullptr);
+
+  /**
+   * @brief 기존 사용자 정보 수정 (admin 용)
+   */
+  bool updateUser(const QString &chatId, const QString &plateNumber,
+                  const QString &name, const QString &phone,
+                  const QString &paymentInfo, QString *errorMessage = nullptr);
+
+  /**
+   * @brief 신규 사용자 추가 (admin 용, chatId 직접 지정)
+   */
+  bool addUser(const QString &chatId, const QString &plateNumber,
+               const QString &name, const QString &phone,
+               const QString &paymentInfo, QString *errorMessage = nullptr);
 
   /**
    * @brief 모든 사용자 목록 조회

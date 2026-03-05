@@ -36,7 +36,8 @@ bool UserRepository::init(QString *errorMessage) {
   // 마이그레이션: 신규 컬럼 추가
   const QStringList newColumns = {
       "ALTER TABLE telegram_users ADD COLUMN name TEXT",
-      "ALTER TABLE telegram_users ADD COLUMN phone TEXT"};
+      "ALTER TABLE telegram_users ADD COLUMN phone TEXT",
+      "ALTER TABLE telegram_users ADD COLUMN payment_info TEXT"};
 
   for (const QString &alterSql : newColumns) {
     QSqlQuery alterQuery(db);
@@ -49,17 +50,20 @@ bool UserRepository::init(QString *errorMessage) {
 bool UserRepository::registerUser(const QString &chatId,
                                   const QString &plateNumber,
                                   const QString &name, const QString &phone,
+                                  const QString &paymentInfo,
                                   QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "INSERT OR REPLACE INTO telegram_users (chat_id, "
-      "plate_number, name, phone, created_at) "
-      "VALUES (:chat_id, :plate, :name, :phone, datetime('now','localtime'))"));
+  query.prepare(
+      QStringLiteral("INSERT OR REPLACE INTO telegram_users (chat_id, "
+                     "plate_number, name, phone, payment_info, created_at) "
+                     "VALUES (:chat_id, :plate, :name, :phone, :payment, "
+                     "datetime('now','localtime'))"));
   query.bindValue(":chat_id", chatId);
   query.bindValue(":plate", plateNumber);
   query.bindValue(":name", name);
   query.bindValue(":phone", phone);
+  query.bindValue(":payment", paymentInfo);
 
   if (!query.exec()) {
     const QString err =
@@ -70,6 +74,41 @@ bool UserRepository::registerUser(const QString &chatId,
     return false;
   }
   return true;
+}
+
+bool UserRepository::updateUser(const QString &chatId,
+                                const QString &plateNumber, const QString &name,
+                                const QString &phone,
+                                const QString &paymentInfo,
+                                QString *errorMessage) {
+  QSqlDatabase db = DatabaseContext::database();
+  QSqlQuery query(db);
+  query.prepare(
+      QStringLiteral("UPDATE telegram_users SET plate_number=:plate, "
+                     "name=:name, phone=:phone, payment_info=:payment "
+                     "WHERE chat_id=:chat_id"));
+  query.bindValue(":chat_id", chatId);
+  query.bindValue(":plate", plateNumber);
+  query.bindValue(":name", name);
+  query.bindValue(":phone", phone);
+  query.bindValue(":payment", paymentInfo);
+  if (!query.exec()) {
+    const QString err =
+        QStringLiteral("Failed to update user: ") + query.lastError().text();
+    qWarning() << err;
+    if (errorMessage)
+      *errorMessage = err;
+    return false;
+  }
+  return true;
+}
+
+bool UserRepository::addUser(const QString &chatId, const QString &plateNumber,
+                             const QString &name, const QString &phone,
+                             const QString &paymentInfo,
+                             QString *errorMessage) {
+  return registerUser(chatId, plateNumber, name, phone, paymentInfo,
+                      errorMessage);
 }
 
 QMap<QString, QString>
@@ -120,7 +159,7 @@ UserRepository::getAllUsersFull(QString *errorMessage) const {
 
   QSqlQuery query(db);
   if (!query.exec(QStringLiteral("SELECT chat_id, plate_number, name, phone, "
-                                 "created_at FROM telegram_users "
+                                 "payment_info, created_at FROM telegram_users "
                                  "ORDER BY created_at DESC"))) {
     if (errorMessage)
       *errorMessage = query.lastError().text();
@@ -133,6 +172,7 @@ UserRepository::getAllUsersFull(QString *errorMessage) const {
     row["plate_number"] = query.value("plate_number").toString();
     row["name"] = query.value("name").toString();
     row["phone"] = query.value("phone").toString();
+    row["payment_info"] = query.value("payment_info").toString();
     row["created_at"] = query.value("created_at").toString();
     results.append(row);
   }

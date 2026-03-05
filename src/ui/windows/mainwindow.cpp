@@ -1,5 +1,7 @@
 #include "mainwindow.h"
+#include "config/logfilterconfig.h"
 #include "mainwindowcontroller.h"
+#include <QDialog>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -142,6 +144,8 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
 
   uiRefs.userDbTable = m_userDbTable;
   uiRefs.btnRefreshUsers = m_btnRefreshUsers;
+  uiRefs.btnAddUser = m_btnAddUser;
+  uiRefs.btnEditUser = m_btnEditUser;
   uiRefs.btnDeleteUser = m_btnDeleteUser;
   uiRefs.hwLogTable = m_hwLogTable;
   uiRefs.btnRefreshHwLogs = m_btnRefreshHwLogs;
@@ -387,6 +391,20 @@ void MainWindow::setupUi() {
   headerLayout->addWidget(m_menuButton);
   headerLayout->addSpacing(2);
 
+  // Settings (gear) button — 로그 필터 설정
+  m_settingsButton = new QToolButton(this);
+  m_settingsButton->setIcon(tintIcon(
+      PROJECT_SOURCE_DIR "/src/ui/icon/settings.png", QColor("#94A3B8")));
+  m_settingsButton->setIconSize(QSize(18, 18));
+  m_settingsButton->setObjectName("navBtn");
+  m_settingsButton->setCursor(Qt::PointingHandCursor);
+  m_settingsButton->setToolTip(
+      QString::fromUtf8("\xEB\xA1\x9C\xEA\xB7\xB8 \xEC\x84\xA4\xEC\xA0\x95"));
+  connect(m_settingsButton, &QToolButton::clicked, this,
+          &MainWindow::openLogFilterSettings);
+  headerLayout->addWidget(m_settingsButton);
+  headerLayout->addSpacing(2);
+
   // Store stackedWidget for eventFilter usage
   m_stackedWidget = stackedWidget;
 
@@ -453,13 +471,13 @@ void MainWindow::setupUi() {
   splashCardLayout->setContentsMargins(36, 30, 36, 30);
   splashCardLayout->setSpacing(14);
 
-  m_splashTitleLabel = new QLabel(QString::fromUtf8("CCTV 준비 중"), splashCard);
+  m_splashTitleLabel =
+      new QLabel(QString::fromUtf8("CCTV 준비 중"), splashCard);
   m_splashTitleLabel->setObjectName("cctvSplashTitle");
   m_splashTitleLabel->setAlignment(Qt::AlignCenter);
 
-  m_splashMessageLabel =
-      new QLabel(QString::fromUtf8("카메라 연결을 확인하고 있습니다."),
-                 splashCard);
+  m_splashMessageLabel = new QLabel(
+      QString::fromUtf8("카메라 연결을 확인하고 있습니다."), splashCard);
   m_splashMessageLabel->setObjectName("cctvSplashMessage");
   m_splashMessageLabel->setWordWrap(true);
   m_splashMessageLabel->setAlignment(Qt::AlignCenter);
@@ -953,18 +971,24 @@ void MainWindow::setupUi() {
 
   QHBoxLayout *usersToolBar = new QHBoxLayout();
   m_btnRefreshUsers = new QPushButton("새로고침", this);
+  m_btnAddUser = new QPushButton("추가", this);
+  m_btnEditUser = new QPushButton("수정", this);
   m_btnDeleteUser = new QPushButton("삭제", this);
   usersToolBar->addWidget(m_btnRefreshUsers);
+  usersToolBar->addWidget(m_btnAddUser);
+  usersToolBar->addWidget(m_btnEditUser);
   usersToolBar->addWidget(m_btnDeleteUser);
   usersToolBar->addStretch();
 
   m_userDbTable = new QTableWidget(this);
-  m_userDbTable->setColumnCount(5);
+  m_userDbTable->setColumnCount(6);
   m_userDbTable->setHorizontalHeaderLabels(
-      QStringList() << "Chat ID" << "번호판" << "이름" << "연락처" << "등록일");
+      QStringList() << "Chat ID" << "번호판" << "이름" << "연락처" << "카드번호"
+                    << "등록일");
   m_userDbTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_userDbTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_userDbTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_userDbTable->setSelectionMode(QAbstractItemView::SingleSelection);
 
   usersLayout->addLayout(usersToolBar);
   usersLayout->addWidget(m_userDbTable);
@@ -1181,5 +1205,73 @@ void MainWindow::showCctvPage() {
   }
   if (m_stackedWidget) {
     m_stackedWidget->setCurrentIndex(kCctvPageIndex);
+  }
+}
+
+void MainWindow::openLogFilterSettings() {
+  QDialog dlg(this);
+  dlg.setWindowTitle(QString::fromUtf8("로그 필터 설정"));
+  dlg.setFixedSize(300, 350);
+  dlg.setStyleSheet(
+      "QDialog { background: #1E293B; border: 1px solid #334155; }"
+      "QLabel { color: #F1F5F9; font-size: 13px; }"
+      "QCheckBox { color: #CBD5E1; font-size: 12px; padding: 4px 0; }"
+      "QCheckBox::indicator { width: 16px; height: 16px; }"
+      "QPushButton { background: #3B82F6; color: white; border: none; "
+      "padding: 8px 16px; border-radius: 4px; font-size: 12px; }"
+      "QPushButton:hover { background: #2563EB; }");
+
+  QVBoxLayout *layout = new QVBoxLayout(&dlg);
+  layout->setContentsMargins(20, 16, 20, 16);
+  layout->setSpacing(6);
+
+  QLabel *title =
+      new QLabel(QString::fromUtf8("⚙️ 로그 출력 카테고리 설정"), &dlg);
+  title->setStyleSheet("font-size: 15px; font-weight: bold; color: #F1F5F9;");
+  layout->addWidget(title);
+  layout->addSpacing(4);
+
+  QLabel *desc =
+      new QLabel(QString::fromUtf8("체크 해제하면 해당 카테고리의\n"
+                                   "디버그 로그가 출력되지 않습니다."),
+                 &dlg);
+  desc->setStyleSheet("color: #94A3B8; font-size: 11px;");
+  layout->addWidget(desc);
+  layout->addSpacing(8);
+
+  // 카테고리 표시 이름 (한글)
+  QMap<QString, QString> displayNames;
+  displayNames["OCR"] = QString::fromUtf8("OCR (번호판 인식)");
+  displayNames["Video"] = QString::fromUtf8("Video (프레임 FPS)");
+  displayNames["Camera"] = QString::fromUtf8("Camera (카메라 제어)");
+  displayNames["Telegram"] = QString::fromUtf8("Telegram (텔레그램 봇)");
+  displayNames["DB"] = QString::fromUtf8("DB (데이터베이스)");
+  displayNames["ROI"] = QString::fromUtf8("ROI (구역 설정)");
+  displayNames["OpenCV"] = QString::fromUtf8("OpenCV (내부 로그)");
+
+  // 순서 고정
+  QStringList order = {"OCR", "Video", "Camera", "Telegram",
+                       "DB",  "ROI",   "OpenCV"};
+
+  QMap<QString, QCheckBox *> checkboxes;
+  LogFilterConfig &config = LogFilterConfig::instance();
+
+  for (const QString &cat : order) {
+    QCheckBox *chk = new QCheckBox(displayNames.value(cat, cat), &dlg);
+    chk->setChecked(config.isEnabled(cat));
+    layout->addWidget(chk);
+    checkboxes[cat] = chk;
+  }
+
+  layout->addStretch();
+
+  QPushButton *btnClose = new QPushButton(QString::fromUtf8("적용"), &dlg);
+  layout->addWidget(btnClose);
+  connect(btnClose, &QPushButton::clicked, &dlg, &QDialog::accept);
+
+  if (dlg.exec() == QDialog::Accepted) {
+    for (auto it = checkboxes.begin(); it != checkboxes.end(); ++it) {
+      config.setEnabled(it.key(), it.value()->isChecked());
+    }
   }
 }

@@ -114,6 +114,8 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnEditPlate = m_ui.btnEditPlate;
   dbUiRefs.userDbTable = m_ui.userDbTable;
   dbUiRefs.btnRefreshUsers = m_ui.btnRefreshUsers;
+  dbUiRefs.btnAddUser = m_ui.btnAddUser;
+  dbUiRefs.btnEditUser = m_ui.btnEditUser;
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
   dbUiRefs.hwLogTable = m_ui.hwLogTable;
   dbUiRefs.btnRefreshHwLogs = m_ui.btnRefreshHwLogs;
@@ -138,7 +140,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbContext.logMessage = [this](const QString &message) {
     onLogMessage(message);
   };
+  dbContext.userDeleted = [this](const QString &chatId) {
+    if (m_telegramApi) {
+      m_telegramApi->removeUser(chatId);
+    }
+  };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+  if (m_telegramApi) {
+    connect(m_telegramApi, &TelegramBotAPI::usersUpdated, m_dbPanelController,
+            &DbPanelController::refreshUserTable);
+  }
 
   m_resizeDebounceTimer = new QTimer(this);
   m_resizeDebounceTimer->setSingleShot(true);
@@ -1525,8 +1536,15 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
             .arg(name, chatId));
   }
 
-  QMessageBox::information(
-      nullptr, "관리자 호출",
+  // 논블로킹 팝업: OK 누르기 전에도 다음 호출 수신 가능
+  QMessageBox *box = new QMessageBox(nullptr);
+  box->setWindowTitle("관리자 호출");
+  box->setText(
       QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
           .arg(name, chatId));
+  box->setIcon(QMessageBox::Warning);
+  box->setStandardButtons(QMessageBox::Ok);
+  box->setAttribute(Qt::WA_DeleteOnClose);
+  box->setWindowModality(Qt::NonModal);
+  box->show();
 }

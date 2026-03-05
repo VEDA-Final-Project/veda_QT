@@ -54,6 +54,7 @@ private:
   static constexpr int kCctvPageIndex = 1;
 
   void setupUi();
+  void openLogFilterSettings();
 
   QSplitter *m_videoSplitter = nullptr;
   VideoWidget *m_videoWidgetPrimary = nullptr;
@@ -113,6 +114,8 @@ private:
   // New DB sub-tab widgets
   QTableWidget *m_userDbTable = nullptr;
   QPushButton *m_btnRefreshUsers = nullptr;
+  QPushButton *m_btnAddUser = nullptr;
+  QPushButton *m_btnEditUser = nullptr;
   QPushButton *m_btnDeleteUser = nullptr;
 
   QTableWidget *m_hwLogTable = nullptr;
@@ -152,6 +155,7 @@ private:
   QTimer *m_clockTimer = nullptr;
   QToolButton *m_menuButton = nullptr;
   QMenu *m_navMenu = nullptr;
+  QToolButton *m_settingsButton = nullptr;
   QStackedWidget *m_stackedWidget = nullptr;
   QLabel *m_splashTitleLabel = nullptr;
   QLabel *m_splashMessageLabel = nullptr;

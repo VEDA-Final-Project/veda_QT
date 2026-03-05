@@ -132,20 +132,19 @@ void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee) {
  * 메인 메뉴 전송
  * ============================================================ */
 
-void TelegramBotAPI::sendMainMenu(const QString &chatId) {
+void TelegramBotAPI::sendMainMenu(const QString &chatId,
+                                  const QString &customMessage) {
   QJsonArray row1, row2;
 
-  // Row 1
   QJsonObject btn1, btn2;
-  btn1["text"] = QString::fromUtf8("🅿️ 내 주차 현황");
-  btn2["text"] = QString::fromUtf8("👤 내 정보");
+  btn1["text"] = QString::fromUtf8("👤 내 정보 조회");
+  btn2["text"] = QString::fromUtf8("💳 요금 조회");
   row1.append(btn1);
   row1.append(btn2);
 
-  // Row 2
   QJsonObject btn3, btn4;
-  btn3["text"] = QString::fromUtf8("💳 최근 이용 내역");
-  btn4["text"] = QString::fromUtf8("📞 관리자 호출");
+  btn3["text"] = QString::fromUtf8("🕒 최근 이용 내역");
+  btn4["text"] = QString::fromUtf8("🚨 관리자 호출");
   row2.append(btn3);
   row2.append(btn4);
 
@@ -155,13 +154,37 @@ void TelegramBotAPI::sendMainMenu(const QString &chatId) {
 
   QJsonObject markup;
   markup["keyboard"] = keyboard;
-  markup["resize_keyboard"] = true;    // 버튼 크기 자동 조절
-  markup["one_time_keyboard"] = false; // 메뉴 계속 유지
+  markup["resize_keyboard"] = true;
+  markup["one_time_keyboard"] = false;
 
   QString replyMarkup =
       QString::fromUtf8(QJsonDocument(markup).toJson(QJsonDocument::Compact));
 
-  sendMessage(chatId, "원하시는 메뉴를 선택해주세요.", replyMarkup);
+  QString text = customMessage.isEmpty() ? QString::fromUtf8("🏠 *메인 메뉴*")
+                                         : customMessage;
+  sendMessage(chatId, text, replyMarkup);
+}
+
+void TelegramBotAPI::removeUser(const QString &chatId) {
+  if (m_chatToPlate.contains(chatId)) {
+    QString plate = m_chatToPlate.value(chatId);
+    m_chatToPlate.remove(chatId);
+    // 한 차량에 여러 ChatID가 매핑될 수 있는 구조라면 value로 키 찾기
+    QString keyToRemove;
+    for (auto it = m_plateToChat.begin(); it != m_plateToChat.end(); ++it) {
+      if (it.value() == chatId) {
+        keyToRemove = it.key();
+        break;
+      }
+    }
+    if (!keyToRemove.isEmpty()) {
+      m_plateToChat.remove(keyToRemove);
+    }
+    emit logMessage(QString("[Telegram] 🗑️ 메모리에서 사용자 동기화 삭제 완료 "
+                            "(ChatID: %1, 차량: %2)")
+                        .arg(chatId, plate));
+    emit usersUpdated(m_chatToPlate.size());
+  }
 }
 
 /* ============================================================
@@ -382,6 +405,86 @@ void TelegramBotAPI::pollUpdates() {
                             .arg(amount));
           }
         }
+        // 수정하기 → 필드 선택 화면 표시
+        else if (data == "edit_select") {
+          answerCallbackQuery(id, "");
+          m_editSessions[chatId] = EditSession{};
+
+          // 인라인 버튼: 수정할 항목 선택
+          auto makeBtn = [](const QString &text, const QString &cb) {
+            QJsonObject btn;
+            btn["text"] = text;
+            btn["callback_data"] = cb;
+            return btn;
+          };
+          QJsonArray row1, row2;
+          row1.append(makeBtn("✏️ 이름", "edit_name"));
+          row1.append(makeBtn("🚗 차량번호", "edit_plate"));
+          row2.append(makeBtn("📱 전화번호", "edit_phone"));
+          row2.append(makeBtn("💳 카드번호", "edit_card"));
+
+          QJsonArray keyboard;
+          keyboard.append(row1);
+          keyboard.append(row2);
+
+          QJsonObject markup;
+          markup["inline_keyboard"] = keyboard;
+          QString replyMarkup = QString::fromUtf8(
+              QJsonDocument(markup).toJson(QJsonDocument::Compact));
+
+          sendMessage(
+              chatId,
+              QString::fromUtf8("✏️ *정보 수정*\n\n수정할 항목을 선택해주세요:"),
+              replyMarkup);
+        }
+        // 개별 필드 선택
+        else if (data == "edit_name" || data == "edit_plate" ||
+                 data == "edit_phone" || data == "edit_card") {
+          answerCallbackQuery(id, "");
+          EditSession session;
+          QString promptMsg;
+          if (data == "edit_name") {
+            session.field = EditField::NAME;
+            promptMsg = QString::fromUtf8("✏️ 새 이름을 입력해주세요:");
+          } else if (data == "edit_plate") {
+            session.field = EditField::PLATE;
+            promptMsg = QString::fromUtf8(
+                "🚗 새 차량번호를 입력해주세요:\n(예: 123가4567)");
+          } else if (data == "edit_phone") {
+            session.field = EditField::PHONE;
+            promptMsg = QString::fromUtf8(
+                "📱 새 전화번호를 입력해주세요:\n(예: 010-1234-5678)");
+          } else {
+            session.field = EditField::CARD;
+            promptMsg =
+                QString::fromUtf8("💳 새 카드번호 16자리를 입력해주세요:");
+          }
+          m_editSessions[chatId] = session;
+
+          // 취소(메뉴 복귀) 인라인 버튼
+          QJsonObject btnCancel;
+          btnCancel["text"] = QString::fromUtf8("❌ 취소");
+          btnCancel["callback_data"] = "edit_cancel";
+          QJsonArray row;
+          row.append(btnCancel);
+          QJsonArray keyboard;
+          keyboard.append(row);
+          QJsonObject markup;
+          markup["inline_keyboard"] = keyboard;
+
+          sendMessage(
+              chatId,
+              QString::fromUtf8("✏️ 수정 중입니다.\n\n") + promptMsg +
+                  QString::fromUtf8("\n\n(취소하려면 ❌ 취소 버튼을 누르세요)"),
+              QString::fromUtf8(
+                  QJsonDocument(markup).toJson(QJsonDocument::Compact)));
+        }
+        // 수정 취소 → 메뉴로 바로
+        else if (data == "edit_cancel") {
+          answerCallbackQuery(id, "");
+          m_editSessions.remove(chatId);
+          sendMainMenu(chatId);
+        }
         continue; // 콜백 처리는 여기서 끝
       }
 
@@ -406,8 +509,10 @@ void TelegramBotAPI::pollUpdates() {
           QString("[Telegram] 📩 Msg received - From: %1 (%2), Text: %3")
               .arg(firstName, chatId, text));
 
-      // 1. /start 메시지 처리
+      // 1. /start 메시지 처리 (환영 인사 + 등록 안내 결합)
       if (text == "/start") {
+        m_registrationSessions.remove(chatId); // 기존 등록 세션 초기화
+        m_editSessions.remove(chatId);         // 기존 수정 세션 초기화
         if (m_plateToChat.values().contains(chatId)) {
           sendMainMenu(chatId); // 이미 등록됨 -> 메인 메뉴 표시
         } else {
@@ -429,100 +534,332 @@ void TelegramBotAPI::pollUpdates() {
           QString replyMarkup = QString::fromUtf8(
               QJsonDocument(markup).toJson(QJsonDocument::Compact));
 
-          sendMessage(chatId,
-                      QString("안녕하세요, %1님! 👋\n"
-                              "아래 버튼을 눌러 차량을 등록해주세요.")
-                          .arg(firstName),
-                      replyMarkup);
+          sendMessage(
+              chatId,
+              "🚗 *안녕하세요! 스마트 주차 관리 봇입니다.*\n\n"
+              "텔레그램으로 언제 어디서나 간편하게 주차 서비스를 "
+              "이용해보세요.\n\n"
+              "📝 *원활한 서비스 이용을 위해 사용자 등록이 필요합니다.*\n"
+              "아래 버튼을 누른 후 차량번호를 입력해주세요.",
+              replyMarkup);
 
-          emit logMessage(
-              QString("[Telegram] 👋 입장: %1 (등록 대기)").arg(firstName));
+          emit logMessage(QString("[Telegram] 👋 입장: %1 (환영 및 등록 안내)")
+                              .arg(firstName));
         }
+      }
+      // 1-b. '메뉴로 돌아가기' 텍스트 (어느 상태에서나 세션 클리어 후 메뉴)
+      else if (text.contains(QString::fromUtf8("메뉴로 돌아가기"))) {
+        m_editSessions.remove(chatId);
+        m_registrationSessions.remove(chatId);
+        sendMainMenu(chatId);
       }
       // 2. '차량 등록하기' 버튼 클릭 처리
-      else if (text == QString::fromUtf8("📝 차량 등록하기")) {
-        m_pendingRegistration.insert(chatId);
-        // 키보드 제거하면서 메시지 전송
+      else if (text.contains(QString::fromUtf8("차량 등록하기"))) {
+        RegistrationData &data = m_registrationSessions[chatId];
+        data.state = RegistrationState::WAIT_PLATE;
+        data.name = firstName;
+
         sendMessage(chatId, "차량번호를 입력해주세요.\n(예: 123가4567)",
-                    QString("{\"remove_keyboard\": true}"));
-        emit logMessage(QString("[Telegram] 📝 등록 요청: %1 (차량번호 입력 "
-                                "대기) [Pending Count: %2]")
-                            .arg(firstName)
-                            .arg(m_pendingRegistration.size()));
+                    "{\"remove_keyboard\": true}");
+        emit logMessage(
+            QString("[Telegram] 📝 등록 요청: %1 (차량번호 입력 대기 시작)")
+                .arg(firstName));
       }
-      // 3. 차량번호 입력 처리 (대기 목록에 있는 경우)
-      else if (m_pendingRegistration.contains(chatId)) {
-        emit logMessage(QString("[Telegram] 🔍 %1님의 차량번호 입력 감지: %2")
-                            .arg(firstName, text));
-        if (text.length() >= 7) {
-          // DB 영속화
-          QString pushErr;
-          // 이름은 firstName 사용, 전화번호는 수집하지 않음 ("")
-          if (m_userRepository.registerUser(chatId, text, firstName, "",
-                                            &pushErr)) {
-            m_plateToChat.insert(text, chatId);
-            m_chatToPlate.insert(chatId, text); // 역방향 매핑 추가
-            m_pendingRegistration.remove(chatId);
-            ++newUsers;
+      // 3. 수정 세션 처리 (수정할 값 입력 대기 중)
+      else if (m_editSessions.contains(chatId) &&
+               m_editSessions[chatId].field != EditField::NONE) {
+        EditSession &editSess = m_editSessions[chatId];
 
-            emit logMessage(
-                QString("[Telegram] ✅ 사용자 등록 완료 및 저장: %1 (차량: %2)")
-                    .arg(firstName)
-                    .arg(text));
-
-            sendMessage(
-                chatId,
-                QString("등록 완료되었습니다! 🎉\n"
-                        "이제 차량 **%1**의 입출차 알림을 받으실 수 있습니다.")
-                    .arg(text));
-
-            // 등록 완료 후 메인 메뉴 표시
-            sendMainMenu(chatId);
-          } else {
-            emit logMessage(
-                QString("[Telegram] ❌ 사용자 저장 실패: %1").arg(pushErr));
-            sendMessage(chatId, "죄송합니다. 내부 오류로 등록에 실패했습니다. "
-                                "관리자에게 문의해주세요.");
+        // 기존 사용자 정보 조회
+        UserRepository editRepo;
+        const QVector<QJsonObject> allForEdit = editRepo.getAllUsersFull();
+        QJsonObject existingUser;
+        for (const QJsonObject &u : allForEdit) {
+          if (u["chat_id"].toString() == chatId) {
+            existingUser = u;
+            break;
           }
+        }
+
+        if (existingUser.isEmpty()) {
+          sendMessage(chatId,
+                      QString::fromUtf8("❌ 사용자 정보를 찾을 수 없습니다."));
+          m_editSessions.remove(chatId);
+          sendMainMenu(chatId);
         } else {
-          sendMessage(chatId, "올바른 차량번호 형식이 아닌 것 같아요. 다시 "
-                              "입력해주세요. (예: 123가4567)");
+          QString newName = existingUser["name"].toString();
+          QString newPlate = existingUser["plate_number"].toString();
+          QString newPhone = existingUser["phone"].toString();
+          QString newCard = existingUser["payment_info"].toString();
+
+          bool valid = true;
+          QString fieldLabel;
+
+          if (editSess.field == EditField::NAME) {
+            newName = text;
+            fieldLabel = "이름";
+          } else if (editSess.field == EditField::PLATE) {
+            if (text.length() < 7) {
+              sendMessage(chatId, QString::fromUtf8(
+                                      "⚠️ 올바른 차량번호 형식이 아닙니다.\n"
+                                      "다시 입력해주세요."));
+              valid = false;
+            } else {
+              newPlate = text;
+              fieldLabel = "차량번호";
+            }
+          } else if (editSess.field == EditField::PHONE) {
+            newPhone = text;
+            fieldLabel = "전화번호";
+          } else if (editSess.field == EditField::CARD) {
+            QString digits = text;
+            digits.remove('-').remove(' ');
+            if (digits.length() != 16) {
+              sendMessage(chatId, QString::fromUtf8(
+                                      "⚠️ 카드번호는 16자리 숫자여야 합니다.\n"
+                                      "다시 입력해주세요."));
+              valid = false;
+            } else {
+              newCard = digits;
+              fieldLabel = "카드번호";
+            }
+          }
+
+          if (valid) {
+            if (editRepo.updateUser(chatId, newPlate, newName, newPhone,
+                                    newCard)) {
+              // 캐시도 갱신
+              m_chatToPlate[chatId] = newPlate;
+              m_plateToChat.remove(existingUser["plate_number"].toString());
+              m_plateToChat[newPlate] = chatId;
+              m_editSessions.remove(chatId);
+              emit usersUpdated(m_chatToPlate.size());
+              sendMainMenu(
+                  chatId,
+                  QString::fromUtf8("✅ *%1*이(가) 성공적으로 수정되었습니다!")
+                      .arg(fieldLabel));
+            } else {
+              m_editSessions.remove(chatId);
+              sendMainMenu(
+                  chatId, QString::fromUtf8("❌ 수정 중 오류가 발생했습니다."));
+            }
+          }
         }
       }
-      // 4. 메인 메뉴 버튼 처리
-      else if (text == QString::fromUtf8("🅿️ 내 주차 현황")) {
-        QString plate = m_chatToPlate.value(chatId);
-        if (plate.isEmpty()) {
+      // 4. 등록 단계별 처리
+      else if (m_registrationSessions.contains(chatId)) {
+        RegistrationData &data = m_registrationSessions[chatId];
+
+        if (data.state == RegistrationState::WAIT_PLATE) {
+          if (text.length() >= 7) {
+            data.plate = text;
+            data.state = RegistrationState::WAIT_PHONE;
+
+            // 연락처 공유 버튼 생성
+            QJsonObject btnPhone;
+            btnPhone["text"] = QString::fromUtf8("📱 연락처 공유하기");
+            btnPhone["request_contact"] = true;
+
+            QJsonArray row;
+            row.append(btnPhone);
+            QJsonArray keyboard;
+            keyboard.append(row);
+            QJsonObject markup;
+            markup["keyboard"] = keyboard;
+            markup["resize_keyboard"] = true;
+            markup["one_time_keyboard"] = true;
+
+            QString replyMarkup = QString::fromUtf8(
+                QJsonDocument(markup).toJson(QJsonDocument::Compact));
+
+            sendMessage(chatId,
+                        "연락처를 공유해주세요.\n(아래 버튼을 눌러주세요)",
+                        replyMarkup);
+            emit logMessage(
+                QString("[Telegram] 🖋️ 차량번호 입력: %1 -> %2 (연락처 대기)")
+                    .arg(firstName, text));
+          } else {
+            sendMessage(
+                chatId,
+                "⚠️ 올바른 차량번호 형식이 아닌 것 같아요. 다시 입력해주세요.");
+          }
+        } else if (data.state == RegistrationState::WAIT_PHONE) {
+          QString phone;
+          if (message.contains("contact")) {
+            phone = message["contact"].toObject()["phone_number"].toString();
+          } else {
+            // 텍스트 입력: 숫자/+/-만 포함된 경우에만 전화번호로 인정
+            QString stripped = text;
+            stripped.remove('-').remove(' ');
+            bool looksLikePhone =
+                stripped.length() >= 9 && stripped.length() <= 15 &&
+                (stripped.startsWith('+') || stripped.startsWith('0')) &&
+                stripped.mid(stripped.startsWith('+') ? 1 : 0).toLongLong() > 0;
+            if (looksLikePhone) {
+              phone = text;
+            }
+          }
+
+          if (!phone.isEmpty()) {
+            data.phone = phone;
+            data.state = RegistrationState::WAIT_CARD;
+            sendMessage(chatId,
+                        "결제하실 카드번호를 입력해주세요.\n(16자리 숫자)",
+                        "{\"remove_keyboard\": true}");
+            emit logMessage(
+                QString("[Telegram] 📱 연락처 입력: %1 -> %2 (카드번호 대기)")
+                    .arg(firstName, phone));
+          } else {
+            sendMessage(chatId, "⚠️ 올바른 전화번호 형식이 아닙니다.\n"
+                                "아래 '연락처 공유하기' 버튼을 누르거나,\n"
+                                "전화번호를 직접 입력해주세요.\n"
+                                "(예: 010-1234-5678)");
+          }
+        } else if (data.state == RegistrationState::WAIT_CARD) {
+          // 카드번호 유효성 검사: 숫자만, 16자리
+          QString cardDigits = text;
+          cardDigits.remove('-').remove(' ');
+          bool validCard = cardDigits.length() == 16;
+          if (validCard) {
+            for (int ci = 0; ci < cardDigits.length(); ++ci) {
+              if (!cardDigits.at(ci).isDigit()) {
+                validCard = false;
+                break;
+              }
+            }
+          }
+
+          if (!validCard) {
+            sendMessage(chatId, "⚠️ 카드번호 형식이 올바르지 않습니다.\n"
+                                "16자리 숫자를 입력해주세요.\n"
+                                "(예: 1234567890123456)");
+          } else {
+            QString pushErr;
+            if (m_userRepository.registerUser(chatId, data.plate, data.name,
+                                              data.phone, cardDigits,
+                                              &pushErr)) {
+              m_plateToChat.insert(data.plate, chatId);
+              m_chatToPlate.insert(chatId, data.plate);
+              ++newUsers;
+
+              emit logMessage(
+                  QString("[Telegram] ✅ 가입 완료: %1 (차량: %2, 연락처: %3)")
+                      .arg(data.name, data.plate, data.phone));
+
+              sendMainMenu(chatId, "✅ *등록이 완료되었습니다!*\n\n"
+                                   "메인 메뉴를 이용해주세요.");
+
+              // data 참조 오류를 방지하기 위해 로깅 후 세션 삭제
+              m_registrationSessions.remove(chatId);
+            } else {
+              sendMessage(chatId,
+                          "❌ 등록 중 오류가 발생했습니다. 다시 시도해주세요.");
+              m_registrationSessions.remove(chatId);
+            }
+          }
+        }
+      }
+      // 5. 메인 메뉴 버튼 처리
+      else if (text.contains(QString::fromUtf8("내 정보 조회"))) {
+        // 메모리 캐시 대신 DB에서 직접 최신 정보 조회
+        UserRepository userRepo;
+        const QVector<QJsonObject> allUsers = userRepo.getAllUsersFull();
+        QJsonObject userInfo;
+        for (const QJsonObject &u : allUsers) {
+          if (u["chat_id"].toString() == chatId) {
+            userInfo = u;
+            break;
+          }
+        }
+
+        if (userInfo.isEmpty()) {
           sendMessage(
               chatId,
               "차량 등록 정보가 없습니다. /start 를 눌러 등록해주세요.");
         } else {
-          sendMessage(chatId, QString("🅿️ *주차 현황*\n\n"
-                                      "차량번호: `%1`\n"
-                                      "상태: 입차 중\n"
-                                      "입차시간: 2024-02-11 10:00\n"
-                                      "현재 요금: *5,000원*")
-                                  .arg(plate));
+          const QString dbName = userInfo["name"].toString();
+          const QString dbPlate = userInfo["plate_number"].toString();
+          const QString dbPhone = userInfo["phone"].toString();
+          const QString dbCard = userInfo["payment_info"].toString();
+
+          // 카드번호 마스킹 (앞 4자리와 뒤 4자리를 표시하여 수정 여부 확인
+          // 가능하게 개선)
+          QString maskedCard = dbCard;
+          if (dbCard.length() >= 8) {
+            maskedCard = dbCard.left(4) + QString(dbCard.length() - 8, '*') +
+                         dbCard.right(4);
+          } else if (dbCard.length() >= 4) {
+            maskedCard = dbCard.left(4) + QString(dbCard.length() - 4, '*');
+          }
+
+          // 인라인 버튼: '수정하기'만
+          QJsonObject btnEdit;
+          btnEdit["text"] = QString::fromUtf8("✏️ 수정하기");
+          btnEdit["callback_data"] = "edit_select";
+
+          QJsonArray inlineRow1;
+          inlineRow1.append(btnEdit);
+          QJsonArray inlineKeyboard;
+          inlineKeyboard.append(inlineRow1);
+          QJsonObject inlineMarkup;
+          inlineMarkup["inline_keyboard"] = inlineKeyboard;
+          QString inlineReplyMarkup = QString::fromUtf8(
+              QJsonDocument(inlineMarkup).toJson(QJsonDocument::Compact));
+
+          sendMessage(chatId,
+                      QString::fromUtf8("👤 *내 정보*\n\n"
+                                        "이름: %1\n"
+                                        "차량번호: `%2`\n"
+                                        "전화번호: %3\n"
+                                        "결제 카드: `%4`")
+                          .arg(dbName.isEmpty() ? "(미등록)" : dbName)
+                          .arg(dbPlate.isEmpty() ? "(없음)" : dbPlate)
+                          .arg(dbPhone.isEmpty() ? "(미등록)" : dbPhone)
+                          .arg(maskedCard.isEmpty() ? "(미등록)" : maskedCard),
+                      inlineReplyMarkup);
         }
-      } else if (text == QString::fromUtf8("👤 내 정보")) {
+      } else if (text.contains(QString::fromUtf8("요금 조회"))) {
         QString plate = m_chatToPlate.value(chatId);
         if (plate.isEmpty()) {
           sendMessage(chatId, "등록된 차량이 없습니다.");
         } else {
-          sendMessage(chatId, QString("👤 *내 정보*\n\n"
-                                      "등록된 차량번호: `%1`\n"
-                                      "상태: 정상 등록됨")
-                                  .arg(plate));
+          // 인라인 버튼: 납부하기 (차후 동작 연결 예정)
+          QJsonObject btnPay;
+          btnPay["text"] = QString::fromUtf8("💰 납부하기");
+          btnPay["callback_data"] = "pay_fee";
+
+          QJsonArray inlineRow;
+          inlineRow.append(btnPay);
+          QJsonArray inlineKeyboard;
+          inlineKeyboard.append(inlineRow);
+          QJsonObject inlineMarkup;
+          inlineMarkup["inline_keyboard"] = inlineKeyboard;
+          QString inlineReplyMarkup = QString::fromUtf8(
+              QJsonDocument(inlineMarkup).toJson(QJsonDocument::Compact));
+
+          sendMessage(chatId,
+                      QString("💳 *요금 조회*\n\n"
+                              "📍 주차 자리: A-12\n"
+                              "⏰ 이용 시간: 10:00 ~ 11:00\n"
+                              "✅ 결제 상태: 선결제 완료\n\n"
+                              "💰 총 결제금액: *4,000원*"),
+                      inlineReplyMarkup);
         }
-      } else if (text == QString::fromUtf8("💳 최근 이용 내역")) {
-        sendMessage(chatId, "최근 3개월 간 이용 내역이 없습니다.");
-      } else if (text == QString::fromUtf8("📞 관리자 호출")) {
-        sendMessage(
-            chatId,
-            "📞 관리자에게 호출 메시지를 보냈습니다.\n잠시만 기다려주세요.");
+      } else if (text == QString::fromUtf8("🕒 최근 이용 내역")) {
+        sendMessage(chatId, "🕒 *최근 이용 내역*\n\n"
+                            "1️⃣ 23.10.24 (A-12) - 4,000원\n"
+                            "2️⃣ 23.10.22 (B-04) - 3,000원\n"
+                            "3️⃣ 23.10.20 (C-21) - 15,000원");
+      } else if (text == QString::fromUtf8("🚨 관리자 호출")) {
+        // 즉시 호출 (확인 단계 없음)
+        sendMessage(chatId, "✅ *관리자가 호출되었습니다.*\n잠시만 "
+                            "기다려주시면 조치해 드리겠습니다.");
         emit logMessage(QString("[Telegram] 🚨 관리자 호출 요청! (User: %1)")
                             .arg(firstName));
         emit adminSummoned(chatId, firstName);
+        sendMainMenu(chatId);
+      } else if (text == QString::fromUtf8("◀ 메뉴로 돌아가기")) {
+        sendMainMenu(chatId);
       }
     }
 
