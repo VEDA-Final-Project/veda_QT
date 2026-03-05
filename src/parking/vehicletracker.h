@@ -83,7 +83,8 @@ public:
 
 private:
   double computeOccupancyRatio(const QRectF &vehicleRect,
-                               const QPolygonF &roiPolygon) const;
+                               const QPolygonF &roiPolygon,
+                               double *dynamicThreshold = nullptr) const;
 
   QHash<int, VehicleState> m_vehicles;
   QList<QPolygonF> m_roiPolygons;

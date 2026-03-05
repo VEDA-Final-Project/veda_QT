@@ -54,33 +54,17 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     int bestRoiIndex = -1;
 
     for (int i = 0; i < m_roiPolygons.size(); ++i) {
-      // AI 메타데이터 좌표(obj.rect)를 [0.0, 1.0] 정규화된 좌표로 변환
-      QRectF normRect((obj.rect.x() - cropOffsetX) /
-                          static_cast<double>(effectiveWidth),
-                      obj.rect.y() / static_cast<double>(sourceHeight),
-                      obj.rect.width() / static_cast<double>(effectiveWidth),
-                      obj.rect.height() / static_cast<double>(sourceHeight));
+      double dynamicThres = 0.35; // Default
+      double ratio =
+          computeOccupancyRatio(normRect, m_roiPolygons[i], &dynamicThres);
 
-      double ratio = computeOccupancyRatio(normRect, m_roiPolygons[i]);
-      if (ratio > maxRatio) {
+      if (ratio > dynamicThres && ratio > maxRatio) {
         maxRatio = ratio;
         bestRoiIndex = i;
       }
     }
 
-    // 1. 동적 임계값 적용 (Dynamic Perspective Thresholding)
-    int currentFrameRoiIndex = -1;
-    if (bestRoiIndex >= 0) {
-      // ROI 중심점의 Y좌표에 비례 (0.25 ~ 0.5)
-      double roiCenterY =
-          m_roiPolygons[bestRoiIndex].boundingRect().center().y();
-      double dynamicThreshold =
-          std::max(0.25, std::min(0.5, 0.25 + roiCenterY * 0.25));
-
-      if (maxRatio >= dynamicThreshold) {
-        currentFrameRoiIndex = bestRoiIndex;
-      }
-    }
+    int currentFrameRoiIndex = bestRoiIndex;
 
     // 2. 시계열 큐 필터링 (Temporal Hysteresis Queue)
     vs.roiHistory.append(currentFrameRoiIndex);
@@ -164,9 +148,9 @@ QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs) {
   return departed;
 }
 
-double
-VehicleTracker::computeOccupancyRatio(const QRectF &vehicleRect,
-                                      const QPolygonF &roiPolygon) const {
+double VehicleTracker::computeOccupancyRatio(const QRectF &vehicleRect,
+                                             const QPolygonF &roiPolygon,
+                                             double *dynamicThreshold) const {
   // AABB 사전 필터링: 바운딩 박스가 겹치지 않으면 즉시 0 반환
   if (!vehicleRect.intersects(roiPolygon.boundingRect()))
     return 0.0;
@@ -209,6 +193,14 @@ VehicleTracker::computeOccupancyRatio(const QRectF &vehicleRect,
       }
       interArea += std::abs(polyArea) / 2.0;
     }
+  }
+
+  // 동적 임계값: ROI가 화면 위쪽(먼 곳, Y값이 작음)일수록 투영에 의해 작아
+  // 보이므로 thres를 낮춤.
+  if (dynamicThreshold) {
+    double centerV = roiPolygon.boundingRect().center().y();
+    // y=0(상단) -> 0.25, y=1(하단) -> 0.50
+    *dynamicThreshold = std::max(0.25, std::min(0.5, 0.25 + centerV * 0.25));
   }
 
   // 차량 하단부가 주차 구역에 포함된 비율 반환
