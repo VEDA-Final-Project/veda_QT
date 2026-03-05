@@ -7,18 +7,25 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMainWindow>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QTabWidget>
+#include <QStackedWidget>
 #include <QTableWidget>
 #include <QTextEdit>
+#include <QTimer>
+#include <QToolButton>
 
 class MainWindowController;
+class QSplitter;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -28,24 +35,38 @@ public:
   ~MainWindow() override = default;
   MainWindowUiRefs controllerUiRefs() const;
   void attachController(MainWindowController *controller);
+  void showCctvSplash(const QString &message = QString());
+  void showCctvPage();
 
 protected:
   void closeEvent(QCloseEvent *event) override;
+  void mousePressEvent(QMouseEvent *event) override;
+  void mouseMoveEvent(QMouseEvent *event) override;
+  void mouseReleaseEvent(QMouseEvent *event) override;
+  bool eventFilter(QObject *watched, QEvent *event) override;
+#ifdef Q_OS_WIN
+  bool nativeEvent(const QByteArray &eventType, void *message,
+                   qintptr *result) override;
+#endif
 
 private:
+  static constexpr int kSplashPageIndex = 0;
+  static constexpr int kCctvPageIndex = 1;
+
   void setupUi();
 
+  QSplitter *m_videoSplitter = nullptr;
   VideoWidget *m_videoWidgetPrimary = nullptr;
   VideoWidget *m_videoWidgetSecondary = nullptr;
-  QComboBox *m_viewModeCombo = nullptr;
-  QComboBox *m_cameraPrimarySelectorCombo = nullptr;
-  QComboBox *m_cameraSecondarySelectorCombo = nullptr;
+  QFrame *m_channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
+  QLabel *m_channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
+  QLabel *m_channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};
+  QLabel *m_thumbnailLabels[4] = {nullptr, nullptr, nullptr, nullptr};
+  int m_selectedChannelIndex = 0;
   QComboBox *m_roiTargetCombo = nullptr;
   QLineEdit *m_roiNameEdit = nullptr;
-  QComboBox *m_roiPurposeCombo = nullptr;
   QComboBox *m_roiSelectorCombo = nullptr;
   QTextEdit *m_logView = nullptr;
-  QPushButton *m_btnPlay = nullptr;
   QPushButton *m_btnExit = nullptr;
   QPushButton *m_btnApplyRoi = nullptr;
   QPushButton *m_btnFinishRoi = nullptr;
@@ -114,11 +135,28 @@ private:
 
   // Log Filter
   QCheckBox *m_chkShowPlateLogs = nullptr;
+  QCheckBox *m_chkShowFps = nullptr;
+  QLabel *m_lblAvgFps = nullptr;
 
   QTableWidget *m_reidTable = nullptr;
   QSpinBox *m_staleTimeoutInput = nullptr;
   QSpinBox *m_pruneTimeoutInput = nullptr;
   QCheckBox *m_chkShowStaleObjects = nullptr;
+
+  // Dashboard Header/Footer/Event Panel
+  QLabel *m_headerTitleLabel = nullptr;
+  QLabel *m_footerTimeLabel = nullptr;
+  QLabel *m_footerRecordingLabel = nullptr;
+  QLabel *m_recordingDot = nullptr;
+  QListWidget *m_eventListWidget = nullptr;
+  QTimer *m_clockTimer = nullptr;
+  QToolButton *m_menuButton = nullptr;
+  QMenu *m_navMenu = nullptr;
+  QStackedWidget *m_stackedWidget = nullptr;
+  QLabel *m_splashTitleLabel = nullptr;
+  QLabel *m_splashMessageLabel = nullptr;
+  bool m_isCctvReady = false;
+  QPoint m_dragPosition;
 
   MainWindowController *m_controller = nullptr;
 };

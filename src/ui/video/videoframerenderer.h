@@ -14,10 +14,13 @@ struct OcrRequest {
 
 class VideoFrameRenderer {
 public:
+  void collectOcrRequests(const QImage &frame, const QList<ObjectInfo> &objects,
+                          QList<OcrRequest> *ocrRequests) const;
   QImage compose(const QImage &frame, const QSize &targetSize,
                  const QList<ObjectInfo> &objects,
                  const QList<QPolygon> &roiPolygons,
-                 const QStringList &roiLabels, bool roiEnabled,
+                 const QStringList &roiLabels, bool roiEnabled, bool showFps,
+                 int currentFps, const QString &profileName,
                  QList<OcrRequest> *ocrRequests) const;
 };
 

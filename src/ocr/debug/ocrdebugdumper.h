@@ -1,0 +1,16 @@
+#ifndef OCR_DEBUG_OCRDEBUGDUMPER_H
+#define OCR_DEBUG_OCRDEBUGDUMPER_H
+
+#include <QString>
+#include <opencv2/opencv.hpp>
+
+namespace ocr::debug
+{
+
+void dumpOcrStages(const cv::Mat &roiRgb, const cv::Mat &normalizedRgb,
+                   const cv::Mat &enhancedGray, const cv::Mat &ocrInputRgb,
+                   int objectId = -1);
+
+} // namespace ocr::debug
+
+#endif // OCR_DEBUG_OCRDEBUGDUMPER_H

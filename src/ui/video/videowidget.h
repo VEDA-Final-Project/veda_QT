@@ -9,6 +9,7 @@
 #include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPolygonF>
+#include <QQueue>
 #include <QSize>
 #include <QStringList>
 #include <QWidget>
@@ -42,11 +43,15 @@ public:
 public slots:
   void updateFrame(const QImage &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
+  void dispatchOcrRequests(const QImage &frame);
+  void setShowFps(bool show);
+  void setProfileName(const QString &name) { m_profileName = name; }
 
 signals:
   void ocrRequested(int objectId, const QImage &crop);
   void roiChanged(const QRect &roi);
   void roiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
+  void avgFpsUpdated(double avgFps);
 
 private:
   void paintEvent(QPaintEvent *event) override;
@@ -64,6 +69,12 @@ private:
   QStringList m_pendingRoiLabels;
   QStringList m_roiLabels;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
+
+  bool m_showFps = false;
+  double m_currentFps = 0.0;
+  QString m_profileName;
+  QQueue<qint64> m_fpsHistory1s;
+  QQueue<qint64> m_fpsHistory;
 };
 
 #endif // VIDEOWIDGET_H

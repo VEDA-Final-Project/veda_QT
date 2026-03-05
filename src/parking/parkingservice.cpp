@@ -17,25 +17,26 @@ void ParkingService::setCameraKey(const QString &cameraKey) {
 
 QString ParkingService::cameraKey() const { return m_cameraKey; }
 
-void ParkingService::updateRoiPolygons(const QList<QPolygonF> &polygons) {
+void ParkingService::updateRoiPolygons(const QList<QPolygon> &polygons) {
   m_tracker.setRoiPolygons(polygons);
 }
 
 void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
-                                     int cropOffsetX, int effectiveWidth,
-                                     int sourceHeight, qint64 pruneTimeoutMs) {
+                                     int frameWidth, int frameHeight,
+                                     qint64 pruneTimeoutMs) {
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
   // 1. 차량 추적 업데이트 → 새로 ROI에 진입한 차량 감지
-  QList<VehicleState> newEntries = m_tracker.update(
-      objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
+  QList<VehicleState> newEntries =
+      m_tracker.update(objects, frameWidth, frameHeight, nowMs);
 
   // 2. 새로 진입한 차량 이벤트 로깅
   for (const VehicleState &vs : newEntries) {
     if (!vs.ocrRequested) {
-      emit logMessage(QString("[Parking] Vehicle ID:%1 entered ROI #%2")
-                          .arg(vs.objectId)
-                          .arg(vs.occupiedRoiIndex + 1));
+      emit logMessage(
+          QString("[Parking] Vehicle ID:%1 entered ROI #%2")
+              .arg(vs.objectId)
+              .arg(vs.occupiedRoiIndex + 1));
     }
   }
 

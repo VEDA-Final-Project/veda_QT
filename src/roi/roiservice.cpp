@@ -68,7 +68,7 @@ bool RoiService::isValidName(const QString &name, QString *errorMessage) const {
 
 bool RoiService::isDuplicateName(const QString &name) const {
   for (const QJsonObject &record : m_records) {
-    if (record["rod_name"].toString().compare(name, Qt::CaseInsensitive) == 0) {
+    if (record["zone_name"].toString().compare(name, Qt::CaseInsensitive) == 0) {
       return true;
     }
   }
@@ -77,8 +77,7 @@ bool RoiService::isDuplicateName(const QString &name) const {
 
 RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
                                                        const QSize &frameSize,
-                                                       const QString &name,
-                                                       const QString &purpose) {
+                                                       const QString &name) {
   CreateResult result;
   if (frameSize.isEmpty()) {
     result.error = QStringLiteral("프레임 크기가 유효하지 않습니다.");
@@ -110,21 +109,18 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
   }
 
   ++m_roiSequence;
-  const QString rodId = QString("rod-%1-%2")
-                            .arg(m_cameraKey)
-                            .arg(m_roiSequence, 3, 10, QLatin1Char('0'));
+  const QString zoneId = QString("zone-%1-%2")
+                             .arg(m_cameraKey)
+                             .arg(m_roiSequence, 3, 10, QLatin1Char('0'));
   const QRect bbox = polygon.boundingRect();
   const QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-  const QString finalPurpose =
-      purpose.isEmpty() ? QStringLiteral("일반 주차") : purpose;
 
   QJsonObject roiData{
-      {"rod_id", rodId},
-      {"rod_name", name},
+      {"zone_id", zoneId},
+      {"zone_name", name},
       {"camera_key", m_cameraKey},
-      {"rod_enable", true},
-      {"rod_purpose", finalPurpose},
-      {"rod_points", points},
+      {"zone_enable", true},
+      {"zone_points", points},
       {"bbox",
        QJsonObject{
            {"x", normX(bbox.x())},
@@ -154,14 +150,14 @@ RoiService::DeleteResult RoiService::removeAt(int index) {
     return result;
   }
 
-  const QString removedId = m_records[index]["rod_id"].toString();
+  const QString removedId = m_records[index]["zone_id"].toString();
   QString dbError;
   if (!m_repository.removeById(removedId, &dbError)) {
     result.error = dbError;
     return result;
   }
 
-  result.removedName = m_records[index]["rod_name"].toString();
+  result.removedName = m_records[index]["zone_name"].toString();
   m_records.removeAt(index);
   result.ok = true;
   return result;
@@ -178,7 +174,7 @@ RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records) {
   normalizedPolygons.reserve(records.size());
 
   for (const QJsonObject &record : records) {
-    const QJsonArray points = record["rod_points"].toArray();
+    const QJsonArray points = record["zone_points"].toArray();
     if (points.size() < 3) {
       continue;
     }
@@ -199,8 +195,8 @@ void RoiService::recomputeSequenceFromRecords() {
   m_roiSequence = 0;
   static const QRegularExpression trailingDigitsRe(QStringLiteral("(\\d+)$"));
   for (const QJsonObject &record : m_records) {
-    const QString rodId = record["rod_id"].toString();
-    const QRegularExpressionMatch match = trailingDigitsRe.match(rodId);
+    const QString zoneId = record["zone_id"].toString();
+    const QRegularExpressionMatch match = trailingDigitsRe.match(zoneId);
     if (!match.hasMatch()) {
       continue;
     }
