@@ -27,6 +27,10 @@ public:
   explicit MainWindowController(const MainWindowUiRefs &uiRefs,
                                 QObject *parent = nullptr);
   void shutdown();
+  void startInitialCctv();
+
+signals:
+  void primaryVideoReady();
 
 public slots:
   bool eventFilter(QObject *obj, QEvent *event) override;
@@ -90,7 +94,7 @@ private:
 
   MainWindowUiRefs m_ui;
   RoiTarget m_roiTarget = RoiTarget::Primary;
-  int m_selectedChannelIndex = 0;
+  int m_selectedChannelIndex = -1;
   int m_secondaryChannelIndex = -1;
   QString m_selectedCameraKeyPrimary = QStringLiteral("camera");
   QString m_selectedCameraKeySecondary = QStringLiteral("camera2");
@@ -118,6 +122,7 @@ private:
   QTimer *m_resizeDebounceTimer = nullptr;
   QString m_currentProfilePrimary;
   QString m_currentProfileSecondary;
+  bool m_primaryVideoReadyNotified = false;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

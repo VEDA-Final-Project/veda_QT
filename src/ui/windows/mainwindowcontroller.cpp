@@ -169,6 +169,14 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   m_renderTimerSecondary.start();
 }
 
+void MainWindowController::startInitialCctv() {
+  if (m_selectedChannelIndex != -1) {
+    return;
+  }
+  m_primaryVideoReadyNotified = false;
+  onChannelCardClicked(0);
+}
+
 bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
   if (event->type() == QEvent::Resize) {
     if (obj == m_ui.videoWidgetPrimary || obj == m_ui.videoWidgetSecondary) {
@@ -1216,6 +1224,10 @@ void MainWindowController::onFrameCapturedPrimary(
   // 내부에서 scaled 되거나 사용(복사)된 후 qimg 스코프 종료 시 framePtr.reset()
   // 실행됨.
   m_ui.videoWidgetPrimary->updateFrame(qimg);
+  if (!m_primaryVideoReadyNotified) {
+    m_primaryVideoReadyNotified = true;
+    emit primaryVideoReady();
+  }
 
   // === 썸네일 레이블 재사용 (디코딩 중복 방지 대응) ===
   if (m_selectedChannelIndex >= 0 && m_selectedChannelIndex < 4 &&

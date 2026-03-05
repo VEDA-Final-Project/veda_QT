@@ -14,7 +14,7 @@ LoginPage::LoginPage(QWidget *parent)
     : QWidget(parent)
 {
   buildUi();
-  setWindowTitle(QStringLiteral("Login"));
+  setWindowTitle(QStringLiteral("회원가입"));
   resize(920, 600);
 }
 
@@ -48,12 +48,12 @@ void LoginPage::buildUi()
   rightLayout->setContentsMargins(24, 22, 24, 22);
   rightLayout->setSpacing(16);
 
-  auto *titleLabel = new QLabel(QStringLiteral("Login"), rightPanel);
+  auto *titleLabel = new QLabel(QStringLiteral("회원가입"), rightPanel);
   titleLabel->setObjectName("titleLabel");
   titleLabel->setAlignment(Qt::AlignHCenter);
 
   auto *credentialHint =
-      new QLabel(QStringLiteral("ID: admin / PW: 1234"), rightPanel);
+      new QLabel(QStringLiteral("테스트 계정: admin / 1234"), rightPanel);
   credentialHint->setObjectName("credentialHint");
   credentialHint->setAlignment(Qt::AlignHCenter);
 
@@ -68,29 +68,29 @@ void LoginPage::buildUi()
   idInput_ = new QLineEdit(formArea);
   idInput_->setObjectName("idInput");
   idInput_->setMinimumHeight(54);
-  idInput_->setPlaceholderText(QStringLiteral("ID"));
+  idInput_->setPlaceholderText(QStringLiteral("아이디"));
 
   passwordInput_ = new QLineEdit(formArea);
   passwordInput_->setObjectName("passwordInput");
   passwordInput_->setMinimumHeight(54);
   passwordInput_->setEchoMode(QLineEdit::Password);
-  passwordInput_->setPlaceholderText(QStringLiteral("Password"));
+  passwordInput_->setPlaceholderText(QStringLiteral("비밀번호"));
 
   auto *optionRow = new QHBoxLayout();
   optionRow->setSpacing(20);
   optionRow->setContentsMargins(0, 10, 0, 10);
 
   rememberPasswordCheck_ =
-      new QCheckBox(QStringLiteral("Remember Password"), formArea);
+      new QCheckBox(QStringLiteral("비밀번호 저장"), formArea);
   rememberPasswordCheck_->setObjectName("optionCheck");
-  autoLoginCheck_ = new QCheckBox(QStringLiteral("Auto Login"), formArea);
+  autoLoginCheck_ = new QCheckBox(QStringLiteral("자동 로그인"), formArea);
   autoLoginCheck_->setObjectName("optionCheck");
 
   optionRow->addWidget(rememberPasswordCheck_);
   optionRow->addWidget(autoLoginCheck_);
   optionRow->addStretch();
 
-  auto *loginButton = new QPushButton(QStringLiteral("Login"), formArea);
+  auto *loginButton = new QPushButton(QStringLiteral("인증하고 시작"), formArea);
   loginButton->setObjectName("loginButton");
   loginButton->setMinimumHeight(56);
 
@@ -119,72 +119,6 @@ void LoginPage::buildUi()
 
   rootLayout->addWidget(leftPanel);
   rootLayout->addWidget(rightPanel, 1);
-
-  setStyleSheet(QStringLiteral(
-      "QWidget {"
-      "  font-family: 'HanwhaGothicB', 'Hanwha Gothic B', 'Hanwha Gothic', "
-      "'Malgun Gothic';"
-      "}"
-      "#loginPage { background: #2B2D34; }"
-      "#leftPanel { background: #1F2229; }"
-      "#leftImage {"
-      "  background: #30333B;"
-      "  border: 1px solid #3A3E48;"
-      "}"
-      "#rightPanel { background: #2B2D34; }"
-      "#titleLabel {"
-      "  color: #F37321;"
-      "  font-size: 48px;"
-      "  font-weight: 700;"
-      "}"
-      "#credentialHint {"
-      "  color: #A6ACB8;"
-      "  font-size: 14px;"
-      "  font-weight: 600;"
-      "}"
-      "#idInput, #passwordInput {"
-      "  border: 1px solid #3A3E48;"
-      "  border-radius: 2px;"
-      "  background: #20242D;"
-      "  padding: 0 14px;"
-      "  font-size: 16px;"
-      "  color: #E7EAF1;"
-      "}"
-      "#idInput::placeholder, #passwordInput::placeholder {"
-      "  color: #89909E;"
-      "}"
-      "#idInput:focus, #passwordInput:focus {"
-      "  border: 1px solid #F37321;"
-      "}"
-      "QCheckBox#optionCheck {"
-      "  color: #DDE1EA;"
-      "  font-size: 14px;"
-      "  spacing: 10px;"
-      "}"
-      "QCheckBox#optionCheck::indicator {"
-      "  width: 18px;"
-      "  height: 18px;"
-      "  border: 2px solid #505664;"
-      "  background: #20242D;"
-      "}"
-      "QCheckBox#optionCheck::indicator:checked {"
-      "  border: 2px solid #F37321;"
-      "  background: #F37321;"
-      "}"
-      "#loginButton {"
-      "  border: none;"
-      "  border-radius: 2px;"
-      "  background: #F37321;"
-      "  color: #101216;"
-      "  font-size: 18px;"
-      "  font-weight: 600;"
-      "}"
-      "#loginButton:hover { background: #FF8A42; }"
-      "#loginStatusLabel {"
-      "  color: #A6ACB8;"
-      "  font-size: 14px;"
-      "  font-weight: 600;"
-      "}"));
 }
 
 void LoginPage::handleLogin()
@@ -202,14 +136,14 @@ void LoginPage::handleLogin()
   if (isValid)
   {
     loginSucceeded_ = true;
-    loginStatusLabel_->setText(QStringLiteral("Login success"));
+    loginStatusLabel_->setText(QStringLiteral("인증 성공"));
     loginStatusLabel_->setStyleSheet(
-        QStringLiteral("color: #22C55E; font-size: 14px; font-weight: 700;"));
+        QStringLiteral("color: #10B981; font-size: 14px; font-weight: 700;"));
     emit loginSucceeded();
   }
   else
   {
-    loginStatusLabel_->setText(QStringLiteral("Invalid ID or password."));
+    loginStatusLabel_->setText(QStringLiteral("아이디 또는 비밀번호가 올바르지 않습니다."));
     loginStatusLabel_->setStyleSheet(
         QStringLiteral("color: #EF4444; font-size: 14px; font-weight: 700;"));
   }

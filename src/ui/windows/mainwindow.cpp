@@ -18,6 +18,7 @@
 #include <QListWidget>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
@@ -229,7 +230,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
     if (watched == m_headerTitleLabel ||
         (watched->objectName() == "headerIcon")) {
       if (m_stackedWidget) {
-        m_stackedWidget->setCurrentIndex(0);
+        m_stackedWidget->setCurrentIndex(m_isCctvReady ? kCctvPageIndex
+                                                       : kSplashPageIndex);
       }
       return true;
     }
@@ -373,7 +375,7 @@ void MainWindow::setupUi() {
       QString::fromUtf8("\xF0\x9F\xA7\xA0 RPi"),
       QString::fromUtf8("\xF0\x9F\x97\x84\xEF\xB8\x8F DB"),
       QString::fromUtf8("\xF0\x9F\x94\x8D ReID")};
-  const QList<int> menuIndices = {1, 2, 3, 4};
+  const QList<int> menuIndices = {2, 3, 4, 5};
 
   for (int i = 0; i < menuLabels.size(); ++i) {
     QAction *action = m_navMenu->addAction(menuLabels[i]);
@@ -433,6 +435,46 @@ void MainWindow::setupUi() {
   headerLayout->addWidget(m_btnExit);
 
   layout->addWidget(headerFrame);
+
+  // ======================
+  // Page 0: CCTV Splash
+  // ======================
+  QWidget *splashTab = new QWidget(this);
+  splashTab->setObjectName("cctvSplashPage");
+  QVBoxLayout *splashLayout = new QVBoxLayout(splashTab);
+  splashLayout->setContentsMargins(24, 24, 24, 24);
+  splashLayout->setSpacing(18);
+  splashLayout->addStretch();
+
+  QFrame *splashCard = new QFrame(splashTab);
+  splashCard->setObjectName("cctvSplashCard");
+  splashCard->setMaximumWidth(560);
+  QVBoxLayout *splashCardLayout = new QVBoxLayout(splashCard);
+  splashCardLayout->setContentsMargins(36, 30, 36, 30);
+  splashCardLayout->setSpacing(14);
+
+  m_splashTitleLabel = new QLabel(QString::fromUtf8("CCTV 준비 중"), splashCard);
+  m_splashTitleLabel->setObjectName("cctvSplashTitle");
+  m_splashTitleLabel->setAlignment(Qt::AlignCenter);
+
+  m_splashMessageLabel =
+      new QLabel(QString::fromUtf8("카메라 연결을 확인하고 있습니다."),
+                 splashCard);
+  m_splashMessageLabel->setObjectName("cctvSplashMessage");
+  m_splashMessageLabel->setWordWrap(true);
+  m_splashMessageLabel->setAlignment(Qt::AlignCenter);
+
+  QProgressBar *splashProgress = new QProgressBar(splashCard);
+  splashProgress->setObjectName("cctvSplashProgress");
+  splashProgress->setRange(0, 0);
+  splashProgress->setTextVisible(false);
+  splashProgress->setFixedHeight(8);
+
+  splashCardLayout->addWidget(m_splashTitleLabel);
+  splashCardLayout->addWidget(m_splashMessageLabel);
+  splashCardLayout->addWidget(splashProgress);
+  splashLayout->addWidget(splashCard, 0, Qt::AlignHCenter);
+  splashLayout->addStretch();
 
   // ======================
   // Page 1: CCTV 보기 (Dashboard 3-Panel Layout)
@@ -1095,12 +1137,13 @@ void MainWindow::setupUi() {
   settingsGroup->setLayout(settingsLayout);
   reidLayout->addWidget(settingsGroup);
 
+  stackedWidget->addWidget(splashTab);
   stackedWidget->addWidget(cctvTab);
   stackedWidget->addWidget(telegramTab);
   stackedWidget->addWidget(rpiTab);
   stackedWidget->addWidget(parkingDbTab);
   stackedWidget->addWidget(reidTab);
-  stackedWidget->setCurrentIndex(0);
+  stackedWidget->setCurrentIndex(kSplashPageIndex);
 
   // 상위 레이아웃 구성
   layout->addWidget(stackedWidget, 1);
@@ -1114,4 +1157,29 @@ void MainWindow::setupUi() {
   m_logView = new QTextEdit(this);
   m_logView->setReadOnly(true);
   m_logView->setVisible(false);
+
+  showCctvSplash();
+}
+
+void MainWindow::showCctvSplash(const QString &message) {
+  m_isCctvReady = false;
+  if (m_splashMessageLabel && !message.isEmpty()) {
+    m_splashMessageLabel->setText(message);
+  }
+  if (m_menuButton) {
+    m_menuButton->setEnabled(false);
+  }
+  if (m_stackedWidget) {
+    m_stackedWidget->setCurrentIndex(kSplashPageIndex);
+  }
+}
+
+void MainWindow::showCctvPage() {
+  m_isCctvReady = true;
+  if (m_menuButton) {
+    m_menuButton->setEnabled(true);
+  }
+  if (m_stackedWidget) {
+    m_stackedWidget->setCurrentIndex(kCctvPageIndex);
+  }
 }

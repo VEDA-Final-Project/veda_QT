@@ -50,23 +50,21 @@ int main(int argc, char *argv[]) {
       return;
     }
     controller = new MainWindowController(w.controllerUiRefs(), &w);
+    QObject::connect(controller, &MainWindowController::primaryVideoReady, &w,
+                     &MainWindow::showCctvPage);
     w.attachController(controller);
   };
-
-  // true면 앱 시작 시 로그인/메인 2개 창을 동시에 띄웁니다.
-  constexpr bool kShowTwoWindowsOnStartup = true;
-  if (kShowTwoWindowsOnStartup) {
-    w.setEnabled(false);
-    w.show();
-  }
 
   QObject::connect(&loginPage, &LoginPage::loginSucceeded, &a, [&]() {
     isAuthenticated = true;
     attachControllerIfNeeded();
-    w.setEnabled(true);
+    w.showCctvSplash(QStringLiteral("CCTV 화면을 준비하고 있습니다..."));
     w.show();
     w.raise();
     w.activateWindow();
+    if (controller) {
+      controller->startInitialCctv();
+    }
     loginPage.close();
   });
 

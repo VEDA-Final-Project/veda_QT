@@ -35,6 +35,8 @@ public:
   ~MainWindow() override = default;
   MainWindowUiRefs controllerUiRefs() const;
   void attachController(MainWindowController *controller);
+  void showCctvSplash(const QString &message = QString());
+  void showCctvPage();
 
 protected:
   void closeEvent(QCloseEvent *event) override;
@@ -48,6 +50,9 @@ protected:
 #endif
 
 private:
+  static constexpr int kSplashPageIndex = 0;
+  static constexpr int kCctvPageIndex = 1;
+
   void setupUi();
 
   QSplitter *m_videoSplitter = nullptr;
@@ -148,6 +153,9 @@ private:
   QToolButton *m_menuButton = nullptr;
   QMenu *m_navMenu = nullptr;
   QStackedWidget *m_stackedWidget = nullptr;
+  QLabel *m_splashTitleLabel = nullptr;
+  QLabel *m_splashMessageLabel = nullptr;
+  bool m_isCctvReady = false;
   QPoint m_dragPosition;
 
   MainWindowController *m_controller = nullptr;
