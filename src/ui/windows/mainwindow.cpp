@@ -33,7 +33,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.cameraSecondarySelectorCombo = m_cameraSecondarySelectorCombo;
   uiRefs.roiTargetCombo = m_roiTargetCombo;
   uiRefs.roiNameEdit = m_roiNameEdit;
-  uiRefs.roiPurposeCombo = m_roiPurposeCombo;
   uiRefs.roiSelectorCombo = m_roiSelectorCombo;
   uiRefs.logView = m_logView;
   uiRefs.btnPlay = m_btnPlay;
@@ -220,12 +219,6 @@ void MainWindow::setupUi() {
       QRegularExpression(QStringLiteral("^[A-Za-z0-9가-힣 _-]{0,20}$")),
       m_roiNameEdit));
 
-  QLabel *purposeLabel = new QLabel("목적:", this);
-  m_roiPurposeCombo = new QComboBox(this);
-  m_roiPurposeCombo->addItem(QStringLiteral("지정 주차"));
-  m_roiPurposeCombo->addItem(QStringLiteral("일반 주차"));
-  m_roiPurposeCombo->setMinimumWidth(90);
-
   QLabel *roiLabel = new QLabel("ROI:", this);
   m_roiSelectorCombo = new QComboBox(this);
   m_roiSelectorCombo->setMinimumContentsLength(12);
@@ -257,9 +250,6 @@ void MainWindow::setupUi() {
   roiLayout->addSpacing(12);
   roiLayout->addWidget(nameLabel);
   roiLayout->addWidget(m_roiNameEdit);
-  roiLayout->addSpacing(8);
-  roiLayout->addWidget(purposeLabel);
-  roiLayout->addWidget(m_roiPurposeCombo);
   roiLayout->addSpacing(8);
   roiLayout->addWidget(roiLabel);
   roiLayout->addWidget(m_roiSelectorCombo);
@@ -569,10 +559,10 @@ void MainWindow::setupUi() {
   zoneToolBar->addStretch();
 
   m_zoneTable = new QTableWidget(this);
-  m_zoneTable->setColumnCount(5);
+  m_zoneTable->setColumnCount(4);
   m_zoneTable->setHorizontalHeaderLabels(QStringList()
                                          << "카메라" << "구역 ID" << "이름"
-                                         << "용도" << "생성일");
+                                         << "생성일");
   m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_zoneTable->setSelectionBehavior(QAbstractItemView::SelectRows);

@@ -404,20 +404,11 @@ void DbPanelController::refreshZoneTable() {
       m_ui.zoneTable->setItem(
           row, 0, new QTableWidgetItem(record["camera_key"].toString()));
       m_ui.zoneTable->setItem(
-          row, 1, new QTableWidgetItem(record["rod_id"].toString()));
+          row, 1, new QTableWidgetItem(record["zone_id"].toString()));
       m_ui.zoneTable->setItem(
-          row, 2, new QTableWidgetItem(record["rod_name"].toString()));
-
-      QString purpose = record["rod_purpose"].toString();
-      if (purpose == "General") {
-        purpose = QStringLiteral("일반구역");
-      } else if (purpose == "Reserved") {
-        purpose = QStringLiteral("지정구역");
-      }
-
-      m_ui.zoneTable->setItem(row, 3, new QTableWidgetItem(purpose));
+          row, 2, new QTableWidgetItem(record["zone_name"].toString()));
       m_ui.zoneTable->setItem(
-          row, 4, new QTableWidgetItem(record["created_at"].toString()));
+          row, 3, new QTableWidgetItem(record["created_at"].toString()));
     }
   };
 

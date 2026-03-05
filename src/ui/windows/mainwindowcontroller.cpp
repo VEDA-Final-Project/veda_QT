@@ -430,7 +430,7 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
   const QVector<QJsonObject> &records = service->records();
   roiLabels.reserve(records.size());
   for (const QJsonObject &record : records) {
-    roiLabels.append(record["rod_name"].toString().trimmed());
+    roiLabels.append(record["zone_name"].toString().trimmed());
   }
   widget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
 
@@ -458,9 +458,8 @@ void MainWindowController::refreshRoiSelectorForTarget() {
   for (int i = 0; i < records.size(); ++i) {
     const QJsonObject &record = records[i];
     const QString name =
-        record["rod_name"].toString(QString("rod_%1").arg(i + 1));
-    const QString purpose = record["rod_purpose"].toString();
-    m_ui.roiSelectorCombo->addItem(QString("%1 | %2").arg(name, purpose), i);
+        record["zone_name"].toString(QString("zone_%1").arg(i + 1));
+    m_ui.roiSelectorCombo->addItem(name, i);
   }
 }
 
@@ -1119,8 +1118,6 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
 
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
-  const QString purpose =
-      m_ui.roiPurposeCombo ? m_ui.roiPurposeCombo->currentText() : QString();
 
   VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
   RoiTarget target = m_roiTarget;
@@ -1137,7 +1134,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   }
 
   const RoiService::CreateResult createResult =
-      targetService->createFromPolygon(polygon, frameSize, typedName, purpose);
+      targetService->createFromPolygon(polygon, frameSize, typedName);
   if (!createResult.ok) {
     // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
     if (targetWidget->roiCount() > 0) {
@@ -1161,7 +1158,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   if (targetWidget) {
     const int recordIndex = targetService->count() - 1;
     targetWidget->setRoiLabelAt(
-        recordIndex, createResult.record["rod_name"].toString().trimmed());
+        recordIndex, createResult.record["zone_name"].toString().trimmed());
   }
   appendRoiStructuredLog(createResult.record);
 }

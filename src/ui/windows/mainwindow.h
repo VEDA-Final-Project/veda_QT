@@ -42,7 +42,6 @@ private:
   QComboBox *m_cameraSecondarySelectorCombo = nullptr;
   QComboBox *m_roiTargetCombo = nullptr;
   QLineEdit *m_roiNameEdit = nullptr;
-  QComboBox *m_roiPurposeCombo = nullptr;
   QComboBox *m_roiSelectorCombo = nullptr;
   QTextEdit *m_logView = nullptr;
   QPushButton *m_btnPlay = nullptr;

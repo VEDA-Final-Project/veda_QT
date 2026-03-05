@@ -20,7 +20,6 @@ struct MainWindowUiRefs {
   QComboBox *cameraSecondarySelectorCombo = nullptr;
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
-  QComboBox *roiPurposeCombo = nullptr;
   QComboBox *roiSelectorCombo = nullptr;
   QTextEdit *logView = nullptr;
   QPushButton *btnPlay = nullptr;

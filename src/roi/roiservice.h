@@ -35,8 +35,8 @@ public:
   bool isValidName(const QString &name, QString *errorMessage) const;
   bool isDuplicateName(const QString &name) const;
   CreateResult createFromPolygon(const QPolygon &polygon,
-                                 const QSize &frameSize, const QString &name,
-                                 const QString &purpose);
+                                 const QSize &frameSize,
+                                 const QString &name);
   DeleteResult removeAt(int index);
   QString cameraKey() const;
 
