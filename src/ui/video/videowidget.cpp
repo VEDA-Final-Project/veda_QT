@@ -87,6 +87,10 @@ const QList<QPolygon> &VideoWidget::roiPolygons() const {
 }
 
 void VideoWidget::startRoiDrawing() {
+  if (m_lastFrameSize.isEmpty()) {
+    m_lastFrameSize = QSize(
+        1920, 1080); // 비디오 프레임이 없을 경우 기본 크기 적용 (멈춤 방지)
+  }
   m_roiState.startDrawing(m_lastFrameSize);
   setCursor(Qt::ArrowCursor);
   qDebug() << "[ROI][VideoWidget] polygon drawing mode enabled";
