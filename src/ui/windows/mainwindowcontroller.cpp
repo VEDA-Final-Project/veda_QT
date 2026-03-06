@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QHash>
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QListWidget>
@@ -450,6 +451,7 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
   }
   widget->queueNormalizedRoiPolygons(initResult.data.normalizedPolygons,
                                      roiLabels);
+  syncEnabledRoiPolygons(target);
 
   if (m_ui.logView && writeLog) {
     m_ui.logView->append(
@@ -516,6 +518,109 @@ MainWindowController::parkingServiceForTarget(RoiTarget target) {
 QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
   return (target == RoiTarget::Primary) ? m_selectedCameraKeyPrimary
                                         : m_selectedCameraKeySecondary;
+}
+
+void MainWindowController::syncEnabledRoiPolygons(RoiTarget target) {
+  VideoWidget *widget = videoWidgetForTarget(target);
+  const RoiService *service = roiServiceForTarget(target);
+  ParkingService *parkingService = parkingServiceForTarget(target);
+  if (!widget || !service || !parkingService) {
+    return;
+  }
+
+  const auto intPolygons = widget->roiPolygons();
+  const QVector<QJsonObject> &records = service->records();
+  const int count = std::min<int>(intPolygons.size(), records.size());
+
+  QList<QPolygonF> enabledPolygons;
+  QVector<QString> enabledZoneIds;
+  enabledPolygons.reserve(count);
+  enabledZoneIds.reserve(count);
+  for (int i = 0; i < count; ++i) {
+    enabledPolygons.append(QPolygonF(intPolygons[i]));
+    enabledZoneIds.append(records[i].value("zone_id").toString());
+  }
+
+  if (target == RoiTarget::Primary) {
+    m_enabledZoneIdsPrimary = enabledZoneIds;
+  } else {
+    m_enabledZoneIdsSecondary = enabledZoneIds;
+  }
+  parkingService->updateRoiPolygons(enabledPolygons);
+}
+
+void MainWindowController::syncZoneOccupancyFromActiveVehicles(
+    RoiTarget target) {
+  const ParkingService *parkingService = parkingServiceForTarget(target);
+  RoiService *service = roiServiceForTarget(target);
+  if (!parkingService || !service) {
+    return;
+  }
+
+  const QVector<QString> &enabledZoneIds =
+      (target == RoiTarget::Primary) ? m_enabledZoneIdsPrimary
+                                     : m_enabledZoneIdsSecondary;
+  if (enabledZoneIds.isEmpty()) {
+    return;
+  }
+
+  QHash<QString, int> occupancyByZoneId;
+  for (const VehicleState &state : parkingService->activeVehicles()) {
+    const int roiIndex = state.occupiedRoiIndex;
+    if (roiIndex < 0 || roiIndex >= enabledZoneIds.size()) {
+      continue;
+    }
+    const QString zoneId = enabledZoneIds[roiIndex].trimmed();
+    if (zoneId.isEmpty()) {
+      continue;
+    }
+    occupancyByZoneId.insert(zoneId, occupancyByZoneId.value(zoneId, 0) + 1);
+  }
+
+  QSet<QString> trackedZoneIds;
+  trackedZoneIds.reserve(enabledZoneIds.size());
+  for (const QString &zoneId : enabledZoneIds) {
+    const QString trimmedZoneId = zoneId.trimmed();
+    if (!trimmedZoneId.isEmpty()) {
+      trackedZoneIds.insert(trimmedZoneId);
+    }
+  }
+
+  QHash<QString, bool> currentEmptyByZoneId;
+  const QVector<QJsonObject> &records = service->records();
+  currentEmptyByZoneId.reserve(records.size());
+  for (const QJsonObject &record : records) {
+    const QString zoneId = record.value("zone_id").toString().trimmed();
+    if (!trackedZoneIds.contains(zoneId)) {
+      continue;
+    }
+    currentEmptyByZoneId.insert(zoneId, record.value("zone_enable").toBool(true));
+  }
+
+  bool changed = false;
+  for (const QString &zoneId : trackedZoneIds) {
+    if (!currentEmptyByZoneId.contains(zoneId)) {
+      continue;
+    }
+    const bool currentEmptyState = currentEmptyByZoneId.value(zoneId);
+    const bool shouldBeEmpty = occupancyByZoneId.value(zoneId, 0) == 0;
+    if (currentEmptyState == shouldBeEmpty) {
+      continue;
+    }
+
+    const Result<QJsonObject> updateResult =
+        service->setZoneEnabled(zoneId, shouldBeEmpty);
+    if (!updateResult.isOk()) {
+      onLogMessage(QString("[ROI] 점유 상태 저장 실패 (%1 / %2): %3")
+                       .arg(service->cameraKey(), zoneId, updateResult.error));
+      continue;
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    refreshZoneTableAllChannels();
+  }
 }
 
 void MainWindowController::initChannelCards() {
@@ -1021,6 +1126,7 @@ void MainWindowController::onDeleteSelectedRoi() {
         "[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
     return;
   }
+  syncEnabledRoiPolygons(m_roiTarget);
 
   refreshRoiSelectorForTarget();
   refreshZoneTableAllChannels();
@@ -1102,6 +1208,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   if (target == m_roiTarget && m_ui.roiSelectorCombo) {
     m_ui.roiSelectorCombo->setCurrentIndex(m_ui.roiSelectorCombo->count() - 1);
   }
+  syncEnabledRoiPolygons(target);
   if (targetWidget) {
     const int recordIndex = targetService->count() - 1;
     targetWidget->setRoiLabelAt(
@@ -1122,20 +1229,18 @@ void MainWindowController::onMetadataReceivedPrimary(
   static QElapsedTimer roiSyncTimer;
   if (!roiSyncTimer.isValid() || roiSyncTimer.elapsed() >= 1000) {
     roiSyncTimer.restart();
-    if (m_ui.videoWidgetPrimary && m_parkingServicePrimary) {
-      const auto intPolygons = m_ui.videoWidgetPrimary->roiPolygons();
-      QList<QPolygonF> floatPolygons;
-      floatPolygons.reserve(intPolygons.size());
-      for (const QPolygon &p : intPolygons)
-        floatPolygons.append(QPolygonF(p));
-      m_parkingServicePrimary->updateRoiPolygons(floatPolygons);
-    }
+    syncEnabledRoiPolygons(RoiTarget::Primary);
   }
   const auto &cfg = Config::instance();
   int pruneMs = m_ui.pruneTimeoutInput ? m_ui.pruneTimeoutInput->value() : 5000;
   if (m_parkingServicePrimary) {
     m_parkingServicePrimary->processMetadata(objects, 0, cfg.effectiveWidth(),
                                              cfg.sourceHeight(), pruneMs);
+  }
+  static QElapsedTimer zoneStatusTimer;
+  if (!zoneStatusTimer.isValid() || zoneStatusTimer.elapsed() >= 500) {
+    zoneStatusTimer.restart();
+    syncZoneOccupancyFromActiveVehicles(RoiTarget::Primary);
   }
 
   if (m_ui.reidTable && m_roiTarget == RoiTarget::Primary &&
@@ -1167,14 +1272,7 @@ void MainWindowController::onMetadataReceivedSecondary(
   static QElapsedTimer roiSyncTimerSec;
   if (!roiSyncTimerSec.isValid() || roiSyncTimerSec.elapsed() >= 1000) {
     roiSyncTimerSec.restart();
-    if (m_ui.videoWidgetSecondary && m_parkingServiceSecondary) {
-      const auto intPolygons = m_ui.videoWidgetSecondary->roiPolygons();
-      QList<QPolygonF> floatPolygons;
-      floatPolygons.reserve(intPolygons.size());
-      for (const QPolygon &p : intPolygons)
-        floatPolygons.append(QPolygonF(p));
-      m_parkingServiceSecondary->updateRoiPolygons(floatPolygons);
-    }
+    syncEnabledRoiPolygons(RoiTarget::Secondary);
   }
 
   const auto &cfg = Config::instance();
@@ -1182,6 +1280,11 @@ void MainWindowController::onMetadataReceivedSecondary(
   if (m_parkingServiceSecondary) {
     m_parkingServiceSecondary->processMetadata(objects, 0, cfg.effectiveWidth(),
                                                cfg.sourceHeight(), pruneMs);
+  }
+  static QElapsedTimer zoneStatusTimerSec;
+  if (!zoneStatusTimerSec.isValid() || zoneStatusTimerSec.elapsed() >= 500) {
+    zoneStatusTimerSec.restart();
+    syncZoneOccupancyFromActiveVehicles(RoiTarget::Secondary);
   }
 
   if (m_ui.reidTable && m_roiTarget == RoiTarget::Secondary &&

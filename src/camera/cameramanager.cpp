@@ -2,9 +2,28 @@
 #include "util/rtspurl.h"
 #include <QElapsedTimer>
 
-namespace {
-constexpr unsigned long kThreadStopTimeoutMs = 2000;
-constexpr unsigned long kForceStopWaitMs = 500;
+namespace
+{
+  constexpr unsigned long kThreadStopTimeoutMs = 2000;
+
+  template <typename T>
+  void recycleFinishedThread(T *&thread)
+  {
+    if (!thread)
+    {
+      return;
+    }
+    if (thread->isRunning())
+    {
+      return;
+    }
+    if (!thread->isFinished())
+    {
+      return;
+    }
+    thread->deleteLater();
+    thread = nullptr;
+  }
 } // namespace
 
 /**
@@ -12,14 +31,22 @@ constexpr unsigned long kForceStopWaitMs = 500;
  */
 CameraManager::CameraManager(QObject *parent)
     : QObject(parent), m_videoThread(nullptr), m_ocrVideoThread(nullptr),
-      m_metadataThread(nullptr) {
+      m_metadataThread(nullptr)
+{
   createThreads();
 }
 
 CameraManager::~CameraManager() { stop(); }
 
-void CameraManager::createThreads() {
-  if (!m_videoThread) {
+void CameraManager::createThreads()
+{
+  // stop() 타임아웃 이후 스레드가 뒤늦게 종료되었을 수 있으므로 재활용 처리
+  recycleFinishedThread(m_videoThread);
+  recycleFinishedThread(m_ocrVideoThread);
+  recycleFinishedThread(m_metadataThread);
+
+  if (!m_videoThread)
+  {
     m_videoThread = new VideoThread(this);
     connect(m_videoThread, &VideoThread::frameCaptured, this,
             &CameraManager::frameCaptured);
@@ -27,7 +54,8 @@ void CameraManager::createThreads() {
             &CameraManager::logMessage);
   }
 
-  if (!m_ocrVideoThread) {
+  if (!m_ocrVideoThread)
+  {
     m_ocrVideoThread = new VideoThread(this);
     connect(m_ocrVideoThread, &VideoThread::frameCaptured, this,
             &CameraManager::ocrFrameCaptured);
@@ -35,27 +63,36 @@ void CameraManager::createThreads() {
             &CameraManager::logMessage);
   }
 
-  if (!m_metadataThread) {
+  if (!m_metadataThread)
+  {
     m_metadataThread = new MetadataThread(this);
     connect(m_metadataThread, &MetadataThread::metadataReceived, this,
             &CameraManager::metadataReceived);
     connect(m_metadataThread, &MetadataThread::logMessage, this,
             &CameraManager::logMessage);
   }
+
+  if (!isRunning())
+  {
+    m_stopTimedOut = false;
+  }
 }
 
 void CameraManager::setConnectionInfo(
-    const CameraConnectionInfo &connectionInfo) {
+    const CameraConnectionInfo &connectionInfo)
+{
   m_connectionInfo = connectionInfo;
 }
 
-void CameraManager::start() {
+void CameraManager::start()
+{
   if (isRunning())
     return;
 
   createThreads();
 
-  if (!m_connectionInfo.isValid()) {
+  if (!m_connectionInfo.isValid())
+  {
     emit logMessage("Error: camera connection info is not configured.");
     return;
   }
@@ -80,7 +117,8 @@ void CameraManager::start() {
   m_videoThread->start();
 
   // === OCR 전용 비디오 스트림 시작 ===
-  if (m_ocrVideoThread) {
+  if (m_ocrVideoThread)
+  {
     m_ocrVideoThread->setUrl(ocrUrl);
     m_ocrVideoThread->setTargetFps(
         2); // 4K OCR은 초당 2프레임이면 충분함 (CPU 부하 대폭 감소)
@@ -95,13 +133,15 @@ void CameraManager::start() {
   m_metadataThread->start();
 }
 
-void CameraManager::startVideoOnly() {
+void CameraManager::startVideoOnly()
+{
   if (isRunning())
     return;
 
   createThreads();
 
-  if (!m_connectionInfo.isValid()) {
+  if (!m_connectionInfo.isValid())
+  {
     emit logMessage("Error: camera connection info is not configured.");
     return;
   }
@@ -120,72 +160,102 @@ void CameraManager::startVideoOnly() {
   m_videoThread->start();
 }
 
-void CameraManager::setTargetFps(int fps) {
-  if (m_videoThread) {
+void CameraManager::setTargetFps(int fps)
+{
+  if (m_videoThread)
+  {
     m_videoThread->setTargetFps(fps);
   }
 }
 
-void CameraManager::restart() {
+void CameraManager::restart()
+{
   this->stop();
+  if (m_stopTimedOut || isRunning())
+  {
+    emit logMessage(
+        QString("Warning: restart skipped due to incomplete thread stop."));
+    return;
+  }
   this->start();
 }
 
-void CameraManager::stop() {
+void CameraManager::stop()
+{
   QElapsedTimer shutdownTimer;
   shutdownTimer.start();
+  m_stopTimedOut = false;
 
-  if (m_videoThread && m_videoThread->isRunning()) {
+  // === 먼저 모든 스레드에 중지 신호를 브로드캐스트 ===
+  if (m_videoThread && m_videoThread->isRunning())
+  {
     m_videoThread->stop();
-    if (!m_videoThread->wait(kThreadStopTimeoutMs)) {
-      m_videoThread->terminate();
-      m_videoThread->wait(kForceStopWaitMs);
-    }
   }
-
-  if (m_ocrVideoThread && m_ocrVideoThread->isRunning()) {
+  if (m_ocrVideoThread && m_ocrVideoThread->isRunning())
+  {
     m_ocrVideoThread->stop();
-    if (!m_ocrVideoThread->wait(kThreadStopTimeoutMs)) {
-      emit logMessage(
-          QString("Warning: OCR video thread stop timeout (%1 ms). Forcing "
-                  "terminate.")
-              .arg(kThreadStopTimeoutMs));
-      m_ocrVideoThread->terminate();
-      if (!m_ocrVideoThread->wait(kForceStopWaitMs)) {
-        emit logMessage("Error: OCR video thread did not terminate cleanly.");
-      }
-    }
   }
-
-  // === 메타데이터 스레드 종료 ===
-  if (m_metadataThread && m_metadataThread->isRunning()) {
+  if (m_metadataThread && m_metadataThread->isRunning())
+  {
     m_metadataThread->stop();
-    if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
-      m_metadataThread->terminate();
-      m_metadataThread->wait(kForceStopWaitMs);
-    }
   }
 
-  if (m_videoThread) {
+  auto waitWithTimeout = [this](QThread *thread,
+                                const QString &threadName) -> bool
+  {
+    if (!thread || !thread->isRunning())
+    {
+      return true;
+    }
+    if (thread->wait(kThreadStopTimeoutMs))
+    {
+      return true;
+    }
+    m_stopTimedOut = true;
+    emit logMessage(QString("Error: %1 stop timeout (%2 ms). Keeping thread "
+                            "instance to avoid unsafe restart.")
+                        .arg(threadName)
+                        .arg(kThreadStopTimeoutMs));
+    return false;
+  };
+
+  const bool videoStopped = waitWithTimeout(m_videoThread, "Video thread");
+  const bool ocrVideoStopped =
+      waitWithTimeout(m_ocrVideoThread, "OCR video thread");
+  const bool metadataStopped =
+      waitWithTimeout(m_metadataThread, "Metadata thread");
+
+  if (m_videoThread && (!m_videoThread->isRunning()) && videoStopped)
+  {
     m_videoThread->deleteLater();
     m_videoThread = nullptr;
   }
 
-  if (m_ocrVideoThread) {
+  if (m_ocrVideoThread && (!m_ocrVideoThread->isRunning()) && ocrVideoStopped)
+  {
     m_ocrVideoThread->deleteLater();
     m_ocrVideoThread = nullptr;
   }
 
-  if (m_metadataThread) {
+  if (m_metadataThread && (!m_metadataThread->isRunning()) && metadataStopped)
+  {
     m_metadataThread->deleteLater();
     m_metadataThread = nullptr;
+  }
+
+  if (m_stopTimedOut)
+  {
+    emit logMessage(
+        QString("Warning: one or more camera threads did not stop in time. "
+                "Restart is blocked until cleanup completes."));
   }
 
   emit logMessage(
       QString("Camera stop completed in %1 ms.").arg(shutdownTimer.elapsed()));
 }
 
-bool CameraManager::isRunning() const {
+bool CameraManager::isRunning() const
+{
   bool videoRunning = m_videoThread && m_videoThread->isRunning();
   bool ocrVideoRunning = m_ocrVideoThread && m_ocrVideoThread->isRunning();
   bool metaRunning = m_metadataThread && m_metadataThread->isRunning();

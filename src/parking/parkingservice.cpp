@@ -126,8 +126,10 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
   }
 
   // DB에 입차 기록 생성
+  QDateTime entryTime =
+      vs.roiEntryMs > 0 ? QDateTime::fromMSecsSinceEpoch(vs.roiEntryMs) : now;
   int recordId = m_repository.insertEntry(m_cameraKey, vs.plateNumber,
-                                          vs.occupiedRoiIndex, now);
+                                          vs.occupiedRoiIndex, entryTime);
   if (recordId >= 0) {
     emit logMessage(
         QString("[Parking] Entry recorded: %1 at ROI #%2 (DB ID: %3)")

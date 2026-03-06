@@ -345,7 +345,7 @@ void MainWindow::setupUi() {
   headerIcon->setFixedSize(32, 32);
   headerIcon->setAlignment(Qt::AlignCenter);
 
-  m_headerTitleLabel = new QLabel("AI CCTV Dashboard", this);
+  m_headerTitleLabel = new QLabel("Veda CCTV Dashboard", this);
   m_headerTitleLabel->setObjectName("headerTitle");
 
   headerLayout->addWidget(headerIcon);
@@ -1051,10 +1051,10 @@ void MainWindow::setupUi() {
   zoneToolBar->addStretch();
 
   m_zoneTable = new QTableWidget(this);
-  m_zoneTable->setColumnCount(4);
+  m_zoneTable->setColumnCount(5);
   m_zoneTable->setHorizontalHeaderLabels(QStringList()
                                          << "카메라" << "구역 ID" << "이름"
-                                         << "생성일");
+                                         << "점유" << "생성일");
   m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_zoneTable->setSelectionBehavior(QAbstractItemView::SelectRows);

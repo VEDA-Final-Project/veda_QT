@@ -57,6 +57,7 @@ private:
   VideoThread *m_videoThread;
   VideoThread *m_ocrVideoThread;
   MetadataThread *m_metadataThread;
+  bool m_stopTimedOut = false;
 };
 
 #endif // CAMERAMANAGER_H

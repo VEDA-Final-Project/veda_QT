@@ -100,6 +100,7 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
 
     // 새로 ROI에 진입한 경우 (이전에 ROI 밖 -> 지금 ROI 안)
     if (prevRoi < 0 && vs.occupiedRoiIndex >= 0) {
+      vs.roiEntryMs = nowMs;
       newEntries.append(vs);
     }
   }

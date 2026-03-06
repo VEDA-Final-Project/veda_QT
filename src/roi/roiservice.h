@@ -24,6 +24,7 @@ public:
   Result<QJsonObject> createFromPolygon(const QPolygon &polygon,
                                         const QSize &frameSize,
                                         const QString &name);
+  Result<QJsonObject> setZoneEnabled(const QString &zoneId, bool enabled);
   Result<QString> removeAt(int index);
   QString cameraKey() const;
 
@@ -33,11 +34,10 @@ public:
 private:
   static QList<QPolygonF>
   toNormalizedPolygons(const QVector<QJsonObject> &records);
-  void recomputeSequenceFromRecords();
+  int nextAvailableSequence() const;
 
   RoiRepository m_repository;
   QString m_cameraKey = QStringLiteral("camera");
-  int m_roiSequence = 0;
   QVector<QJsonObject> m_records;
 };
 

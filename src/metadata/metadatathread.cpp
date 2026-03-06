@@ -67,6 +67,7 @@ void MetadataThread::setDisabledTypes(const QSet<QString> &types) {
 void MetadataThread::stop() {
   // 이벤트 루프 종료 요청만 수행한다.
   // 실제 대기는 상위 호출자(CameraManager)에서 타임아웃 정책으로 처리한다.
+  requestInterruption();
   quit();
 }
 
@@ -171,6 +172,10 @@ void MetadataThread::run() {
  */
 void MetadataThread::onReadyReadStandardOutput() {
 
+  if (isInterruptionRequested()) {
+    return;
+  }
+
   if (!m_process)
     return;
 
@@ -188,6 +193,10 @@ void MetadataThread::onReadyReadStandardOutput() {
  */
 void MetadataThread::processBuffer() {
 
+  if (isInterruptionRequested()) {
+    return;
+  }
+
   // === 버퍼 폭주 방지 안전장치 ===
   if (m_buffer.size() > 4 * 1024 * 1024) {
     emit logMessage("Buffer too large, clearing...");
@@ -196,6 +205,9 @@ void MetadataThread::processBuffer() {
   }
 
   while (true) {
+    if (isInterruptionRequested()) {
+      return;
+    }
 
     // === MetadataStream 시작 태그 탐색 ===
     int startTagIndex = m_buffer.indexOf("<tt:MetadataStream");
@@ -238,6 +250,10 @@ void MetadataThread::processBuffer() {
  */
 void MetadataThread::parseFrame(const QString &frameXml) {
 
+  if (isInterruptionRequested()) {
+    return;
+  }
+
   QList<ObjectInfo> objects;
 
   // === 객체 단위 정규식 파싱 ===
@@ -248,6 +264,9 @@ void MetadataThread::parseFrame(const QString &frameXml) {
   QRegularExpressionMatchIterator i = objectRe.globalMatch(frameXml);
 
   while (i.hasNext()) {
+    if (isInterruptionRequested()) {
+      return;
+    }
     QRegularExpressionMatch match = i.next();
 
     ObjectInfo info;

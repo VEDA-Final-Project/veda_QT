@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QSet>
 #include <QTextEdit>
+#include <QVector>
 
 #include "telegram/telegrambotapi.h"
 
@@ -91,6 +92,8 @@ private:
   const RoiService *roiServiceForTarget(RoiTarget target) const;
   ParkingService *parkingServiceForTarget(RoiTarget target);
   QString cameraKeyForTarget(RoiTarget target) const;
+  void syncEnabledRoiPolygons(RoiTarget target);
+  void syncZoneOccupancyFromActiveVehicles(RoiTarget target);
 
   MainWindowUiRefs m_ui;
   RoiTarget m_roiTarget = RoiTarget::Primary;
@@ -113,6 +116,8 @@ private:
   QString m_thumbCameraKeys[4];
   RoiService m_roiServicePrimary;
   RoiService m_roiServiceSecondary;
+  QVector<QString> m_enabledZoneIdsPrimary;
+  QVector<QString> m_enabledZoneIdsSecondary;
   ParkingService *m_parkingServicePrimary = nullptr;
   ParkingService *m_parkingServiceSecondary = nullptr;
   LogDeduplicator m_logDeduplicator;

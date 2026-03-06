@@ -14,7 +14,7 @@ LoginPage::LoginPage(QWidget *parent)
     : QWidget(parent)
 {
   buildUi();
-  setWindowTitle(QStringLiteral("회원가입"));
+  setWindowTitle(QStringLiteral("로그인"));
   resize(920, 600);
 }
 
@@ -48,7 +48,7 @@ void LoginPage::buildUi()
   rightLayout->setContentsMargins(24, 22, 24, 22);
   rightLayout->setSpacing(16);
 
-  auto *titleLabel = new QLabel(QStringLiteral("회원가입"), rightPanel);
+  auto *titleLabel = new QLabel(QStringLiteral("로그인"), rightPanel);
   titleLabel->setObjectName("titleLabel");
   titleLabel->setAlignment(Qt::AlignHCenter);
 
@@ -65,12 +65,12 @@ void LoginPage::buildUi()
   formLayout->setContentsMargins(0, 0, 0, 0);
   formLayout->setSpacing(16);
 
-  idInput_ = new QLineEdit(formArea);
+  idInput_ = new QLineEdit("admin"); //formArea
   idInput_->setObjectName("idInput");
   idInput_->setMinimumHeight(54);
   idInput_->setPlaceholderText(QStringLiteral("아이디"));
 
-  passwordInput_ = new QLineEdit(formArea);
+  passwordInput_ = new QLineEdit("1234"); //formArea
   passwordInput_->setObjectName("passwordInput");
   passwordInput_->setMinimumHeight(54);
   passwordInput_->setEchoMode(QLineEdit::Password);
