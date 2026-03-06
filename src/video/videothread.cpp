@@ -62,8 +62,7 @@ void VideoThread::run() {
   }
 
   /**
-   * === RTSP 설정 ===
-   * - 실시간성 확보를 위해 최신 프레임을 유지하는 UDP 방식 우선
+   * === RTSP 최적화 설정 ===
    * - 내부 버퍼 최소화(0)
    */
   m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);

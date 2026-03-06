@@ -23,13 +23,15 @@ public:
   void addUserRoiPolygon(const QPolygon &polygon);
   bool removeRoiAt(int index);
   int roiCount() const;
-  void startDrawing();
+  void startDrawing(const QSize &frameSize);
   RoiFinishResult finishDrawing();
 
   bool handleMousePress(QMouseEvent *event, const QSize &widgetSize,
                         const QSize &frameSize);
   bool handleMouseMove(QMouseEvent *event, const QSize &widgetSize,
                        const QSize &frameSize);
+  bool handleMouseRelease(QMouseEvent *event);
+  void clearHoverPoint();
   void paintDrawingOverlay(QWidget *widget, const QSize &frameSize) const;
 
   const QList<QPolygon> &roiPolygons() const;
@@ -48,6 +50,7 @@ private:
   QVector<QPoint> m_drawingPolygonPoints;
   QPoint m_hoverFramePoint;
   bool m_hasHoverPoint = false;
+  int m_draggingPointIndex = -1;
 };
 
 #endif // ROIINTERACTIONSTATE_H

@@ -430,8 +430,8 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
   }
 
   const QString cameraKey = cameraKeyForTarget(target);
-  const RoiService::InitResult initResult = service->init(cameraKey);
-  if (!initResult.ok) {
+  const Result<RoiService::RoiInitData> initResult = service->init(cameraKey);
+  if (!initResult.isOk()) {
     if (m_ui.logView && writeLog) {
       m_ui.logView->append(
           QString("[ROI][DB] %1 초기화 실패: %2")
@@ -448,13 +448,14 @@ void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
   for (const QJsonObject &record : records) {
     roiLabels.append(record["zone_name"].toString().trimmed());
   }
-  widget->queueNormalizedRoiPolygons(initResult.normalizedPolygons, roiLabels);
+  widget->queueNormalizedRoiPolygons(initResult.data.normalizedPolygons,
+                                     roiLabels);
 
   if (m_ui.logView && writeLog) {
     m_ui.logView->append(
         QString("[ROI][DB] %1 채널 '%2' ROI %3개 로드 완료")
             .arg(target == RoiTarget::Primary ? "A" : "B", cameraKey)
-            .arg(initResult.loadedCount));
+            .arg(initResult.data.loadedCount));
   }
 }
 
@@ -973,9 +974,9 @@ void MainWindowController::onCompleteRoiDraw() {
   }
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
-  QString nameError;
-  if (!targetService->isValidName(typedName, &nameError)) {
-    m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError));
+  if (auto nameError = targetService->isValidName(typedName);
+      nameError.has_value()) {
+    m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError.value()));
     return;
   }
   if (targetService->isDuplicateName(typedName)) {
@@ -1009,9 +1010,8 @@ void MainWindowController::onDeleteSelectedRoi() {
     return;
   }
 
-  const RoiService::DeleteResult deleteResult =
-      targetService->removeAt(recordIndex);
-  if (!deleteResult.ok) {
+  const Result<QString> deleteResult = targetService->removeAt(recordIndex);
+  if (!deleteResult.isOk()) {
     m_ui.logView->append(
         QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
     return;
@@ -1033,8 +1033,7 @@ void MainWindowController::onDeleteSelectedRoi() {
                              : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
   if (m_ui.logView) {
-    m_ui.logView->append(
-        QString("[ROI] 삭제 완료: %1").arg(deleteResult.removedName));
+    m_ui.logView->append(QString("[ROI] 삭제 완료: %1").arg(deleteResult.data));
   }
 }
 
@@ -1081,9 +1080,9 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
     return;
   }
 
-  const RoiService::CreateResult createResult =
+  const Result<QJsonObject> createResult =
       targetService->createFromPolygon(polygon, frameSize, typedName);
-  if (!createResult.ok) {
+  if (!createResult.isOk()) {
     // UI에는 이미 방금 그린 ROI가 추가되어 있을 수 있으므로 롤백 처리.
     if (targetWidget->roiCount() > 0) {
       targetWidget->removeRoiAt(targetWidget->roiCount() - 1);
@@ -1106,9 +1105,9 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
   if (targetWidget) {
     const int recordIndex = targetService->count() - 1;
     targetWidget->setRoiLabelAt(
-        recordIndex, createResult.record["zone_name"].toString().trimmed());
+        recordIndex, createResult.data["zone_name"].toString().trimmed());
   }
-  appendRoiStructuredLog(createResult.record);
+  appendRoiStructuredLog(createResult.data);
 }
 
 void MainWindowController::onMetadataReceivedPrimary(

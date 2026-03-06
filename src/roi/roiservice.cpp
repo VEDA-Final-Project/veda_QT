@@ -14,79 +14,70 @@ QString normalizedCameraKey(const QString &cameraKey) {
 }
 } // namespace
 
-RoiService::InitResult RoiService::init(const QString &cameraKey) {
-  InitResult result;
-  QString dbError;
+Result<RoiService::RoiInitData> RoiService::init(const QString &cameraKey) {
+  Result<RoiInitData> result;
   m_cameraKey = normalizedCameraKey(cameraKey);
+
   // 통합 DB 사용, 경로 인자 제거
-  if (!m_repository.init(&dbError)) {
-    result.error = dbError;
+  if (auto err = m_repository.init(); err.has_value()) {
+    result.error = err.value();
     return result;
   }
 
-  m_records = m_repository.loadByCameraKey(m_cameraKey, &dbError);
-  if (!dbError.isEmpty()) {
-    result.error = dbError;
+  auto loadResult = m_repository.loadByCameraKey(m_cameraKey);
+  if (!loadResult.isOk()) {
+    result.error = loadResult.error;
     return result;
   }
+  m_records = loadResult.data;
 
   recomputeSequenceFromRecords();
-  result.normalizedPolygons = toNormalizedPolygons(m_records);
-  result.loadedCount = m_records.size();
-  result.ok = true;
+  result.data.normalizedPolygons = toNormalizedPolygons(m_records);
+  result.data.loadedCount = m_records.size();
   return result;
 }
 
-bool RoiService::isValidName(const QString &name, QString *errorMessage) const {
+std::optional<QString> RoiService::isValidName(const QString &name) const {
   if (name.isEmpty()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("ROI 이름은 필수입니다.");
-    }
-    return false;
+    return QStringLiteral("ROI 이름은 필수입니다.");
   }
 
   constexpr int kMinNameLen = 1;
   constexpr int kMaxNameLen = 20;
   if (name.size() < kMinNameLen || name.size() > kMaxNameLen) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("ROI 이름은 1~20자로 입력해주세요.");
-    }
-    return false;
+    return QStringLiteral("ROI 이름은 1~20자로 입력해주세요.");
   }
 
   static const QRegularExpression kAllowedNamePattern(
       QStringLiteral("^[A-Za-z0-9가-힣 _-]+$"));
   if (!kAllowedNamePattern.match(name).hasMatch()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("ROI 이름은 한글/영문/숫자/공백/밑줄(_) / "
-                                     "하이픈(-)만 사용할 수 있습니다.");
-    }
-    return false;
+    return QStringLiteral("ROI 이름은 한글/영문/숫자/공백/밑줄(_) / "
+                          "하이픈(-)만 사용할 수 있습니다.");
   }
-  return true;
+  return std::nullopt;
 }
 
 bool RoiService::isDuplicateName(const QString &name) const {
   for (const QJsonObject &record : m_records) {
-    if (record["zone_name"].toString().compare(name, Qt::CaseInsensitive) == 0) {
+    if (record["zone_name"].toString().compare(name, Qt::CaseInsensitive) ==
+        0) {
       return true;
     }
   }
   return false;
 }
 
-RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
-                                                       const QSize &frameSize,
-                                                       const QString &name) {
-  CreateResult result;
+Result<QJsonObject> RoiService::createFromPolygon(const QPolygon &polygon,
+                                                  const QSize &frameSize,
+                                                  const QString &name) {
+  Result<QJsonObject> result;
   if (frameSize.isEmpty()) {
     result.error = QStringLiteral("프레임 크기가 유효하지 않습니다.");
     return result;
   }
 
-  QString nameError;
-  if (!isValidName(name, &nameError)) {
-    result.error = nameError;
+  if (auto nameError = isValidName(name); nameError.has_value()) {
+    result.error = nameError.value();
     return result;
   }
   if (isDuplicateName(name)) {
@@ -131,35 +122,31 @@ RoiService::CreateResult RoiService::createFromPolygon(const QPolygon &polygon,
       {"created_at", ts},
   };
 
-  QString dbError;
-  if (!m_repository.upsert(roiData, &dbError)) {
-    result.error = dbError;
+  if (auto dbError = m_repository.upsert(roiData); dbError.has_value()) {
+    result.error = dbError.value();
     return result;
   }
 
   m_records.append(roiData);
-  result.record = roiData;
-  result.ok = true;
+  result.data = roiData;
   return result;
 }
 
-RoiService::DeleteResult RoiService::removeAt(int index) {
-  DeleteResult result;
+Result<QString> RoiService::removeAt(int index) {
+  Result<QString> result;
   if (index < 0 || index >= m_records.size()) {
     result.error = QStringLiteral("ROI를 선택해주세요.");
     return result;
   }
 
   const QString removedId = m_records[index]["zone_id"].toString();
-  QString dbError;
-  if (!m_repository.removeById(removedId, &dbError)) {
-    result.error = dbError;
+  if (auto dbError = m_repository.removeById(removedId); dbError.has_value()) {
+    result.error = dbError.value();
     return result;
   }
 
-  result.removedName = m_records[index]["zone_name"].toString();
+  result.data = m_records[index]["zone_name"].toString();
   m_records.removeAt(index);
-  result.ok = true;
   return result;
 }
 
