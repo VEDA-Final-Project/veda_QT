@@ -9,35 +9,22 @@
 #include <QSize>
 #include <QString>
 #include <QVector>
+#include <optional>
 
 class RoiService {
 public:
-  struct InitResult {
-    bool ok = false;
-    QString error;
+  struct RoiInitData {
     QList<QPolygonF> normalizedPolygons;
     int loadedCount = 0;
   };
 
-  struct CreateResult {
-    bool ok = false;
-    QString error;
-    QJsonObject record;
-  };
-
-  struct DeleteResult {
-    bool ok = false;
-    QString error;
-    QString removedName;
-  };
-
-  InitResult init(const QString &cameraKey = QStringLiteral("camera"));
-  bool isValidName(const QString &name, QString *errorMessage) const;
+  Result<RoiInitData> init(const QString &cameraKey = QStringLiteral("camera"));
+  std::optional<QString> isValidName(const QString &name) const;
   bool isDuplicateName(const QString &name) const;
-  CreateResult createFromPolygon(const QPolygon &polygon,
-                                 const QSize &frameSize,
-                                 const QString &name);
-  DeleteResult removeAt(int index);
+  Result<QJsonObject> createFromPolygon(const QPolygon &polygon,
+                                        const QSize &frameSize,
+                                        const QString &name);
+  Result<QString> removeAt(int index);
   QString cameraKey() const;
 
   const QVector<QJsonObject> &records() const;

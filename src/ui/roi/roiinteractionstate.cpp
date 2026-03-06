@@ -46,10 +46,22 @@ bool RoiInteractionState::removeRoiAt(int index) {
 
 int RoiInteractionState::roiCount() const { return m_userRoiPolygons.size(); }
 
-void RoiInteractionState::startDrawing() {
+void RoiInteractionState::startDrawing(const QSize &frameSize) {
   m_drawingMode = true;
   m_drawingPolygonPoints.clear();
   m_hasHoverPoint = false;
+  m_draggingPointIndex = -1;
+
+  if (!frameSize.isEmpty()) {
+    const int w = static_cast<int>(frameSize.width() * 0.4);
+    const int h = static_cast<int>(frameSize.height() * 0.4);
+    const int cx = frameSize.width() / 2;
+    const int cy = frameSize.height() / 2;
+    m_drawingPolygonPoints << QPoint(cx - w / 2, cy - h / 2)
+                           << QPoint(cx + w / 2, cy - h / 2)
+                           << QPoint(cx + w / 2, cy + h / 2)
+                           << QPoint(cx - w / 2, cy + h / 2);
+  }
 }
 
 RoiFinishResult RoiInteractionState::finishDrawing() {
@@ -70,6 +82,7 @@ RoiFinishResult RoiInteractionState::finishDrawing() {
   m_drawingMode = false;
   m_drawingPolygonPoints.clear();
   m_hasHoverPoint = false;
+  m_draggingPointIndex = -1;
   return result;
 }
 
@@ -87,11 +100,23 @@ bool RoiInteractionState::handleMousePress(QMouseEvent *event,
     return false;
   }
 
-  const QPoint framePoint =
-      mapWidgetToFrame(widgetPoint, widgetSize, frameSize);
-  m_drawingPolygonPoints.append(framePoint);
-  m_hoverFramePoint = framePoint;
-  m_hasHoverPoint = true;
+  const double sx = static_cast<double>(pixRect.width()) / frameSize.width();
+  const double sy = static_cast<double>(pixRect.height()) / frameSize.height();
+
+  auto toWidget = [&](const QPoint &framePoint) -> QPoint {
+    return QPoint(pixRect.x() + static_cast<int>(framePoint.x() * sx),
+                  pixRect.y() + static_cast<int>(framePoint.y() * sy));
+  };
+
+  m_draggingPointIndex = -1;
+  for (int i = 0; i < m_drawingPolygonPoints.size(); ++i) {
+    const QPoint wp = toWidget(m_drawingPolygonPoints[i]);
+    if ((wp - widgetPoint).manhattanLength() < 15) {
+      m_draggingPointIndex = i;
+      return true;
+    }
+  }
+
   return true;
 }
 
@@ -104,18 +129,34 @@ bool RoiInteractionState::handleMouseMove(QMouseEvent *event,
 
   const QRect pixRect = displayedPixmapRect(widgetSize, frameSize);
   const QPoint widgetPoint = event->position().toPoint();
-  if (pixRect.contains(widgetPoint)) {
-    m_hoverFramePoint = mapWidgetToFrame(widgetPoint, widgetSize, frameSize);
-    m_hasHoverPoint = true;
-  } else {
-    m_hasHoverPoint = false;
+
+  if (m_draggingPointIndex >= 0 &&
+      m_draggingPointIndex < m_drawingPolygonPoints.size()) {
+    m_drawingPolygonPoints[m_draggingPointIndex] =
+        mapWidgetToFrame(widgetPoint, widgetSize, frameSize);
+    return true;
   }
+
   return true;
 }
 
+bool RoiInteractionState::handleMouseRelease(QMouseEvent *event) {
+  if (!m_drawingMode) {
+    return false;
+  }
+  if (event->button() == Qt::LeftButton) {
+    m_draggingPointIndex = -1;
+    return true;
+  }
+  return false;
+}
+
+void RoiInteractionState::clearHoverPoint() { m_hasHoverPoint = false; }
+
 void RoiInteractionState::paintDrawingOverlay(QWidget *widget,
                                               const QSize &frameSize) const {
-  if (!m_drawingMode || frameSize.isEmpty()) {
+  if (!m_drawingMode || frameSize.isEmpty() ||
+      m_drawingPolygonPoints.isEmpty()) {
     return;
   }
 
@@ -126,7 +167,6 @@ void RoiInteractionState::paintDrawingOverlay(QWidget *widget,
 
   QPainter painter(widget);
   painter.setRenderHint(QPainter::Antialiasing, true);
-  painter.setPen(QPen(Qt::red, 2, Qt::DashLine));
 
   const double sx = static_cast<double>(pixRect.width()) / frameSize.width();
   const double sy = static_cast<double>(pixRect.height()) / frameSize.height();
@@ -136,30 +176,22 @@ void RoiInteractionState::paintDrawingOverlay(QWidget *widget,
                   pixRect.y() + static_cast<int>(framePoint.y() * sy));
   };
 
-  QVector<QPoint> widgetPoints;
-  widgetPoints.reserve(m_drawingPolygonPoints.size());
+  QPolygon widgetPoly;
   for (const QPoint &pt : m_drawingPolygonPoints) {
-    widgetPoints.append(toWidget(pt));
+    widgetPoly << toWidget(pt);
   }
 
-  for (int i = 1; i < widgetPoints.size(); ++i) {
-    painter.drawLine(widgetPoints[i - 1], widgetPoints[i]);
-  }
+  QColor cyanAccent(0, 229, 255);
+  QColor cyanFill(0, 229, 255, 40);
 
-  if (!widgetPoints.isEmpty() && m_hasHoverPoint) {
-    painter.drawLine(widgetPoints.last(), toWidget(m_hoverFramePoint));
-  }
+  painter.setPen(QPen(cyanAccent, 2, Qt::SolidLine));
+  painter.setBrush(cyanFill);
+  painter.drawPolygon(widgetPoly);
 
-  if (widgetPoints.size() >= 3) {
-    const QPoint lastPoint =
-        (m_hasHoverPoint ? toWidget(m_hoverFramePoint) : widgetPoints.last());
-    painter.drawLine(lastPoint, widgetPoints.first());
-  }
-
-  painter.setPen(QPen(Qt::yellow, 2));
-  painter.setBrush(Qt::yellow);
-  for (const QPoint &pt : widgetPoints) {
-    painter.drawEllipse(pt, 3, 3);
+  painter.setBrush(Qt::white);
+  painter.setPen(QPen(cyanAccent, 2));
+  for (const QPoint &pt : widgetPoly) {
+    painter.drawEllipse(pt, 5, 5);
   }
 }
 

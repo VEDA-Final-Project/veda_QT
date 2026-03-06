@@ -1,25 +1,24 @@
 #ifndef ROIREPOSITORY_H
 #define ROIREPOSITORY_H
-
+#include "util/result.h"
 #include <QJsonObject>
 #include <QString>
 #include <QVector>
+#include <optional>
 
 class RoiRepository {
 public:
   RoiRepository();
   ~RoiRepository();
 
-  // 통합 DB 사용 전제 (경로 인자 제거/무시)
-  bool init(QString *errorMessage = nullptr);
-  QVector<QJsonObject> loadAll(QString *errorMessage = nullptr) const;
-  QVector<QJsonObject> loadByCameraKey(const QString &cameraKey,
-                                       QString *errorMessage = nullptr) const;
-  bool upsert(const QJsonObject &roiData, QString *errorMessage = nullptr);
-  bool removeById(const QString &zoneId, QString *errorMessage = nullptr);
+  std::optional<QString> init();
+  Result<QVector<QJsonObject>> loadAll() const;
+  Result<QVector<QJsonObject>> loadByCameraKey(const QString &cameraKey) const;
+  std::optional<QString> upsert(const QJsonObject &roiData);
+  std::optional<QString> removeById(const QString &zoneId);
 
 private:
-  bool ensureSchema(QString *errorMessage = nullptr);
+  std::optional<QString> ensureSchema();
   static bool isValidRoiRecord(const QJsonObject &roiData);
 };
 

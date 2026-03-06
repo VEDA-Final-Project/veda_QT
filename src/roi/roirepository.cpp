@@ -24,43 +24,27 @@ QString sqlError(const QSqlQuery &query, const QSqlDatabase &db) {
   return db.lastError().text();
 }
 
-bool execSql(QSqlDatabase &db, const QString &sql, QString *errorMessage) {
+std::optional<QString> execSql(QSqlDatabase &db, const QString &sql) {
   QSqlQuery query(db);
   if (!query.exec(sql)) {
-    if (errorMessage) {
-      *errorMessage = sqlError(query, db);
-    }
-    return false;
+    return sqlError(query, db);
   }
-  return true;
+  return std::nullopt;
 }
 
-bool tableHasColumn(QSqlDatabase &db, const QString &tableName,
-                    const QString &columnName, bool *hasColumn,
-                    QString *errorMessage) {
-  if (!hasColumn) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("컬럼 검사 결과 포인터가 null입니다.");
-    }
-    return false;
-  }
-
-  *hasColumn = false;
+Result<bool> tableHasColumn(QSqlDatabase &db, const QString &tableName,
+                            const QString &columnName) {
   QSqlQuery query(db);
   if (!query.exec(QStringLiteral("PRAGMA table_info(%1)").arg(tableName))) {
-    if (errorMessage) {
-      *errorMessage = sqlError(query, db);
-    }
-    return false;
+    return {false, sqlError(query, db)};
   }
 
   while (query.next()) {
     if (query.value(1).toString() == columnName) {
-      *hasColumn = true;
-      break;
+      return {true, QString()};
     }
   }
-  return true;
+  return {false, QString()};
 }
 
 QString roiTableDdl() {
@@ -75,22 +59,10 @@ QString roiTableDdl() {
                         ")");
 }
 
-bool tableUsesLegacyGlobalNameUnique(QSqlDatabase &db, bool *isLegacy,
-                                     QString *errorMessage) {
-  if (!isLegacy) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("legacy 결과 포인터가 null입니다.");
-    }
-    return false;
-  }
-  *isLegacy = false;
-
+Result<bool> tableUsesLegacyGlobalNameUnique(QSqlDatabase &db) {
   QSqlQuery listQuery(db);
   if (!listQuery.exec(QStringLiteral("PRAGMA index_list(roi)"))) {
-    if (errorMessage) {
-      *errorMessage = sqlError(listQuery, db);
-    }
-    return false;
+    return {false, sqlError(listQuery, db)};
   }
 
   while (listQuery.next()) {
@@ -107,55 +79,48 @@ bool tableUsesLegacyGlobalNameUnique(QSqlDatabase &db, bool *isLegacy,
     QSqlQuery indexInfoQuery(db);
     if (!indexInfoQuery.exec(
             QStringLiteral("PRAGMA index_info(%1)").arg(indexName))) {
-      if (errorMessage) {
-        *errorMessage = sqlError(indexInfoQuery, db);
-      }
-      return false;
+      return {false, sqlError(indexInfoQuery, db)};
     }
 
     QStringList columns;
     while (indexInfoQuery.next()) {
       columns.append(indexInfoQuery.value(2).toString());
     }
-    if (columns.size() == 1 &&
-        (columns.first() == QStringLiteral("rod_name") ||
-         columns.first() == QStringLiteral("zone_name"))) {
-      *isLegacy = true;
-      return true;
+    if (columns.size() == 1 && columns.first() == QStringLiteral("zone_name")) {
+      return {true, QString()};
     }
   }
-  return true;
+  return {false, QString()};
 }
 
-bool rebuildRoiTable(QSqlDatabase &db, const QString &copySelectSql,
-                     QString *errorMessage) {
-  if (!execSql(db, QStringLiteral("BEGIN IMMEDIATE TRANSACTION"), errorMessage)) {
-    return false;
+std::optional<QString> rebuildRoiTable(QSqlDatabase &db,
+                                       const QString &copySelectSql) {
+  if (auto err = execSql(db, QStringLiteral("BEGIN IMMEDIATE TRANSACTION"));
+      err) {
+    return err;
   }
 
-  auto rollbackOnFailure = [&db, &errorMessage]() {
-    execSql(db, QStringLiteral("ROLLBACK"), errorMessage);
-  };
+  auto rollbackOnFailure = [&db]() { execSql(db, QStringLiteral("ROLLBACK")); };
 
-  if (!execSql(db, QStringLiteral("DROP TABLE IF EXISTS roi_new"),
-               errorMessage)) {
+  if (auto err = execSql(db, QStringLiteral("DROP TABLE IF EXISTS roi_new"));
+      err) {
     rollbackOnFailure();
-    return false;
+    return err;
   }
 
-  if (!execSql(db,
-               QStringLiteral("CREATE TABLE roi_new ("
-                              "zone_id TEXT PRIMARY KEY,"
-                              "zone_name TEXT NOT NULL,"
-                              "camera_key TEXT NOT NULL DEFAULT 'camera',"
-                              "zone_enable INTEGER NOT NULL DEFAULT 1,"
-                              "zone_points TEXT NOT NULL,"
-                              "bbox TEXT NOT NULL,"
-                              "created_at TEXT NOT NULL"
-                              ")"),
-               errorMessage)) {
+  if (auto err = execSql(
+          db, QStringLiteral("CREATE TABLE roi_new ("
+                             "zone_id TEXT PRIMARY KEY,"
+                             "zone_name TEXT NOT NULL,"
+                             "camera_key TEXT NOT NULL DEFAULT 'camera',"
+                             "zone_enable INTEGER NOT NULL DEFAULT 1,"
+                             "zone_points TEXT NOT NULL,"
+                             "bbox TEXT NOT NULL,"
+                             "created_at TEXT NOT NULL"
+                             ")"));
+      err) {
     rollbackOnFailure();
-    return false;
+    return err;
   }
 
   const QString copySql = QStringLiteral("INSERT INTO roi_new "
@@ -163,27 +128,28 @@ bool rebuildRoiTable(QSqlDatabase &db, const QString &copySelectSql,
                                          "zone_enable, zone_points, bbox, "
                                          "created_at) ") +
                           copySelectSql;
-  if (!execSql(db, copySql, errorMessage)) {
+  if (auto err = execSql(db, copySql); err) {
     rollbackOnFailure();
-    return false;
+    return err;
   }
 
-  if (!execSql(db, QStringLiteral("DROP TABLE roi"), errorMessage)) {
+  if (auto err = execSql(db, QStringLiteral("DROP TABLE roi")); err) {
     rollbackOnFailure();
-    return false;
+    return err;
   }
 
-  if (!execSql(db, QStringLiteral("ALTER TABLE roi_new RENAME TO roi"),
-               errorMessage)) {
+  if (auto err =
+          execSql(db, QStringLiteral("ALTER TABLE roi_new RENAME TO roi"));
+      err) {
     rollbackOnFailure();
-    return false;
+    return err;
   }
 
-  if (!execSql(db, QStringLiteral("COMMIT"), errorMessage)) {
+  if (auto err = execSql(db, QStringLiteral("COMMIT")); err) {
     rollbackOnFailure();
-    return false;
+    return err;
   }
-  return true;
+  return std::nullopt;
 }
 } // namespace
 
@@ -191,24 +157,18 @@ RoiRepository::RoiRepository() {}
 
 RoiRepository::~RoiRepository() {}
 
-bool RoiRepository::init(QString *errorMessage) {
-  return ensureSchema(errorMessage);
+std::optional<QString> RoiRepository::init() { return ensureSchema(); }
+
+Result<QVector<QJsonObject>> RoiRepository::loadAll() const {
+  return loadByCameraKey(QString());
 }
 
-QVector<QJsonObject> RoiRepository::loadAll(QString *errorMessage) const {
-  return loadByCameraKey(QString(), errorMessage);
-}
-
-QVector<QJsonObject>
-RoiRepository::loadByCameraKey(const QString &cameraKey,
-                               QString *errorMessage) const {
+Result<QVector<QJsonObject>>
+RoiRepository::loadByCameraKey(const QString &cameraKey) const {
   QVector<QJsonObject> records;
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("DB 연결이 열려있지 않습니다.");
-    }
-    return records;
+    return {records, QStringLiteral("DB 연결이 열려있지 않습니다.")};
   }
 
   QSqlQuery query(db);
@@ -228,10 +188,7 @@ RoiRepository::loadByCameraKey(const QString &cameraKey,
   }
 
   if (!query.exec()) {
-    if (errorMessage) {
-      *errorMessage = sqlError(query, db);
-    }
-    return records;
+    return {records, sqlError(query, db)};
   }
 
   while (query.next()) {
@@ -261,22 +218,16 @@ RoiRepository::loadByCameraKey(const QString &cameraKey,
       records.append(record);
     }
   }
-  return records;
+  return {records, QString()};
 }
 
-bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage) {
+std::optional<QString> RoiRepository::upsert(const QJsonObject &roiData) {
   if (!isValidRoiRecord(roiData)) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("유효하지 않은 ROI 레코드입니다.");
-    }
-    return false;
+    return QStringLiteral("유효하지 않은 ROI 레코드입니다.");
   }
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("DB 연결이 열려있지 않습니다.");
-    }
-    return false;
+    return QStringLiteral("DB 연결이 열려있지 않습니다.");
   }
 
   QSqlQuery query(db);
@@ -293,7 +244,8 @@ bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage) {
 
   query.addBindValue(roiData.value("zone_id").toString());
   query.addBindValue(roiData.value("zone_name").toString());
-  query.addBindValue(normalizedCameraKey(roiData.value("camera_key").toString()));
+  query.addBindValue(
+      normalizedCameraKey(roiData.value("camera_key").toString()));
   query.addBindValue(roiData.value("zone_enable").toBool() ? 1 : 0);
   query.addBindValue(QJsonDocument(roiData.value("zone_points").toArray())
                          .toJson(QJsonDocument::Compact));
@@ -302,118 +254,86 @@ bool RoiRepository::upsert(const QJsonObject &roiData, QString *errorMessage) {
   query.addBindValue(roiData.value("created_at").toString());
 
   if (!query.exec()) {
-    if (errorMessage) {
-      *errorMessage = sqlError(query, db);
-    }
-    return false;
+    return sqlError(query, db);
   }
-  return true;
+  return std::nullopt;
 }
 
-bool RoiRepository::removeById(const QString &zoneId, QString *errorMessage) {
+std::optional<QString> RoiRepository::removeById(const QString &zoneId) {
   if (zoneId.isEmpty()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("삭제할 zone_id가 비어 있습니다.");
-    }
-    return false;
+    return QStringLiteral("삭제할 zone_id가 비어 있습니다.");
   }
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("DB 연결이 열려있지 않습니다.");
-    }
-    return false;
+    return QStringLiteral("DB 연결이 열려있지 않습니다.");
   }
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral("DELETE FROM roi WHERE zone_id = ?"));
   query.addBindValue(zoneId);
   if (!query.exec()) {
-    if (errorMessage) {
-      *errorMessage = sqlError(query, db);
-    }
-    return false;
+    return sqlError(query, db);
   }
-  return true;
+  return std::nullopt;
 }
 
-bool RoiRepository::ensureSchema(QString *errorMessage) {
+std::optional<QString> RoiRepository::ensureSchema() {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("DB 연결이 열려있지 않습니다.");
-    }
-    return false;
+    return QStringLiteral("DB 연결이 열려있지 않습니다.");
   }
 
-  if (!execSql(db, roiTableDdl(), errorMessage)) {
-    return false;
+  QString err;
+  if (auto e = execSql(db, roiTableDdl()); e) {
+    return e;
   }
 
-  bool hasCameraKey = false;
-  if (!tableHasColumn(db, QStringLiteral("roi"), QStringLiteral("camera_key"),
-                      &hasCameraKey, errorMessage)) {
-    return false;
+  Result<bool> hasCameraKey =
+      tableHasColumn(db, QStringLiteral("roi"), QStringLiteral("camera_key"));
+  if (!hasCameraKey.isOk()) {
+    return hasCameraKey.error;
   }
-  if (!hasCameraKey) {
-    if (!execSql(db, QStringLiteral("ALTER TABLE roi ADD COLUMN camera_key "
-                                    "TEXT NOT NULL DEFAULT 'camera'"),
-                 errorMessage)) {
-      return false;
-    }
-  }
-
-  bool hasRodId = false;
-  if (!tableHasColumn(db, QStringLiteral("roi"), QStringLiteral("rod_id"),
-                      &hasRodId, errorMessage)) {
-    return false;
-  }
-  if (hasRodId) {
-    if (!rebuildRoiTable(db,
-                         QStringLiteral(
-                             "SELECT "
-                             "COALESCE(NULLIF(TRIM(rod_id), ''), "
-                             "'zone-' || lower(hex(randomblob(8)))), "
-                             "rod_name, "
-                             "COALESCE(NULLIF(TRIM(camera_key), ''), 'camera'), "
-                             "COALESCE(rod_enable, 1), "
-                             "rod_points, bbox, created_at "
-                             "FROM roi"),
-                         errorMessage)) {
-      return false;
+  if (!hasCameraKey.data) {
+    if (auto e =
+            execSql(db, QStringLiteral("ALTER TABLE roi ADD COLUMN camera_key "
+                                       "TEXT NOT NULL DEFAULT 'camera'"));
+        e) {
+      return e;
     }
   }
 
-  bool hasLegacyGlobalNameUnique = false;
-  if (!tableUsesLegacyGlobalNameUnique(db, &hasLegacyGlobalNameUnique,
-                                       errorMessage)) {
-    return false;
+  Result<bool> hasLegacyGlobalNameUnique = tableUsesLegacyGlobalNameUnique(db);
+  if (!hasLegacyGlobalNameUnique.isOk()) {
+    return hasLegacyGlobalNameUnique.error;
   }
-  if (hasLegacyGlobalNameUnique &&
-      !rebuildRoiTable(db,
-                       QStringLiteral(
-                           "SELECT zone_id, zone_name, "
+  if (hasLegacyGlobalNameUnique.data) {
+    if (auto e = rebuildRoiTable(
+            db,
+            QStringLiteral("SELECT zone_id, zone_name, "
                            "COALESCE(NULLIF(TRIM(camera_key), ''), 'camera'), "
                            "COALESCE(zone_enable, 1), zone_points, bbox, "
                            "created_at "
-                           "FROM roi"),
-                       errorMessage)) {
-    return false;
+                           "FROM roi"));
+        e) {
+      return e;
+    }
   }
 
-  if (!execSql(db, QStringLiteral("DROP INDEX IF EXISTS idx_roi_name_unique"),
-               errorMessage)) {
-    return false;
+  if (auto e = execSql(
+          db, QStringLiteral("DROP INDEX IF EXISTS idx_roi_name_unique"));
+      e) {
+    return e;
   }
 
-  if (!execSql(db, QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
-                                  "idx_roi_camera_name_unique "
-                                  "ON roi(camera_key, zone_name COLLATE NOCASE)"),
-               errorMessage)) {
-    return false;
+  if (auto e = execSql(
+          db, QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
+                             "idx_roi_camera_name_unique "
+                             "ON roi(camera_key, zone_name COLLATE NOCASE)"));
+      e) {
+    return e;
   }
 
-  return true;
+  return std::nullopt;
 }
 
 bool RoiRepository::isValidRoiRecord(const QJsonObject &roiData) {

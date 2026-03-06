@@ -217,16 +217,16 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
       }
 
       if (occupied) {
-        painter.setPen(QPen(QColor(0, 200, 0), 3, Qt::SolidLine));
+        painter.setPen(QPen(QColor(255, 59, 48), 2, Qt::SolidLine));
       } else {
-        painter.setPen(QPen(Qt::red, 2, Qt::DashLine));
+        painter.setPen(QPen(QColor(0, 229, 255), 2, Qt::SolidLine));
       }
       painter.drawPolygon(polygon);
 
       const QString baseName =
           (i < roiLabels.size() && !roiLabels[i].trimmed().isEmpty())
               ? roiLabels[i].trimmed()
-              : QString("ROI %1").arg(i + 1);
+              : QString("Zone %1").arg(i + 1);
       const QString label =
           occupied ? QString("%1 [Parked]").arg(baseName) : baseName;
 
@@ -235,9 +235,14 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
       const QPoint anchor = polygon.boundingRect().topLeft() + QPoint(2, 2);
       textRect.moveTopLeft(anchor);
 
-      painter.fillRect(textRect, occupied ? QColor(0, 140, 0, 200)
-                                          : QColor(180, 0, 0, 180));
-      painter.setPen(Qt::white);
+      if (occupied) {
+        painter.fillRect(textRect, QColor(255, 59, 48, 210));
+        painter.setPen(Qt::white);
+      } else {
+        painter.fillRect(textRect, QColor(0, 229, 255, 200));
+        painter.setPen(
+            QColor(27, 31, 42)); // Dark Navy text for better contrast
+      }
       painter.drawText(textRect, Qt::AlignCenter, label);
     }
     painter.setPen(pen);

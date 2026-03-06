@@ -53,6 +53,9 @@ signals:
   void roiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
   void avgFpsUpdated(double avgFps);
 
+protected:
+  void leaveEvent(QEvent *event) override;
+
 private:
   void paintEvent(QPaintEvent *event) override;
   void mousePressEvent(QMouseEvent *event) override;
@@ -65,8 +68,8 @@ private:
   QSize m_lastFrameSize;
   RoiInteractionState m_roiState;
   VideoFrameRenderer m_frameRenderer;
-  QList<QPolygonF> m_pendingNormalizedRoiPolygons;
-  QStringList m_pendingRoiLabels;
+  QList<QPolygonF>
+      m_normalizedRoiPolygons; // Keep the authoritative normalized polygons
   QStringList m_roiLabels;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
 
