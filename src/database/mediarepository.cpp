@@ -124,6 +124,38 @@ MediaRepository::getMediaRecordsByCamera(const QString &cameraId,
   return results;
 }
 
+QVector<QJsonObject> MediaRepository::getMediaRecordsByTypeAndCamera(
+    const QString &type, const QString &cameraId, QString *errorMessage) const {
+  QVector<QJsonObject> results;
+  QSqlDatabase db = DatabaseContext::database();
+  QSqlQuery query(db);
+
+  query.prepare(QStringLiteral(
+      "SELECT id, type, description, camera_id, created_at, file_path "
+      "FROM media_logs WHERE type = :type AND camera_id = :cam ORDER BY "
+      "created_at ASC"));
+  query.bindValue(":type", type);
+  query.bindValue(":cam", cameraId);
+
+  if (!query.exec()) {
+    if (errorMessage)
+      *errorMessage = query.lastError().text();
+    return results;
+  }
+
+  while (query.next()) {
+    QJsonObject row;
+    row["id"] = query.value("id").toInt();
+    row["type"] = query.value("type").toString();
+    row["description"] = query.value("description").toString();
+    row["camera_id"] = query.value("camera_id").toString();
+    row["created_at"] = query.value("created_at").toString();
+    row["file_path"] = query.value("file_path").toString();
+    results.append(row);
+  }
+  return results;
+}
+
 bool MediaRepository::deleteMediaRecord(int id, QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
@@ -145,7 +177,7 @@ MediaRepository::getOldMediaRecords(int hours, QString *errorMessage) const {
   QSqlQuery query(db);
 
   query.prepare(QStringLiteral(
-      "SELECT id, file_path FROM media_logs "
+      "SELECT id, type, file_path FROM media_logs "
       "WHERE datetime(created_at) < datetime('now', 'localtime', :offset)"));
   query.bindValue(":offset", QString("-%1 hours").arg(hours));
 
@@ -158,6 +190,7 @@ MediaRepository::getOldMediaRecords(int hours, QString *errorMessage) const {
   while (query.next()) {
     QJsonObject row;
     row["id"] = query.value("id").toInt();
+    row["type"] = query.value("type").toString();
     row["file_path"] = query.value("file_path").toString();
     results.append(row);
   }

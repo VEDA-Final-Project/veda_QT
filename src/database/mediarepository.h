@@ -24,6 +24,11 @@ public:
   getMediaRecordsByCamera(const QString &cameraId,
                           QString *errorMessage = nullptr) const;
 
+  // 특정 타입 및 채널 조회 (상시 녹화 연속 재생용)
+  QVector<QJsonObject>
+  getMediaRecordsByTypeAndCamera(const QString &type, const QString &cameraId,
+                                 QString *errorMessage = nullptr) const;
+
   // 특정 기록 삭제
   bool deleteMediaRecord(int id, QString *errorMessage = nullptr);
 

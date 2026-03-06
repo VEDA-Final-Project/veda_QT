@@ -119,6 +119,13 @@ struct MainWindowUiRefs {
   QPushButton *btnVideoStop = nullptr;
   QSlider *videoSeekSlider = nullptr;
   QLabel *videoTimeLabel = nullptr;
+
+  // Continuous Recording (상시 녹화)
+  QCheckBox *chkContinuousEnable = nullptr;
+  QSpinBox *spinRecordRetention = nullptr;
+  QSpinBox *spinRecordInterval = nullptr;
+  QLabel *lblContinuousStatus = nullptr;
+  QPushButton *btnViewContinuous = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

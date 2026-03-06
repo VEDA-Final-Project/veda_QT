@@ -8,6 +8,7 @@
 #include <QString>
 #include <QThread>
 #include <opencv2/opencv.hpp>
+#include <vector>
 
 class VideoThread : public QThread {
   Q_OBJECT
@@ -37,5 +38,6 @@ private:
 };
 
 Q_DECLARE_METATYPE(QSharedPointer<cv::Mat>)
+Q_DECLARE_METATYPE(std::vector<QSharedPointer<cv::Mat>>)
 
 #endif // VIDEOTHREAD_H

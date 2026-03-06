@@ -73,6 +73,9 @@ public slots:
   void onMediaSaveFinished(bool success, const QString &filePath,
                            const QString &type, const QString &description,
                            const QString &cameraId);
+  void onContinuousRecordTimeout();
+  void onCleanupTimeout();
+  void onContinuousSettingChanged();
 
   // Telegram Slots
   void onSendEntry();
@@ -147,6 +150,12 @@ private:
   QString m_currentProfilePrimary;
   QString m_currentProfileSecondary;
   bool m_primaryVideoReadyNotified = false;
+
+  // Continuous Recording
+  VideoBufferManager *m_continuousBuffers[4] = {nullptr, nullptr, nullptr,
+                                                nullptr};
+  QTimer *m_continuousRecordTimer = nullptr;
+  QTimer *m_cleanupTimer = nullptr;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

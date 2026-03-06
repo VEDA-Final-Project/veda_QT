@@ -103,6 +103,11 @@ void RecordPanelController::connectSignals() {
               }
             });
   }
+
+  if (m_ui.btnViewContinuous) {
+    connect(m_ui.btnViewContinuous, &QPushButton::clicked, this,
+            &RecordPanelController::onViewContinuousClicked);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -213,6 +218,12 @@ void RecordPanelController::refreshLogTable() {
 
   for (int i = 0; i < m_currentRecords.size(); ++i) {
     const QJsonObject &row = m_currentRecords[i];
+
+    // CONTINUOUS 타입은 목록에 표시하지 않음 (다수 파일 혼재 방지)
+    if (row["type"].toString() == "CONTINUOUS") {
+      continue;
+    }
+
     int r = m_ui.recordLogTable->rowCount();
     m_ui.recordLogTable->insertRow(r);
 
@@ -312,6 +323,9 @@ void RecordPanelController::onRowSelectionChanged() {
 
   // ★ 라이브 프레임 차단: 파일을 여는 동안 라이브 피드가 위젯을 건드리지 못하게
   m_hasMediaLoaded = true;
+  m_isContinuousMode = false;
+  m_continuousSegments.clear();
+  m_currentChunkIdx = -1;
 
   if (m_ui.recordPreviewPathLabel) {
     auto formatSize = [](qint64 bytes) {
@@ -421,6 +435,9 @@ void RecordPanelController::onStopClicked() {
   m_playTimer->stop();
   m_isPaused = false;
   m_hasMediaLoaded = false; // idle로 복귀 → 라이브 피드 재개
+  m_isContinuousMode = false;
+  m_continuousSegments.clear();
+  m_currentChunkIdx = -1;
 
   if (m_playCap.isOpened())
     m_playCap.release();
@@ -439,7 +456,24 @@ void RecordPanelController::onSeekSliderMoved(int value) {
   // 슬라이더 0~1000 → 프레임 번호로 변환
   double ratio = static_cast<double>(value) / 1000.0;
   int targetFrame = static_cast<int>(ratio * m_totalFrames);
-  m_playCap.set(cv::CAP_PROP_POS_FRAMES, targetFrame);
+
+  if (m_isContinuousMode) {
+    // 연속 모드: global frame 기준 해당 조각(chunk) 탐색
+    for (int i = 0; i < m_continuousSegments.size(); ++i) {
+      int startG = m_continuousSegments[i].startGlobalFrame;
+      int endG = startG + m_continuousSegments[i].frameCount;
+      if (targetFrame >= startG && targetFrame < endG) {
+        if (m_currentChunkIdx != i) {
+          openVideoChunk(i, targetFrame - startG);
+        } else {
+          m_playCap.set(cv::CAP_PROP_POS_FRAMES, targetFrame - startG);
+        }
+        break;
+      }
+    }
+  } else {
+    m_playCap.set(cv::CAP_PROP_POS_FRAMES, targetFrame);
+  }
 
   // 현재 프레임 즉시 표시
   cv::Mat frame;
@@ -466,7 +500,19 @@ void RecordPanelController::onPlayTimerTimeout() {
   m_playCap >> frame;
 
   if (frame.empty()) {
-    // 영상 끝 → 정지 상태로 복귀
+    if (m_isContinuousMode) {
+      // 연속 재생 모드이면 다음 파일 조각 열기 시도
+      if (m_currentChunkIdx + 1 < m_continuousSegments.size()) {
+        if (openVideoChunk(m_currentChunkIdx + 1, 0)) {
+          // 연달아서 바로 첫 프레임 읽어보기
+          m_playCap >> frame;
+        }
+      }
+    }
+  }
+
+  if (frame.empty()) {
+    // 영상 완전 끝 → 정지 상태로 복귀
     onStopClicked();
     return;
   }
@@ -477,10 +523,17 @@ void RecordPanelController::onPlayTimerTimeout() {
   m_ui.recordVideoWidget->updateFrame(qimg.copy());
 
   // 시크바 / 시간 표시 갱신
-  if (m_totalFrames > 0) {
-    int curFrame = static_cast<int>(m_playCap.get(cv::CAP_PROP_POS_FRAMES));
-    int sliderVal =
-        static_cast<int>(static_cast<double>(curFrame) / m_totalFrames * 1000);
+  if (m_totalFrames > 0 && m_fps > 0) {
+    // 글로벌 프레임 위치 계산: 현재 청크 시작점 + 청크 내 현재 위치
+    double localFrame = m_playCap.get(cv::CAP_PROP_POS_FRAMES);
+    double globalFrame = 0;
+    if (m_currentChunkIdx >= 0 &&
+        m_currentChunkIdx < m_continuousSegments.size()) {
+      globalFrame =
+          m_continuousSegments[m_currentChunkIdx].startGlobalFrame + localFrame;
+    }
+
+    int sliderVal = static_cast<int>((globalFrame / m_totalFrames) * 1000.0);
     if (m_ui.videoSeekSlider && !m_ui.videoSeekSlider->isSliderDown())
       m_ui.videoSeekSlider->setValue(sliderVal);
   }
@@ -514,10 +567,148 @@ void RecordPanelController::updateTimeLabel() {
     return;
   }
 
-  double curSec = m_playCap.get(cv::CAP_PROP_POS_MSEC) / 1000.0;
   double totalSec = (m_fps > 0) ? m_totalFrames / m_fps : 0;
-  m_ui.videoTimeLabel->setText(formatTime(curSec) + " / " +
-                               formatTime(totalSec));
+
+  if (m_isContinuousMode) {
+    double globalCurSec = 0;
+    if (m_currentChunkIdx >= 0 &&
+        m_currentChunkIdx < m_continuousSegments.size()) {
+      int localFrameIdx =
+          static_cast<int>(m_playCap.get(cv::CAP_PROP_POS_FRAMES));
+      int globalFrameIdx =
+          m_continuousSegments[m_currentChunkIdx].startGlobalFrame +
+          localFrameIdx;
+      globalCurSec = globalFrameIdx / m_fps;
+    }
+    m_ui.videoTimeLabel->setText(formatTime(globalCurSec) + " / " +
+                                 formatTime(totalSec));
+  } else {
+    double curSec = m_playCap.get(cv::CAP_PROP_POS_MSEC) / 1000.0;
+    m_ui.videoTimeLabel->setText(formatTime(curSec) + " / " +
+                                 formatTime(totalSec));
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// 연속 재생(상시녹화) 커스텀 로직 추가
+// ──────────────────────────────────────────────────────────────
+void RecordPanelController::onViewContinuousClicked() {
+  if (!m_ui.cmbManualCamera || !m_repo)
+    return;
+
+  int idx = m_ui.cmbManualCamera->currentIndex();
+  QString camId = QString("Ch %1").arg(idx + 1);
+
+  // 해당 카메라의 CONTINUOUS 타입 레코드 가져오기 (오래된 순 정렬)
+  QVector<QJsonObject> records =
+      m_repo->getMediaRecordsByTypeAndCamera("CONTINUOUS", camId);
+
+  if (records.isEmpty()) {
+    QMessageBox::information(nullptr, "알림",
+                             "선택된 카메라의 상시 녹화 데이터가 없습니다.");
+    return;
+  }
+
+  m_continuousSegments.clear();
+  m_hasMediaLoaded = true;
+  m_isContinuousMode = true;
+  m_currentChunkIdx = -1;
+  m_totalFrames = 0;
+  m_fps = 5.0; // 상시녹화 기본 5프레임 (저장 설정과 동일하게)
+
+  // 글로벌 프레임/시간 계산을 위해 각 파일의 길이 수집
+  for (int i = 0; i < records.size(); ++i) {
+    QString filePath = records[i]["file_path"].toString();
+    QFileInfo fi(filePath);
+    if (!fi.exists() || fi.size() == 0)
+      continue;
+
+    cv::VideoCapture tempCap(filePath.toLocal8Bit().toStdString());
+    if (tempCap.isOpened()) {
+      int fCount = static_cast<int>(tempCap.get(cv::CAP_PROP_FRAME_COUNT));
+      double fps = tempCap.get(cv::CAP_PROP_FPS);
+      if (fps > 0)
+        m_fps = fps; // 마지막 유효 fps 채택
+
+      if (fCount > 0) {
+        VideoSegment seg;
+        seg.filePath = filePath;
+        seg.frameCount = fCount;
+        seg.startGlobalFrame = m_totalFrames;
+        m_continuousSegments.push_back(seg);
+        m_totalFrames += fCount;
+      }
+      tempCap.release();
+    }
+  }
+
+  if (m_continuousSegments.isEmpty() || m_totalFrames <= 0) {
+    QMessageBox::warning(
+        nullptr, "오름",
+        "유효한 상시 녹화 동영상 파일을 열 수 없거나 내용이 비어있습니다.");
+    m_hasMediaLoaded = false;
+    m_isContinuousMode = false;
+    return;
+  }
+
+  if (m_fps <= 0)
+    m_fps = 5.0; // 최후의 보루 0 방지
+
+  if (m_ui.recordPreviewPathLabel) {
+    double totalSec = m_totalFrames / m_fps;
+    m_ui.recordPreviewPathLabel->setText(
+        QString::fromUtf8("상시 녹화 연속 모드: 총 ") +
+        QString::number(m_continuousSegments.size()) +
+        QString::fromUtf8("개 파일, 약 ") + formatTime(totalSec) +
+        QString::fromUtf8(" 분량 길이"));
+  }
+
+  // 첫 번째 조각 열기 처리
+  if (openVideoChunk(0)) {
+    m_isPaused = true;
+    updatePlayerControls(true);
+    updateTimeLabel();
+  } else {
+    onStopClicked();
+  }
+}
+
+bool RecordPanelController::openVideoChunk(int chunkIdx, int startFrame) {
+  if (chunkIdx < 0 || chunkIdx >= m_continuousSegments.size())
+    return false;
+
+  if (m_playCap.isOpened())
+    m_playCap.release();
+
+  QString filePath = m_continuousSegments[chunkIdx].filePath;
+  m_playCap.open(filePath.toLocal8Bit().toStdString());
+
+  if (!m_playCap.isOpened()) {
+    qDebug() << "[ContinuousPlay] Failed to open chunk:" << filePath;
+    return false;
+  }
+
+  m_currentChunkIdx = chunkIdx;
+  if (startFrame > 0 &&
+      startFrame < m_continuousSegments[chunkIdx].frameCount) {
+    m_playCap.set(cv::CAP_PROP_POS_FRAMES, startFrame);
+  }
+
+  // 정지 상태이고 첫 프레임 띄우기가 필요한 경우
+  if (!m_playTimer->isActive()) {
+    cv::Mat frame;
+    m_playCap >> frame;
+    if (!frame.empty() && m_ui.recordVideoWidget) {
+      cv::Mat rgb;
+      cv::cvtColor(frame, rgb, cv::COLOR_BGR2RGB);
+      QImage qimg(rgb.data, rgb.cols, rgb.rows, rgb.step,
+                  QImage::Format_RGB888);
+      m_ui.recordVideoWidget->updateFrame(qimg.copy());
+      // 읽은 만큼 위치 되돌리기
+      m_playCap.set(cv::CAP_PROP_POS_FRAMES, startFrame);
+    }
+  }
+  return true;
 }
 
 // ──────────────────────────────────────────────────────────────

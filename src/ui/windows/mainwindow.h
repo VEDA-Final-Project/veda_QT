@@ -180,6 +180,13 @@ private:
   QSlider *m_videoSeekSlider = nullptr;
   QLabel *m_videoTimeLabel = nullptr;
 
+  // Continuous Recording (상시 녹화)
+  QCheckBox *m_chkContinuousEnable = nullptr;
+  QSpinBox *m_spinRecordRetention = nullptr;
+  QSpinBox *m_spinRecordInterval = nullptr;
+  QLabel *m_lblContinuousStatus = nullptr;
+  QPushButton *m_btnViewContinuous = nullptr;
+
   QTimer *m_clockTimer = nullptr;
   QToolButton *m_menuButton = nullptr;
   QMenu *m_navMenu = nullptr;

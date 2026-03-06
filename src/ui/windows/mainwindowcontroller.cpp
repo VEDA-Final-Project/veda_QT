@@ -175,6 +175,13 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   recordUiRefs.videoTimeLabel = m_ui.videoTimeLabel;
   recordUiRefs.cmbManualCamera = m_ui.cmbManualCamera;
 
+  // 상시 녹화 컨트롤 연결
+  recordUiRefs.chkContinuousEnable = m_ui.chkContinuousEnable;
+  recordUiRefs.spinRecordRetention = m_ui.spinRecordRetention;
+  recordUiRefs.spinRecordInterval = m_ui.spinRecordInterval;
+  recordUiRefs.lblContinuousStatus = m_ui.lblContinuousStatus;
+  recordUiRefs.btnViewContinuous = m_ui.btnViewContinuous;
+
   m_recordPanelController =
       new RecordPanelController(recordUiRefs, m_mediaRepo, this);
   m_recordPanelController->connectSignals();
@@ -296,6 +303,32 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
   m_renderTimerPrimary.start();
   m_renderTimerSecondary.start();
+
+  // 상시 녹화 초기화
+  for (int i = 0; i < 4; ++i) {
+    // 5 FPS 기준 1분(60초) = 300프레임. 넉넉하게 600으로 설정
+    m_continuousBuffers[i] = new VideoBufferManager(600, this);
+  }
+
+  m_continuousRecordTimer = new QTimer(this);
+  m_continuousRecordTimer->setInterval(60000); // 기본 1분
+  connect(m_continuousRecordTimer, &QTimer::timeout, this,
+          &MainWindowController::onContinuousRecordTimeout);
+
+  m_cleanupTimer = new QTimer(this);
+  m_cleanupTimer->setInterval(300000); // 5분마다 자동 삭제 체크
+  connect(m_cleanupTimer, &QTimer::timeout, this,
+          &MainWindowController::onCleanupTimeout);
+
+  m_continuousRecordTimer->start();
+  m_cleanupTimer->start();
+
+  // 설정값 변경 시그널 연결
+  if (m_ui.spinRecordInterval) {
+    connect(m_ui.spinRecordInterval,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            &MainWindowController::onContinuousSettingChanged);
+  }
 }
 
 void MainWindowController::startInitialCctv() {
@@ -411,6 +444,20 @@ void MainWindowController::shutdown() {
   qDebug() << shutdownLog;
   if (m_ui.logView) {
     m_ui.logView->append(shutdownLog);
+  }
+
+  // 상시 녹화 타이머 중지 및 버퍼 정리
+  if (m_continuousRecordTimer) {
+    m_continuousRecordTimer->stop();
+  }
+  if (m_cleanupTimer) {
+    m_cleanupTimer->stop();
+  }
+  for (int i = 0; i < 4; ++i) {
+    if (m_continuousBuffers[i]) {
+      delete m_continuousBuffers[i];
+      m_continuousBuffers[i] = nullptr;
+    }
   }
 }
 
@@ -1518,9 +1565,12 @@ void MainWindowController::onFrameCapturedThumb(
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
-  // 1. 오래된 프레임 무시 (실시간성 유지 및 부하 방지)
-  if ((nowMs - timestampMs) > 100) {
-    return;
+  // 1. 상시 녹화 버퍼에 추가 (활성화된 경우)
+  // UI 쓰로틀링(200ms) 이전에 수행하여 녹화 유실 방지
+  if (m_ui.chkContinuousEnable && m_ui.chkContinuousEnable->isChecked()) {
+    if (m_continuousBuffers[index]) {
+      m_continuousBuffers[index]->addFrame(framePtr);
+    }
   }
 
   // 2. 썸네일 업데이트 속도 제한 (약 5 FPS / 200ms 단위)
@@ -1529,6 +1579,11 @@ void MainWindowController::onFrameCapturedThumb(
     return;
   }
   m_renderTimerThumbs[index].restart();
+
+  // 3. 오래된 프레임 무시 (실시간성 유지)
+  if ((nowMs - timestampMs) > 100) {
+    return;
+  }
 
   // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage img(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
@@ -1891,6 +1946,88 @@ void MainWindowController::onMediaSaveFinished(bool success,
     m_recordPanelController->refreshLogTable();
   }
 }
+
+void MainWindowController::onContinuousRecordTimeout() {
+  if (!m_ui.chkContinuousEnable || !m_ui.chkContinuousEnable->isChecked())
+    return;
+
+  int intervalMin =
+      m_ui.spinRecordInterval ? m_ui.spinRecordInterval->value() : 1;
+  QString camId;
+
+  for (int i = 0; i < 4; ++i) {
+    if (!m_continuousBuffers[i])
+      continue;
+
+    // 5 FPS 기준 1분(60초) = 300프레임
+    auto frames = m_continuousBuffers[i]->getFrames(0, intervalMin * 60, 5);
+    if (frames.empty())
+      continue;
+
+    camId = QString("Ch %1").arg(i + 1);
+    QString timeStr = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    QString fileName = QString("continuous_%1_%2.mp4").arg(camId).arg(timeStr);
+    QString filePath = QDir(QCoreApplication::applicationDirPath())
+                           .filePath("records/videos/" + fileName);
+
+    QMetaObject::invokeMethod(
+        m_recorderWorker, "saveVideo",
+        Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
+        Q_ARG(QString, filePath), Q_ARG(int, 5), Q_ARG(QString, "CONTINUOUS"),
+        Q_ARG(QString, "상시녹화"), Q_ARG(QString, camId));
+  }
+}
+
+void MainWindowController::onCleanupTimeout() {
+  int retentionHours =
+      m_ui.spinRecordRetention ? m_ui.spinRecordRetention->value() : 1;
+  if (!m_mediaRepo)
+    return;
+
+  QString error;
+  auto oldRecords = m_mediaRepo->getOldMediaRecords(retentionHours, &error);
+
+  int deleteCount = 0;
+  for (const auto &record : oldRecords) {
+    // 상시녹화(CONTINUOUS) 타입만 자동 삭제 대상으로 지정
+    if (record["type"].toString() != "CONTINUOUS")
+      continue;
+
+    int id = record["id"].toInt();
+    QString path = record["file_path"].toString();
+
+    if (QFile::remove(path)) {
+      m_mediaRepo->deleteMediaRecord(id);
+      deleteCount++;
+    } else {
+      // 파일이 어떤 이유로 이미 없더라도 DB에서는 지워야 함 (Zombie 레코드
+      // 방지)
+      if (!QFile::exists(path)) {
+        m_mediaRepo->deleteMediaRecord(id);
+        deleteCount++;
+      }
+    }
+  }
+
+  if (deleteCount > 0) {
+    onLogMessage(QString("[Recorder] 상시녹화 오래된 파일 %1개 자동 정리 완료")
+                     .arg(deleteCount));
+    if (m_recordPanelController) {
+      m_recordPanelController->refreshLogTable();
+    }
+  }
+}
+
+void MainWindowController::onContinuousSettingChanged() {
+  if (m_continuousRecordTimer) {
+    int intervalMin =
+        m_ui.spinRecordInterval ? m_ui.spinRecordInterval->value() : 1;
+    m_continuousRecordTimer->setInterval(intervalMin * 60 * 1000);
+    onLogMessage(
+        QString("[Recorder] 상시녹화 간격 변경: %1분").arg(intervalMin));
+  }
+}
+
 VideoBufferManager *MainWindowController::getBufferByIndex(int index) const {
   switch (index) {
   case 0:

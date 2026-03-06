@@ -177,6 +177,12 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.videoSeekSlider = m_videoSeekSlider;
   uiRefs.videoTimeLabel = m_videoTimeLabel;
 
+  uiRefs.chkContinuousEnable = m_chkContinuousEnable;
+  uiRefs.spinRecordRetention = m_spinRecordRetention;
+  uiRefs.spinRecordInterval = m_spinRecordInterval;
+  uiRefs.lblContinuousStatus = m_lblContinuousStatus;
+  uiRefs.btnViewContinuous = m_btnViewContinuous;
+
   uiRefs.btnCaptureManual = m_btnCaptureManual;
   uiRefs.btnRecordManual = m_btnRecordManual;
 
@@ -403,8 +409,7 @@ void MainWindow::setupUi() {
       QString::fromUtf8("\xF0\x9F\xA7\xA0 RPi"),
       QString::fromUtf8("\xF0\x9F\x97\x84\xEF\xB8\x8F DB"),
       QString::fromUtf8("\xF0\x9F\x94\x8D ReID"),
-      QString::fromUtf8(
-          "\xF0\x9F\x93\xBD \xEB\x85\xB1\xED\x99\x94\xEC\xA1\xB0\xED\x9A\x8C")};
+      QString::fromUtf8("\xF0\x9F\x93\xBD REC")};
   const QList<int> menuIndices = {2, 3, 4, 5, 6};
 
   for (int i = 0; i < menuLabels.size(); ++i) {
@@ -1280,6 +1285,46 @@ void MainWindow::setupUi() {
   eventLayout->addWidget(m_btnTriggerEventRecord);
   eventLayout->addStretch();
   topControlArea->addWidget(eventGroup);
+
+  // [A-3] 상시 녹화 제어 (다 기능 - 과거 영상 보기)
+  QGroupBox *continuousGroup =
+      new QGroupBox(QString::fromUtf8("상시 녹화 제어"), this);
+  QHBoxLayout *continuousLayout = new QHBoxLayout(continuousGroup);
+
+  m_chkContinuousEnable = new QCheckBox(QString::fromUtf8("활성화"), this);
+  m_chkContinuousEnable->setChecked(true);
+  continuousLayout->addWidget(m_chkContinuousEnable);
+
+  continuousLayout->addWidget(new QLabel(QString::fromUtf8("보존(h):"), this));
+  m_spinRecordRetention = new QSpinBox(this);
+  m_spinRecordRetention->setRange(1, 24 * 7); // 최대 1주일
+  m_spinRecordRetention->setValue(1);
+  m_spinRecordRetention->setMinimumHeight(32);
+  continuousLayout->addWidget(m_spinRecordRetention);
+
+  continuousLayout->addWidget(new QLabel(QString::fromUtf8("간격(m):"), this));
+  m_spinRecordInterval = new QSpinBox(this);
+  m_spinRecordInterval->setRange(1, 60);
+  m_spinRecordInterval->setValue(1);
+  m_spinRecordInterval->setMinimumHeight(32);
+  continuousLayout->addWidget(m_spinRecordInterval);
+
+  m_lblContinuousStatus = new QLabel(QString::fromUtf8("녹화 중"), this);
+  m_lblContinuousStatus->setStyleSheet(
+      "color: #10b981; font-weight: bold; margin-left: 8px;");
+  continuousLayout->addWidget(m_lblContinuousStatus);
+
+  continuousLayout->addSpacing(16);
+
+  m_btnViewContinuous = new QPushButton(QString::fromUtf8("▶ 상시영상"), this);
+  m_btnViewContinuous->setMinimumHeight(32);
+  m_btnViewContinuous->setStyleSheet(
+      "background: #10b981; color: white; border-radius: 4px; font-weight: "
+      "bold; padding: 0 16px;");
+  continuousLayout->addWidget(m_btnViewContinuous);
+
+  continuousLayout->addStretch();
+  topControlArea->addWidget(continuousGroup);
 
   recordLayout->addLayout(topControlArea);
 

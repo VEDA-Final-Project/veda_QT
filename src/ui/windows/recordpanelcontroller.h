@@ -4,6 +4,7 @@
 #include "database/mediarepository.h"
 #include "ui/video/videowidget.h"
 #include "video/videothread.h"
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFileInfo>
 #include <QImage>
@@ -46,6 +47,20 @@ public:
     QPushButton *btnVideoStop = nullptr;
     QSlider *videoSeekSlider = nullptr;
     QLabel *videoTimeLabel = nullptr;
+
+    // Continuous Recording (상시 녹화)
+    QCheckBox *chkContinuousEnable = nullptr;
+    QSpinBox *spinRecordRetention = nullptr;
+    QSpinBox *spinRecordInterval = nullptr;
+    QLabel *lblContinuousStatus = nullptr;
+    QPushButton *btnViewContinuous = nullptr;
+  };
+
+  struct VideoSegment {
+    QString filePath;
+    int frameCount;
+    // 글로벌 프레임 기준 시작 인덱스
+    int startGlobalFrame;
   };
 
   explicit RecordPanelController(const UiRefs &uiRefs, MediaRepository *repo,
@@ -67,6 +82,7 @@ public slots:
   void onTriggerEventRecord();
   void setStatusText(const QString &text);
   void updateLiveFrame(const QImage &frame);
+  void onViewContinuousClicked();
 
 private slots:
   void onPlayTimerTimeout();
@@ -95,8 +111,13 @@ private:
   void startLivePreview(const QString &rtspUrl);
   void stopLivePreview();
   VideoBufferManager *currentBuffer() const;
+  bool openVideoChunk(int chunkIdx, int startFrame = 0);
+  void updateContinuousSeekSlider();
 
   bool m_hasMediaLoaded = false;
+  bool m_isContinuousMode = false;
+  QVector<VideoSegment> m_continuousSegments;
+  int m_currentChunkIdx = -1;
 
   // 독립 RTSP 미리보기 스레드
   VideoThread *m_liveThread = nullptr;
