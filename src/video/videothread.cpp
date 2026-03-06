@@ -44,6 +44,11 @@ void VideoThread::stop() {
   m_stop = true;
 }
 
+double VideoThread::getActualFps() const {
+  QMutexLocker locker(&m_mutex);
+  return m_actualFps;
+}
+
 /**
  * @brief 비디오 수신 메인 루프
  * - RTSP 스트림 연결
@@ -80,6 +85,11 @@ void VideoThread::run() {
   }
 
   const double sourceFps = m_cap.get(cv::CAP_PROP_FPS);
+  {
+    QMutexLocker locker(&m_mutex);
+    if (sourceFps > 0)
+      m_actualFps = sourceFps;
+  }
   qDebug() << "[Video] RTSP Source Native FPS for" << url << ":" << sourceFps;
 
   qint64 frameCount = 0;
@@ -158,8 +168,8 @@ void VideoThread::run() {
     }
 
     // === BGR→RGB 변환 + 독립 복사본 생성 (워커 스레드에서 수행) ===
-    // 이전에는 clone()만 하고 메인 스레드에서 cvtColor를 호출했으나,
-    // 이제 워커 스레드에서 변환까지 완료하여 메인 스레드 부하를 제거합니다.
+    // 메인 UI 표시 및 OCR 처리가 RGB를 기준으로 하므로 여기서 변환을
+    // 수행합니다.
     cv::Mat rgbFrame;
     cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
     auto sharedFrame = QSharedPointer<cv::Mat>::create(std::move(rgbFrame));

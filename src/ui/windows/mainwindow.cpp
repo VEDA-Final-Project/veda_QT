@@ -25,6 +25,7 @@
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QScrollArea>
+#include <QSlider>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QToolButton>
@@ -156,6 +157,29 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.zoneTable = m_zoneTable;
   uiRefs.btnRefreshZone = m_btnRefreshZone;
   uiRefs.eventListWidget = m_eventListWidget;
+
+  uiRefs.recordLogTable = m_recordLogTable;
+  uiRefs.btnRefreshRecordLogs = m_btnRefreshRecordLogs;
+  uiRefs.btnDeleteRecordLog = m_btnDeleteRecordLog;
+  uiRefs.recordVideoWidget = m_recordVideoWidget;
+  uiRefs.recordEventTypeInput = m_recordEventTypeInput;
+  uiRefs.recordPreSecSpin = m_recordPreSecSpin;
+  uiRefs.recordPostSecSpin = m_recordPostSecSpin;
+  uiRefs.btnTriggerEventRecord = m_btnTriggerEventRecord;
+  uiRefs.recordStatusLabel = m_recordStatusLabel;
+  uiRefs.recordPreviewPathLabel = m_recordPreviewPathLabel;
+  uiRefs.cmbManualCamera = m_cmbManualCamera;
+  uiRefs.btnCaptureRecordTab = m_btnCaptureRecordTab;
+  uiRefs.btnRecordRecordTab = m_btnRecordRecordTab;
+  uiRefs.btnVideoPlay = m_btnVideoPlay;
+  uiRefs.btnVideoPause = m_btnVideoPause;
+  uiRefs.btnVideoStop = m_btnVideoStop;
+  uiRefs.videoSeekSlider = m_videoSeekSlider;
+  uiRefs.videoTimeLabel = m_videoTimeLabel;
+
+  uiRefs.btnCaptureManual = m_btnCaptureManual;
+  uiRefs.btnRecordManual = m_btnRecordManual;
+
   return uiRefs;
 }
 
@@ -378,8 +402,10 @@ void MainWindow::setupUi() {
                         "\xED\x85\x94\xEB\xA0\x88\xEA\xB7\xB8\xEB\x9E\xA8"),
       QString::fromUtf8("\xF0\x9F\xA7\xA0 RPi"),
       QString::fromUtf8("\xF0\x9F\x97\x84\xEF\xB8\x8F DB"),
-      QString::fromUtf8("\xF0\x9F\x94\x8D ReID")};
-  const QList<int> menuIndices = {2, 3, 4, 5};
+      QString::fromUtf8("\xF0\x9F\x94\x8D ReID"),
+      QString::fromUtf8(
+          "\xF0\x9F\x93\xBD \xEB\x85\xB1\xED\x99\x94\xEC\xA1\xB0\xED\x9A\x8C")};
+  const QList<int> menuIndices = {2, 3, 4, 5, 6};
 
   for (int i = 0; i < menuLabels.size(); ++i) {
     QAction *action = m_navMenu->addAction(menuLabels[i]);
@@ -662,6 +688,19 @@ void MainWindow::setupUi() {
   m_lblAvgFps = new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
   channelPanelLayout->addWidget(m_chkShowFps);
   channelPanelLayout->addWidget(m_lblAvgFps);
+  channelPanelLayout->addSpacing(12);
+
+  // ── 미디어 제어 ──
+  QLabel *mediaTitle = new QLabel(QString::fromUtf8("MEDIA"), this);
+  mediaTitle->setObjectName("panelTitle");
+  channelPanelLayout->addWidget(mediaTitle);
+  channelPanelLayout->addSpacing(4);
+
+  m_btnCaptureManual = new QPushButton(QString::fromUtf8("이미지 캡처"), this);
+  m_btnRecordManual = new QPushButton(QString::fromUtf8("영상 녹화"), this);
+  m_btnRecordManual->setCheckable(true); // 토글 버튼으로 사용
+  channelPanelLayout->addWidget(m_btnCaptureManual);
+  channelPanelLayout->addWidget(m_btnRecordManual);
 
   channelPanelLayout->addStretch();
   channelScrollArea->setWidget(channelPanel);
@@ -1161,12 +1200,219 @@ void MainWindow::setupUi() {
   settingsGroup->setLayout(settingsLayout);
   reidLayout->addWidget(settingsGroup);
 
+  // ======================
+  // Tab 6: 녹화 조회 (Recording Search)
+  // ======================
+  QWidget *recordTab = new QWidget(this);
+  QVBoxLayout *recordLayout = new QVBoxLayout(recordTab);
+  recordLayout->setSpacing(8);
+
+  // ── Section A: 수동 제어 + 이벤트 구간 저장 (상단) ──────────
+  QHBoxLayout *topControlArea = new QHBoxLayout();
+
+  // [A-1] 수동 캡처/녹화 (가, 나 기능)
+  QGroupBox *manualGroup =
+      new QGroupBox(QString::fromUtf8("수동 캡처 / 녹화 제어"), this);
+  QHBoxLayout *manualLayout = new QHBoxLayout(manualGroup);
+
+  m_cmbManualCamera = new QComboBox(this);
+  m_cmbManualCamera->addItem(QStringLiteral("Ch1"), 0);
+  m_cmbManualCamera->addItem(QStringLiteral("Ch2"), 1);
+  m_cmbManualCamera->addItem(QStringLiteral("Ch3"), 2);
+  m_cmbManualCamera->addItem(QStringLiteral("Ch4"), 3);
+
+  m_btnCaptureRecordTab =
+      new QPushButton(QString::fromUtf8("📸 즉시 캡처"), this);
+  m_btnRecordRecordTab =
+      new QPushButton(QString::fromUtf8("⏺ 녹화 시작"), this);
+
+  m_btnCaptureRecordTab->setMinimumHeight(32);
+  m_btnRecordRecordTab->setMinimumHeight(32);
+  m_cmbManualCamera->setMinimumHeight(32);
+  m_btnRecordRecordTab->setCheckable(true);
+
+  m_recordStatusLabel = new QLabel(QString::fromUtf8("대기 중"), this);
+  m_recordStatusLabel->setStyleSheet(
+      "font-weight: bold; padding: 4px; border-radius: 4px; "
+      "background: rgba(255,255,255,0.05);");
+
+  manualLayout->addWidget(m_cmbManualCamera);
+  manualLayout->addWidget(m_btnCaptureRecordTab);
+  manualLayout->addWidget(m_btnRecordRecordTab);
+  manualLayout->addWidget(m_recordStatusLabel);
+  manualLayout->addStretch();
+  topControlArea->addWidget(manualGroup);
+
+  // [A-2] 이벤트 구간 녹화 테스트 (나 기능 - 전후 N초)
+  QGroupBox *eventGroup =
+      new QGroupBox(QString::fromUtf8("이벤트 구간 저장 테스트"), this);
+  QHBoxLayout *eventLayout = new QHBoxLayout(eventGroup);
+
+  // 이벤트 설명 (사용하지 않음, 컨트롤러 오류 방지를 위해 생성 후 숨김)
+  m_recordEventTypeInput = new QLineEdit(this);
+  m_recordEventTypeInput->hide();
+
+  eventLayout->addWidget(new QLabel(QString::fromUtf8("이전(초):"), this));
+  m_recordPreSecSpin = new QSpinBox(this);
+  m_recordPreSecSpin->setRange(0, 30);
+  m_recordPreSecSpin->setValue(5);
+  m_recordPreSecSpin->setMinimumHeight(32);
+  eventLayout->addWidget(m_recordPreSecSpin);
+
+  eventLayout->addSpacing(8);
+
+  eventLayout->addWidget(new QLabel(QString::fromUtf8("이후(초):"), this));
+  m_recordPostSecSpin = new QSpinBox(this);
+  m_recordPostSecSpin->setRange(0, 30);
+  m_recordPostSecSpin->setValue(5);
+  m_recordPostSecSpin->setMinimumHeight(32);
+  eventLayout->addWidget(m_recordPostSecSpin);
+
+  eventLayout->addSpacing(8);
+
+  m_btnTriggerEventRecord =
+      new QPushButton(QString::fromUtf8("▶ 저장 실행"), this);
+  m_btnTriggerEventRecord->setMinimumHeight(32);
+  m_btnTriggerEventRecord->setStyleSheet(
+      "background: #2563eb; color: white; border-radius: 4px; font-weight: "
+      "bold;");
+
+  eventLayout->addWidget(m_btnTriggerEventRecord);
+  eventLayout->addStretch();
+  topControlArea->addWidget(eventGroup);
+
+  recordLayout->addLayout(topControlArea);
+
+  // ── Section B: 파일 목록 + 미리보기 (하단, 스플리터) ───────
+  QHBoxLayout *recordToolBar = new QHBoxLayout();
+  m_btnRefreshRecordLogs =
+      new QPushButton(QString::fromUtf8("🔄 새로고침"), this);
+  m_btnDeleteRecordLog =
+      new QPushButton(QString::fromUtf8("🗑 선택 삭제"), this);
+  QLabel *tableTitle =
+      new QLabel(QString::fromUtf8("저장된 미디어 목록 (라 - CRUD)"), this);
+  tableTitle->setStyleSheet("font-weight: bold; font-size: 13px;");
+  recordToolBar->addWidget(tableTitle);
+  recordToolBar->addStretch();
+  recordToolBar->addWidget(m_btnRefreshRecordLogs);
+  recordToolBar->addWidget(m_btnDeleteRecordLog);
+  recordLayout->addLayout(recordToolBar);
+
+  QSplitter *recordSplitter = new QSplitter(Qt::Horizontal, this);
+  recordSplitter->setHandleWidth(4);
+  recordSplitter->setChildrenCollapsible(false);
+
+  // 기록 목록 테이블 패널
+  QWidget *listPanel = new QWidget(this);
+  QVBoxLayout *listLayout = new QVBoxLayout(listPanel);
+  listLayout->setContentsMargins(0, 0, 0, 0);
+  listLayout->setSpacing(4);
+
+  m_recordLogTable = new QTableWidget(this);
+  m_recordLogTable->setColumnCount(6);
+  m_recordLogTable->setHorizontalHeaderLabels(
+      QStringList() << QString::fromUtf8("ID") << QString::fromUtf8("유형")
+                    << QString::fromUtf8("설명") << QString::fromUtf8("카메라")
+                    << QString::fromUtf8("시간") << QString::fromUtf8("경로"));
+  m_recordLogTable->horizontalHeader()->setSectionResizeMode(
+      QHeaderView::Stretch);
+  m_recordLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_recordLogTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_recordLogTable->setAlternatingRowColors(true);
+
+  listLayout->addWidget(m_recordLogTable, 1);
+
+  m_recordPreviewPathLabel =
+      new QLabel(QString::fromUtf8("선택된 파일: 없음"), this);
+  m_recordPreviewPathLabel->setWordWrap(true);
+  m_recordPreviewPathLabel->setStyleSheet(
+      "font-size: 11px; padding: 4px; background: rgba(255,255,255,0.04); "
+      "border-radius: 4px; color: #94A3B8;");
+
+  listLayout->addWidget(m_recordPreviewPathLabel);
+
+  recordSplitter->addWidget(listPanel);
+
+  // 미리보기 영역
+  QWidget *previewPanel = new QWidget(this);
+  QVBoxLayout *previewLayout = new QVBoxLayout(previewPanel);
+  QLabel *previewTitle =
+      new QLabel(QString::fromUtf8("미리보기 (다 - 과거 영상 보기)"), this);
+  previewTitle->setStyleSheet("font-weight: bold; font-size: 13px;");
+  previewLayout->addWidget(previewTitle);
+
+  m_recordVideoWidget = new VideoWidget(this);
+  m_recordVideoWidget->setMinimumWidth(320);
+  m_recordVideoWidget->setMinimumHeight(200);
+  previewLayout->addWidget(m_recordVideoWidget, 1);
+
+  // ── 비디오 컨트롤 바 ──────────────────────────────
+  QWidget *controlBarWidget = new QWidget(this);
+  controlBarWidget->setStyleSheet(
+      "QWidget { background: #1A2236; border-radius: 6px; padding: 2px; }");
+  QVBoxLayout *controlBarLayout = new QVBoxLayout(controlBarWidget);
+  controlBarLayout->setContentsMargins(6, 4, 6, 4);
+  controlBarLayout->setSpacing(4);
+
+  // 시크바
+  m_videoSeekSlider = new QSlider(Qt::Horizontal, this);
+  m_videoSeekSlider->setRange(0, 1000);
+  m_videoSeekSlider->setValue(0);
+  m_videoSeekSlider->setEnabled(false);
+  m_videoSeekSlider->setStyleSheet(
+      "QSlider::groove:horizontal { background: #334155; height: 6px; "
+      "border-radius: 3px; }"
+      "QSlider::handle:horizontal { background: #3B82F6; width: 14px; "
+      "height: 14px; margin: -4px 0; border-radius: 7px; }"
+      "QSlider::sub-page:horizontal { background: #3B82F6; "
+      "border-radius: 3px; }");
+  controlBarLayout->addWidget(m_videoSeekSlider);
+
+  // 버튼 행
+  QHBoxLayout *btnRow = new QHBoxLayout();
+  btnRow->setSpacing(6);
+
+  m_btnVideoPlay = new QPushButton(QString::fromUtf8("▶ 재생"), this);
+  m_btnVideoPause = new QPushButton(QString::fromUtf8("⏸ 일시정지"), this);
+  m_btnVideoStop = new QPushButton(QString::fromUtf8("⏹ 정지"), this);
+  m_videoTimeLabel = new QLabel(QString::fromUtf8("00:00 / 00:00"), this);
+
+  QString playerBtnStyle =
+      "QPushButton { background: #334155; color: #CBD5E1; border: none; "
+      "border-radius: 4px; padding: 5px 10px; font-size: 12px; min-width: "
+      "70px; }"
+      "QPushButton:hover { background: #3B82F6; color: white; }"
+      "QPushButton:disabled { background: #1E293B; color: #475569; }";
+  m_btnVideoPlay->setStyleSheet(playerBtnStyle);
+  m_btnVideoPause->setStyleSheet(playerBtnStyle);
+  m_btnVideoStop->setStyleSheet(playerBtnStyle);
+  m_btnVideoPlay->setEnabled(false);
+  m_btnVideoPause->setEnabled(false);
+  m_btnVideoStop->setEnabled(false);
+  m_videoTimeLabel->setStyleSheet(
+      "color: #94A3B8; font-size: 12px; padding-left: 6px;");
+
+  btnRow->addWidget(m_btnVideoPlay);
+  btnRow->addWidget(m_btnVideoPause);
+  btnRow->addWidget(m_btnVideoStop);
+  btnRow->addStretch();
+  btnRow->addWidget(m_videoTimeLabel);
+  controlBarLayout->addLayout(btnRow);
+
+  previewLayout->addWidget(controlBarWidget);
+
+  recordSplitter->addWidget(previewPanel);
+  recordSplitter->setStretchFactor(0, 1);
+  recordSplitter->setStretchFactor(1, 2);
+  recordLayout->addWidget(recordSplitter, 1);
+
   stackedWidget->addWidget(splashTab);
   stackedWidget->addWidget(cctvTab);
   stackedWidget->addWidget(telegramTab);
   stackedWidget->addWidget(rpiTab);
   stackedWidget->addWidget(parkingDbTab);
   stackedWidget->addWidget(reidTab);
+  stackedWidget->addWidget(recordTab);
   stackedWidget->setCurrentIndex(kSplashPageIndex);
 
   // 상위 레이아웃 구성

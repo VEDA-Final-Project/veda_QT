@@ -13,7 +13,6 @@
     "profile": "profile7/media.smp",
     "subProfile": "profile4/media.smp"
   },
-
   "video": {
     "sourceWidth": 3840,
     "sourceHeight": 2160,
@@ -23,8 +22,8 @@
     "offsetX": 0
   },
   "ocr": {
-    "modelPath": "C:/Users/1-22/Downloads/rec.onnx",
-    "dictPath": "C:/Users/1-22/Downloads/dict.txt",
+    "modelPath": "C:/Users/1-06/Downloads/rec.onnx",
+    "dictPath": "C:/Users/1-06/Downloads/dict.txt",
     "inputWidth": 320,
     "inputHeight": 48
   },

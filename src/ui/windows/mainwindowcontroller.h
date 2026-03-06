@@ -19,6 +19,11 @@
 
 class RpiPanelController;
 class DbPanelController;
+class RecordPanelController;
+class MediaRepository;
+class VideoBufferManager;
+class MediaRecorderWorker;
+class QThread;
 
 class MainWindowController : public QObject {
   Q_OBJECT
@@ -63,6 +68,11 @@ public slots:
   void onFrameCapturedThumb(int index, QSharedPointer<cv::Mat> framePtr,
                             qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
+  void onCaptureManual();
+  void onRecordManualToggled(bool checked);
+  void onMediaSaveFinished(bool success, const QString &filePath,
+                           const QString &type, const QString &description,
+                           const QString &cameraId);
 
   // Telegram Slots
   void onSendEntry();
@@ -105,6 +115,20 @@ private:
   TelegramBotAPI *m_telegramApi = nullptr;
   RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
+  RecordPanelController *m_recordPanelController = nullptr;
+  MediaRepository *m_mediaRepo = nullptr;
+  VideoBufferManager *m_primaryBuffer = nullptr;
+  VideoBufferManager *m_secondaryBuffer = nullptr;
+  VideoBufferManager *m_buffer3 = nullptr;
+  VideoBufferManager *m_buffer4 = nullptr;
+
+  VideoBufferManager *getBufferByIndex(int index) const;
+
+  MediaRecorderWorker *m_recorderWorker = nullptr;
+  QThread *m_recorderThread = nullptr;
+  bool m_isManualRecording = false;
+  QString m_currentManualRecordPath;
+
   CameraSessionService m_cameraSessionPrimary;
   CameraSessionService m_cameraSessionSecondary;
   CameraManager *m_thumbManagers[4] = {nullptr, nullptr, nullptr, nullptr};

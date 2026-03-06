@@ -2,9 +2,13 @@
 
 #include "config/config.h"
 #include "database/databasecontext.h"
+#include "database/mediarepository.h"
 #include "dbpanelcontroller.h"
+#include "recordpanelcontroller.h"
 #include "rpipanelcontroller.h"
 #include "ui/video/videowidget.h"
+#include "video/mediarecorderworker.h"
+#include "video/videobuffermanager.h"
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -24,6 +28,7 @@
 #include <QStringList>
 #include <QStyle>
 #include <QTableWidget> // User Table
+#include <QThread>
 #include <QTimer>
 #include <algorithm>
 
@@ -146,6 +151,119 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+
+  // 4. 녹화 조회 컨트롤러 초기화
+  m_mediaRepo = new MediaRepository();
+  m_mediaRepo->init();
+
+  RecordPanelController::UiRefs recordUiRefs;
+  recordUiRefs.recordLogTable = m_ui.recordLogTable;
+  recordUiRefs.btnRefreshRecordLogs = m_ui.btnRefreshRecordLogs;
+  recordUiRefs.btnDeleteRecordLog = m_ui.btnDeleteRecordLog;
+  recordUiRefs.recordVideoWidget = m_ui.recordVideoWidget;
+  recordUiRefs.recordEventTypeInput = m_ui.recordEventTypeInput;
+  recordUiRefs.recordPreSecSpin = m_ui.recordPreSecSpin;
+  recordUiRefs.recordPostSecSpin = m_ui.recordPostSecSpin;
+  recordUiRefs.btnTriggerEventRecord = m_ui.btnTriggerEventRecord;
+  recordUiRefs.recordStatusLabel = m_ui.recordStatusLabel;
+  recordUiRefs.recordPreviewPathLabel = m_ui.recordPreviewPathLabel;
+  // 플레이어 컨트롤 연결
+  recordUiRefs.btnVideoPlay = m_ui.btnVideoPlay;
+  recordUiRefs.btnVideoPause = m_ui.btnVideoPause;
+  recordUiRefs.btnVideoStop = m_ui.btnVideoStop;
+  recordUiRefs.videoSeekSlider = m_ui.videoSeekSlider;
+  recordUiRefs.videoTimeLabel = m_ui.videoTimeLabel;
+  recordUiRefs.cmbManualCamera = m_ui.cmbManualCamera;
+
+  m_recordPanelController =
+      new RecordPanelController(recordUiRefs, m_mediaRepo, this);
+  m_recordPanelController->connectSignals();
+  m_recordPanelController->refreshLogTable();
+  // Ch1~Ch4에 대응하는 카메라 키 전달 (RTSP 독립 미리보기용)
+  m_recordPanelController->setChannelKeys(
+      QStringList{QStringLiteral("camera"), QStringLiteral("camera2"),
+                  QStringLiteral("camera3"), QStringLiteral("camera4")});
+  // 5. 녹화 시스템 초기화 (setVideoBuffers 전에 생성해야 함)
+  // 버퍼 크기를 600으로 확장 (15fps 기준 약 40초 분량 저장 가능)
+  m_primaryBuffer = new VideoBufferManager(600, this);
+  m_secondaryBuffer = new VideoBufferManager(600, this);
+  m_buffer3 = new VideoBufferManager(600, this);
+  m_buffer4 = new VideoBufferManager(600, this);
+
+  // 캡처/녹화용 버퍼 연결 (미리보기 스트림 프레임 → 버퍼 동시 누적)
+  m_recordPanelController->setVideoBuffers(m_primaryBuffer, m_secondaryBuffer,
+                                           m_buffer3, m_buffer4);
+
+  // 이벤트 구간 저장: RecordPanel -> MainWindowController 연결
+  // 클릭 시점 기준으로 '과거(preSec) + 미래(postSec)' 프레임을 모두 포함하기
+  // 위해 postSec만큼 기다린 후 버퍼에서 프레임을 추출하여 저장합니다.
+  connect(m_recordPanelController, &RecordPanelController::eventRecordRequested,
+          this, [this](const QString &desc, int preSec, int postSec) {
+            onLogMessage(
+                QString("[Recorder] 이벤트 감지: %1초 후 저장을 시작합니다...")
+                    .arg(postSec));
+
+            // postSec (미래 프레임)이 쌓일 때까지 대기
+            QTimer::singleShot(
+                postSec * 1000, this, [this, desc, preSec, postSec]() {
+                  int idx = m_ui.cmbManualCamera
+                                ? m_ui.cmbManualCamera->currentIndex()
+                                : 0;
+                  VideoBufferManager *targetBuffer = getBufferByIndex(idx);
+                  QString camId = QString("Ch %1").arg(idx + 1);
+
+                  if (!targetBuffer)
+                    return;
+
+                  // 실제 스트림 FPS 반영 (preSec + postSec 구간의 정확한 프레임
+                  // 스와핑을 위해)
+                  double actualFps = m_recordPanelController->getLiveFps();
+                  if (actualFps <= 0)
+                    actualFps = 15.0; // 세이프가드
+
+                  // 전체 구간(preSec + postSec)에 해당하는 프레임 추출
+                  auto frames = targetBuffer->getFrames(
+                      preSec, postSec, static_cast<int>(actualFps));
+                  if (frames.empty()) {
+                    onLogMessage(QString::fromUtf8(
+                        "[Recorder] 버퍼에 저장된 프레임이 없습니다."));
+                    return;
+                  }
+
+                  QString fileName =
+                      QString("event_%1.mp4")
+                          .arg(QDateTime::currentDateTime().toString(
+                              "yyyyMMdd_HHmmss"));
+                  QString filePath =
+                      QDir(QCoreApplication::applicationDirPath())
+                          .filePath("records/videos/" + fileName);
+
+                  QMetaObject::invokeMethod(
+                      m_recorderWorker, "saveVideo",
+                      Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
+                      Q_ARG(QString, filePath),
+                      Q_ARG(int, static_cast<int>(actualFps)),
+                      Q_ARG(QString, "VIDEO"), Q_ARG(QString, desc),
+                      Q_ARG(QString, camId));
+
+                  onLogMessage(QString("[Recorder] 이벤트 구간 저장 완료: %1 "
+                                       "(%2초 전 ~ %3초 후, FPS: %4)")
+                                   .arg(fileName)
+                                   .arg(preSec)
+                                   .arg(postSec)
+                                   .arg(actualFps));
+                });
+          });
+
+  m_recorderWorker = new MediaRecorderWorker();
+  m_recorderThread = new QThread(this);
+  m_recorderWorker->moveToThread(m_recorderThread);
+  connect(m_recorderThread, &QThread::finished, m_recorderWorker,
+          &QObject::deleteLater);
+  connect(m_recorderWorker, &MediaRecorderWorker::finished, this,
+          &MainWindowController::onMediaSaveFinished);
+  m_recorderThread->start();
+
   if (m_telegramApi) {
     connect(m_telegramApi, &TelegramBotAPI::usersUpdated, m_dbPanelController,
             &DbPanelController::refreshUserTable);
@@ -279,6 +397,14 @@ void MainWindowController::shutdown() {
     m_rpiPanelController->shutdown();
   }
 
+  // 백그라운드 워커 삭제
+  if (m_recorderThread) {
+    m_recorderThread->quit();
+    m_recorderThread->wait();
+    m_recorderThread = nullptr;
+    // m_recorderWorker는 QThread::finished 시그널에 deleteLater 연결됨
+  }
+
   const QString shutdownLog =
       QString("[Shutdown] camera/session stop finished in %1 ms")
           .arg(timer.elapsed());
@@ -406,6 +532,25 @@ void MainWindowController::connectSignals() {
   if (m_dbPanelController) {
     m_dbPanelController->connectSignals();
     m_dbPanelController->refreshAll();
+  }
+
+  // 수동 캡처/녹화 버튼 연결 (라이브 탭 + 녹화조회 탭 전용 버튼)
+  if (m_ui.btnCaptureManual) {
+    connect(m_ui.btnCaptureManual, &QPushButton::clicked, this,
+            &MainWindowController::onCaptureManual);
+  }
+  if (m_ui.btnCaptureRecordTab) {
+    connect(m_ui.btnCaptureRecordTab, &QPushButton::clicked, this,
+            &MainWindowController::onCaptureManual);
+  }
+
+  if (m_ui.btnRecordManual) {
+    connect(m_ui.btnRecordManual, &QPushButton::toggled, this,
+            &MainWindowController::onRecordManualToggled);
+  }
+  if (m_ui.btnRecordRecordTab) {
+    connect(m_ui.btnRecordRecordTab, &QPushButton::toggled, this,
+            &MainWindowController::onRecordManualToggled);
   }
 }
 
@@ -1221,6 +1366,21 @@ void MainWindowController::onFrameCapturedPrimary(
     return;
   }
 
+  // 링 버퍼에 프레임 추가 (해당 카메라 키에 맞는 버퍼에 분기 저장)
+  if (m_selectedCameraKeyPrimary == QStringLiteral("camera")) {
+    if (m_primaryBuffer)
+      m_primaryBuffer->addFrame(framePtr);
+  } else if (m_selectedCameraKeyPrimary == QStringLiteral("camera2")) {
+    if (m_secondaryBuffer)
+      m_secondaryBuffer->addFrame(framePtr);
+  } else if (m_selectedCameraKeyPrimary == QStringLiteral("camera3")) {
+    if (m_buffer3)
+      m_buffer3->addFrame(framePtr);
+  } else if (m_selectedCameraKeyPrimary == QStringLiteral("camera4")) {
+    if (m_buffer4)
+      m_buffer4->addFrame(framePtr);
+  }
+
   // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
@@ -1244,6 +1404,9 @@ void MainWindowController::onFrameCapturedPrimary(
     m_primaryVideoReadyNotified = true;
     emit primaryVideoReady();
   }
+
+  // 록조회 탭의 미리보기는 RecordPanelController 내부의 독립 RTSP 스레드가
+  // 처리합니다. (Redundant 차단)
 
   // === 썸네일 레이블 재사용 (디코딩 중복 방지 대응) ===
   if (m_selectedChannelIndex >= 0 && m_selectedChannelIndex < 4 &&
@@ -1274,6 +1437,21 @@ void MainWindowController::onFrameCapturedSecondary(
   if ((nowMs - timestampMs) > 60) {
     return;
   }
+  // 링 버퍼에 프레임 추가 (해당 카메라 키에 맞는 버퍼에 분기 저장)
+  if (m_selectedCameraKeySecondary == QStringLiteral("camera2")) {
+    if (m_secondaryBuffer)
+      m_secondaryBuffer->addFrame(framePtr);
+  } else if (m_selectedCameraKeySecondary == QStringLiteral("camera")) {
+    if (m_primaryBuffer)
+      m_primaryBuffer->addFrame(framePtr);
+  } else if (m_selectedCameraKeySecondary == QStringLiteral("camera3")) {
+    if (m_buffer3)
+      m_buffer3->addFrame(framePtr);
+  } else if (m_selectedCameraKeySecondary == QStringLiteral("camera4")) {
+    if (m_buffer4)
+      m_buffer4->addFrame(framePtr);
+  }
+
   // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
@@ -1289,6 +1467,9 @@ void MainWindowController::onFrameCapturedSecondary(
   m_renderTimerSecondary.restart();
 
   m_ui.videoWidgetSecondary->updateFrame(qimg);
+
+  // 록조회 탭의 미리보기는 RecordPanelController 내부의 독립 RTSP 스레드가
+  // 처리합니다.
 }
 
 void MainWindowController::onOcrFrameCapturedPrimary(
@@ -1550,4 +1731,177 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
   box->setAttribute(Qt::WA_DeleteOnClose);
   box->setWindowModality(Qt::NonModal);
   box->show();
+}
+
+void MainWindowController::onCaptureManual() {
+  int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+  VideoBufferManager *targetBuffer = getBufferByIndex(idx);
+  QString camId = QString("Ch %1").arg(idx + 1);
+
+  onLogMessage(QString("[Recorder] [%1] 수동 캐캐 요청...").arg(camId));
+
+  if (!targetBuffer) {
+    onLogMessage(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));
+    return;
+  }
+
+  auto frames = targetBuffer->getFrames();
+  onLogMessage(QString("[Recorder] [%1] 버퍼 프레임 수: %2")
+                   .arg(camId)
+                   .arg(frames.size()));
+
+  if (frames.empty()) {
+    onLogMessage(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 "
+                         "실행 중인지 확인하세요.")
+                     .arg(camId));
+    return;
+  }
+
+  QString fileName =
+      QString("capture_%1.jpg")
+          .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+  QString filePath = QDir(QCoreApplication::applicationDirPath())
+                         .filePath("records/images/" + fileName);
+
+  QMetaObject::invokeMethod(m_recorderWorker, "saveImage",
+                            Q_ARG(QSharedPointer<cv::Mat>, frames.back()),
+                            Q_ARG(QString, filePath), Q_ARG(QString, "IMAGE"),
+                            Q_ARG(QString, "Manual Capture"),
+                            Q_ARG(QString, camId));
+
+  onLogMessage(
+      QString("[Recorder] [%1] 캐캐 저장 코: %2").arg(camId, fileName));
+}
+
+void MainWindowController::onRecordManualToggled(bool checked) {
+  // 라이브 뷰의 버튼과 녹화조회 탭의 버튼 상태를 동기화
+  if (m_ui.btnRecordManual && m_ui.btnRecordManual->isChecked() != checked) {
+    QSignalBlocker blocker(m_ui.btnRecordManual);
+    m_ui.btnRecordManual->setChecked(checked);
+  }
+  if (m_ui.btnRecordRecordTab &&
+      m_ui.btnRecordRecordTab->isChecked() != checked) {
+    QSignalBlocker blocker(m_ui.btnRecordRecordTab);
+    m_ui.btnRecordRecordTab->setChecked(checked);
+  }
+
+  auto updateButtonStyle = [&](QPushButton *btn, bool isRecording) {
+    if (!btn)
+      return;
+    if (isRecording) {
+      btn->setText("녹화 중지");
+      btn->setStyleSheet(
+          "background-color: #ff4d4d; color: white; "
+          "font-weight: bold; border-radius: 4px; padding: 5px;");
+    } else {
+      btn->setText("수동 녹화");
+      btn->setStyleSheet(""); // 기본 스타일로 복구
+    }
+  };
+
+  updateButtonStyle(m_ui.btnRecordManual, checked);
+  updateButtonStyle(m_ui.btnRecordRecordTab, checked);
+
+  if (m_ui.recordStatusLabel) {
+    if (checked) {
+      m_ui.recordStatusLabel->setText("● 녹화 중...");
+      m_ui.recordStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    } else {
+      m_ui.recordStatusLabel->setText("대기 중");
+      m_ui.recordStatusLabel->setStyleSheet("");
+    }
+  }
+
+  if (checked) {
+    m_isManualRecording = true;
+    // 카메라 ID 미리 특정
+    int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+    QString camId = QString("Ch %1").arg(idx + 1);
+    VideoBufferManager *buf = getBufferByIndex(idx);
+    int bufSize = buf ? (int)buf->getFrames().size() : -1;
+    onLogMessage(
+        QString("[Recorder] [%1] 수동 녹화 시작 (현재 버퍼: %2 프레임)")
+            .arg(camId)
+            .arg(bufSize));
+  } else {
+    int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+    VideoBufferManager *targetBuffer = getBufferByIndex(idx);
+    QString camId = QString("Ch %1").arg(idx + 1);
+
+    onLogMessage(
+        QString("[Recorder] [%1] 녹화 중지 요청 - 저장 중...").arg(camId));
+
+    if (!targetBuffer) {
+      onLogMessage(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));
+      m_isManualRecording = false;
+      return;
+    }
+    m_isManualRecording = false;
+
+    auto frames = targetBuffer->getFrames();
+    onLogMessage(QString("[Recorder] [%1] 버퍼 프레임 수: %2")
+                     .arg(camId)
+                     .arg(frames.size()));
+
+    if (frames.empty()) {
+      onLogMessage(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 "
+                           "실행 중인지 확인하세요.")
+                       .arg(camId));
+      return;
+    }
+
+    QString fileName =
+        QString("record_%1.mp4")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+    QString filePath = QDir(QCoreApplication::applicationDirPath())
+                           .filePath("records/videos/" + fileName);
+
+    QMetaObject::invokeMethod(
+        m_recorderWorker, "saveVideo",
+        Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
+        Q_ARG(QString, filePath), Q_ARG(int, 15), Q_ARG(QString, "VIDEO"),
+        Q_ARG(QString, "Manual Record"), Q_ARG(QString, camId));
+
+    onLogMessage(QString("[Recorder] [%1] 녹화 파일 저장 실행: %2")
+                     .arg(camId, fileName));
+  }
+}
+
+void MainWindowController::onMediaSaveFinished(bool success,
+                                               const QString &filePath,
+                                               const QString &type,
+                                               const QString &description,
+                                               const QString &cameraId) {
+  if (!success) {
+    onLogMessage(QString("[Recorder] 미디어 저장 실패: %1").arg(filePath));
+    return;
+  }
+
+  QString fileName = QFileInfo(filePath).fileName();
+
+  // 주 스레드에서 안전하게 DB 기록
+  if (m_mediaRepo) {
+    m_mediaRepo->addMediaRecord(type, description, cameraId, filePath);
+  }
+
+  onLogMessage(QString("[Recorder] 미디어 저장 완료: %1").arg(fileName));
+
+  // 목록 자동 갱신
+  if (m_recordPanelController) {
+    m_recordPanelController->refreshLogTable();
+  }
+}
+VideoBufferManager *MainWindowController::getBufferByIndex(int index) const {
+  switch (index) {
+  case 0:
+    return m_primaryBuffer;
+  case 1:
+    return m_secondaryBuffer;
+  case 2:
+    return m_buffer3;
+  case 3:
+    return m_buffer4;
+  default:
+    return nullptr;
+  }
 }
