@@ -1221,9 +1221,7 @@ void MainWindowController::onFrameCapturedPrimary(
     return;
   }
 
-  // OCR crop은 항상 원본 프레임 기준으로 생성되므로, UI 렌더링 스로틀과
-  // 분리해서 RGB 변환 및 메타데이터 동기화를 먼저 수행합니다.
-  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
 
@@ -1258,7 +1256,7 @@ void MainWindowController::onFrameCapturedPrimary(
       const QSize tSize = m_ui.thumbnailLabels[m_selectedChannelIndex]->size();
       QImage thumbImg =
           qimg.scaled(tSize, Qt::KeepAspectRatio, Qt::FastTransformation);
-      QPixmap pix = QPixmap::fromImage(thumbImg.copy());
+      QPixmap pix = QPixmap::fromImage(thumbImg);
       QMetaObject::invokeMethod(m_ui.thumbnailLabels[m_selectedChannelIndex],
                                 "setPixmap", Qt::QueuedConnection,
                                 Q_ARG(QPixmap, pix));
@@ -1276,7 +1274,7 @@ void MainWindowController::onFrameCapturedSecondary(
   if ((nowMs - timestampMs) > 60) {
     return;
   }
-  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
 
@@ -1306,7 +1304,7 @@ void MainWindowController::onOcrFrameCapturedPrimary(
     return;
   }
 
-  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
   m_ui.videoWidgetPrimary->dispatchOcrRequests(qimg);
@@ -1324,7 +1322,7 @@ void MainWindowController::onOcrFrameCapturedSecondary(
     return;
   }
 
-  cv::cvtColor(*framePtr, *framePtr, cv::COLOR_BGR2RGB);
+  // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
   m_ui.videoWidgetSecondary->dispatchOcrRequests(qimg);
@@ -1351,16 +1349,14 @@ void MainWindowController::onFrameCapturedThumb(
   }
   m_renderTimerThumbs[index].restart();
 
-  cv::Mat rgbFrame;
-  cv::cvtColor(*framePtr, rgbFrame, cv::COLOR_BGR2RGB);
-
-  QImage img(rgbFrame.data, rgbFrame.cols, rgbFrame.rows, rgbFrame.step,
+  // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
+  QImage img(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
              QImage::Format_RGB888);
 
   const QSize targetSize = m_ui.thumbnailLabels[index]->size();
   QImage scaledImg =
       img.scaled(targetSize, Qt::KeepAspectRatio, Qt::FastTransformation);
-  QPixmap pixmap = QPixmap::fromImage(scaledImg.copy());
+  QPixmap pixmap = QPixmap::fromImage(scaledImg);
 
   // UI 업데이트는 메인 스레드에서 수행해야 함
   QMetaObject::invokeMethod(m_ui.thumbnailLabels[index], "setPixmap",

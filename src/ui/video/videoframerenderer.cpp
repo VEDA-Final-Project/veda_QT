@@ -121,22 +121,19 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     return frame;
   }
 
-  // 1. OpenCV INTER_AREA 기반 빠른 고화질 축소
-  const QImage rgbFrame = frame.format() == QImage::Format_RGB888
-                              ? frame
-                              : frame.convertToFormat(QImage::Format_RGB888);
-  const cv::Mat srcMat(rgbFrame.height(), rgbFrame.width(), CV_8UC3,
-                       const_cast<uchar *>(rgbFrame.bits()),
-                       static_cast<size_t>(rgbFrame.bytesPerLine()));
-
+  // 1. Qt 네이티브 기반 고속 축소 (UI 스레드 병목 및 메모리 복사 제거)
   const QSize scaledSize = frame.size().scaled(targetSize, Qt::KeepAspectRatio);
-  cv::Mat dstMat;
-  cv::resize(srcMat, dstMat, cv::Size(scaledSize.width(), scaledSize.height()),
-             0, 0, cv::INTER_AREA);
+  QImage scaledFrame =
+      frame.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
 
-  QImage scaledFrame(dstMat.data, dstMat.cols, dstMat.rows,
-                     static_cast<int>(dstMat.step), QImage::Format_RGB888);
-  scaledFrame = scaledFrame.copy();
+  // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장 (대부분
+  // BGR888/RGB888이므로 변환 패스됨)
+  if (scaledFrame.format() != QImage::Format_RGB888 &&
+      scaledFrame.format() != QImage::Format_BGR888 &&
+      scaledFrame.format() != QImage::Format_RGB32 &&
+      scaledFrame.format() != QImage::Format_ARGB32_Premultiplied) {
+    scaledFrame = scaledFrame.convertToFormat(QImage::Format_RGB888);
+  }
 
   QPainter painter(&scaledFrame);
   QPen pen(Qt::green, 3);

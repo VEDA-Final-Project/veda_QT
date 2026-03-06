@@ -1,6 +1,7 @@
 #include "videothread.h"
 #include <QDateTime>
 #include <QDebug>
+#include <opencv2/imgproc.hpp>
 
 /**
  * @brief VideoThread 생성자
@@ -156,11 +157,12 @@ void VideoThread::run() {
       continue;
     }
 
-    // === Zero-Copy 전송: clone()으로 독립 데이터 확보 ===
-    // OpenCV의 frame 버퍼 재사용을 유지하면서, UI에 넘길 독립 복사본을
-    // 생성합니다. BGR → RGB 색상 변환은 UI 스레드에서 렌더링할 프레임에만
-    // 수행합니다. (불필요한 변환 방지)
-    auto sharedFrame = QSharedPointer<cv::Mat>::create(frame.clone());
+    // === BGR→RGB 변환 + 독립 복사본 생성 (워커 스레드에서 수행) ===
+    // 이전에는 clone()만 하고 메인 스레드에서 cvtColor를 호출했으나,
+    // 이제 워커 스레드에서 변환까지 완료하여 메인 스레드 부하를 제거합니다.
+    cv::Mat rgbFrame;
+    cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+    auto sharedFrame = QSharedPointer<cv::Mat>::create(std::move(rgbFrame));
 
     // === 프레임 전달 (UI 등 외부로) ===
     emit frameCaptured(sharedFrame, QDateTime::currentMSecsSinceEpoch());
