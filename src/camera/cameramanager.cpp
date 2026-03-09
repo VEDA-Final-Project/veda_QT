@@ -13,12 +13,12 @@ constexpr unsigned long kForceStopWaitMs = 500;
 CameraManager::CameraManager(QObject *parent)
     : QObject(parent), m_videoThread(nullptr), m_ocrVideoThread(nullptr),
       m_metadataThread(nullptr) {
-  createThreads();
+  createDisplayThread();
 }
 
 CameraManager::~CameraManager() { stop(); }
 
-void CameraManager::createThreads() {
+void CameraManager::createDisplayThread() {
   if (!m_videoThread) {
     m_videoThread = new VideoThread(this);
     connect(m_videoThread, &VideoThread::frameCaptured, this,
@@ -26,7 +26,9 @@ void CameraManager::createThreads() {
     connect(m_videoThread, &VideoThread::logMessage, this,
             &CameraManager::logMessage);
   }
+}
 
+void CameraManager::createAnalyticsThreads() {
   if (!m_ocrVideoThread) {
     m_ocrVideoThread = new VideoThread(this);
     connect(m_ocrVideoThread, &VideoThread::frameCaptured, this,
@@ -51,7 +53,7 @@ void CameraManager::setConnectionInfo(
 }
 
 void CameraManager::startDisplayPipeline() {
-  createThreads();
+  createDisplayThread();
 
   if (!m_connectionInfo.isValid()) {
     emit logMessage("Error: camera connection info is not configured.");
@@ -69,17 +71,10 @@ void CameraManager::startDisplayPipeline() {
 
   m_videoThread->setUrl(url);
   m_videoThread->start();
-
-  m_metadataThread->setConnectionInfo(
-      m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
-      m_connectionInfo.profile);
-  if (m_metadataThread && !m_metadataThread->isRunning()) {
-    m_metadataThread->start();
-  }
 }
 
 void CameraManager::startAnalyticsPipeline() {
-  createThreads();
+  createAnalyticsThreads();
 
   if (!m_connectionInfo.isValid()) {
     emit logMessage("Error: camera connection info is not configured.");
@@ -95,7 +90,7 @@ void CameraManager::startAnalyticsPipeline() {
 
   m_metadataThread->setConnectionInfo(
       m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
-      m_connectionInfo.profile);
+      ocrProfile);
   if (m_metadataThread && !m_metadataThread->isRunning()) {
     m_metadataThread->start();
   }
@@ -118,7 +113,7 @@ void CameraManager::startDisplayOnly() {
     return;
   }
 
-  createThreads();
+  createDisplayThread();
 
   if (!m_connectionInfo.isValid()) {
     emit logMessage("Error: camera connection info is not configured.");
@@ -186,13 +181,8 @@ void CameraManager::restartDisplayPipeline() {
     return;
   }
 
-  const bool shouldRestartAnalyticsMetadata =
-      m_metadataThread && m_metadataThread->isRunning();
-  createThreads();
+  createDisplayThread();
   stopThread(m_videoThread, QStringLiteral("display video thread"), false);
-  if (shouldRestartAnalyticsMetadata) {
-    stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
-  }
 
   const QString url =
       buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
@@ -205,16 +195,6 @@ void CameraManager::restartDisplayPipeline() {
 
   m_videoThread->setUrl(url);
   m_videoThread->start();
-
-  if (shouldRestartAnalyticsMetadata) {
-    createThreads();
-    m_metadataThread->setConnectionInfo(m_connectionInfo.ip,
-                                        m_connectionInfo.username,
-                                        m_connectionInfo.password,
-                                        m_connectionInfo.profile);
-    m_metadataThread->setDisabledTypes(m_disabledTypes);
-    m_metadataThread->start();
-  }
 }
 
 void CameraManager::stopThread(QThread *thread, const QString &name,

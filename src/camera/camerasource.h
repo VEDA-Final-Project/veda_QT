@@ -13,6 +13,7 @@
 #include <QSet>
 #include <QSize>
 #include <QStringList>
+#include <QTimer>
 
 class TelegramBotAPI;
 
@@ -20,6 +21,9 @@ class CameraSource : public QObject {
   Q_OBJECT
 
 public:
+  enum class Status { Stopped, Connecting, Live, Error };
+  Q_ENUM(Status)
+
   explicit CameraSource(const QString &cameraKey, int cardIndex,
                         QObject *parent = nullptr);
 
@@ -41,6 +45,8 @@ public:
   int cardIndex() const;
   QString displayProfile() const;
   QString ocrProfile() const;
+  Status status() const;
+  qint64 lastFrameTimestampMs() const;
   ParkingService *parkingService();
   const ParkingService *parkingService() const;
   RoiService *roiService();
@@ -56,6 +62,8 @@ signals:
   void roiDataChanged();
   void videoReady();
   void zoneStateChanged();
+  void statusChanged(int cardIndex, CameraSource::Status status,
+                     const QString &detail);
   void logMessage(const QString &msg);
 
 private slots:
@@ -63,6 +71,8 @@ private slots:
   void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void onOcrFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void onOcrResult(int objectId, const OcrFullResult &result);
+  void onHealthCheck();
+  void onReconnectTimeout();
 
 private:
   static QString bestProfileForSize(const QSize &size);
@@ -73,6 +83,11 @@ private:
   void updateDisplayProfileForConsumers();
   void updateAnalyticsState();
   void syncZoneOccupancyFromActiveVehicles();
+  void setStatus(Status status, const QString &detail = QString());
+  void scheduleReconnect(const QString &reason);
+  void clearReconnect();
+  void startDisplayStream(bool forceRestart, bool reloadConfig,
+                          const QString &reason);
 
   CameraManager *m_cameraManager = nullptr;
   PlateOcrCoordinator *m_ocrCoordinator = nullptr;
@@ -92,11 +107,19 @@ private:
   QSet<QString> m_disabledTypes;
   bool m_initialized = false;
   bool m_videoReadyNotified = false;
+  bool m_shouldRun = false;
+  Status m_status = Status::Stopped;
+  QString m_statusDetail;
+  qint64 m_lastFrameTimestampMs = 0;
+  qint64 m_lastStartAttemptMs = 0;
+  int m_reconnectAttempt = 0;
   QElapsedTimer m_roiSyncTimer;
   QElapsedTimer m_zoneStatusTimer;
   QElapsedTimer m_frameRenderTimer;
   QElapsedTimer m_thumbnailRenderTimer;
   QElapsedTimer m_ocrDispatchTimer;
+  QTimer *m_healthTimer = nullptr;
+  QTimer *m_reconnectTimer = nullptr;
 };
 
 #endif // CAMERASOURCE_H

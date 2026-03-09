@@ -18,6 +18,10 @@ constexpr qint64 kOcrDispatchIntervalMs = 200;
 constexpr qint64 kZoneSyncIntervalMs = 500;
 constexpr qint64 kRoiSyncIntervalMs = 1000;
 constexpr int kIdleTargetFps = 5;
+constexpr qint64 kDisplayFrameTimeoutMs = 4000;
+constexpr qint64 kConnectingTimeoutMs = 5000;
+constexpr int kReconnectBaseDelayMs = 1000;
+constexpr int kReconnectMaxDelayMs = 30000;
 } // namespace
 
 CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
@@ -26,6 +30,15 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
       m_ocrCoordinator(new PlateOcrCoordinator(this)),
       m_parkingService(new ParkingService(this)),
       m_cameraKey(cameraKey.trimmed()), m_cardIndex(cardIndex) {
+  m_healthTimer = new QTimer(this);
+  m_healthTimer->setInterval(1000);
+  connect(m_healthTimer, &QTimer::timeout, this, &CameraSource::onHealthCheck);
+
+  m_reconnectTimer = new QTimer(this);
+  m_reconnectTimer->setSingleShot(true);
+  connect(m_reconnectTimer, &QTimer::timeout, this,
+          &CameraSource::onReconnectTimeout);
+
   m_cameraSession.setCameraManager(m_cameraManager);
   m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
 
@@ -72,27 +85,26 @@ bool CameraSource::initialize(TelegramBotAPI *telegramApi) {
 }
 
 void CameraSource::start() {
+  m_shouldRun = true;
   if (m_cameraKey.isEmpty()) {
     return;
   }
-  const QString profile = desiredProfile();
-  if (!refreshConnectionFromConfig(profile, true)) {
-    return;
-  }
-
-  if (!m_cameraManager->isDisplayRunning()) {
-    m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps : 0);
-    m_cameraManager->startDisplayOnly();
-  }
+  startDisplayStream(false, true, QStringLiteral("initial start"));
   updateAnalyticsState();
 }
 
 void CameraSource::stop() {
+  m_shouldRun = false;
   m_videoReadyNotified = false;
   m_currentObjects.clear();
+  clearReconnect();
+  if (m_healthTimer) {
+    m_healthTimer->stop();
+  }
   if (m_cameraManager) {
     m_cameraManager->stop();
   }
+  setStatus(Status::Stopped);
 }
 
 void CameraSource::attachDisplayConsumer(int slotId, const QSize &size) {
@@ -197,6 +209,10 @@ QString CameraSource::displayProfile() const { return m_displayProfile; }
 
 QString CameraSource::ocrProfile() const { return m_ocrProfile; }
 
+CameraSource::Status CameraSource::status() const { return m_status; }
+
+qint64 CameraSource::lastFrameTimestampMs() const { return m_lastFrameTimestampMs; }
+
 ParkingService *CameraSource::parkingService() { return m_parkingService; }
 
 const ParkingService *CameraSource::parkingService() const {
@@ -275,6 +291,14 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
   if (!framePtr || framePtr->empty()) {
     return;
   }
+
+  m_lastFrameTimestampMs = timestampMs;
+  if (m_healthTimer && !m_healthTimer->isActive()) {
+    m_healthTimer->start();
+  }
+  clearReconnect();
+  m_reconnectAttempt = 0;
+  setStatus(Status::Live);
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   if ((nowMs - timestampMs) > kUiFrameStaleMs) {
@@ -446,19 +470,17 @@ void CameraSource::updateDisplayProfileForConsumers() {
 
   const bool profileChanged = (profile != m_displayProfile);
   if (!refreshConnectionFromConfig(profile, false)) {
+    scheduleReconnect(QStringLiteral("config refresh failed"));
     return;
   }
 
   if (!m_cameraManager->isDisplayRunning()) {
-    start();
+    startDisplayStream(false, false, QStringLiteral("display was not running"));
     return;
   }
 
   if (profileChanged) {
-    m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps : 0);
-    m_cameraManager->restartDisplayPipeline();
-    emit logMessage(QString("[Camera] %1 display 재연결: %2")
-                        .arg(m_cameraKey, profile));
+    startDisplayStream(true, false, QStringLiteral("profile change"));
   } else {
     m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps : 0);
   }
@@ -477,7 +499,7 @@ void CameraSource::updateAnalyticsState() {
   }
 
   if (!m_cameraManager->isDisplayRunning()) {
-    start();
+    startDisplayStream(false, false, QStringLiteral("analytics requested"));
   }
   if (!m_cameraManager->isAnalyticsRunning()) {
     m_cameraManager->startAnalytics();
@@ -528,5 +550,116 @@ void CameraSource::syncZoneOccupancyFromActiveVehicles() {
 
   if (changed) {
     emit zoneStateChanged();
+  }
+}
+
+void CameraSource::onHealthCheck() {
+  if (!m_shouldRun) {
+    return;
+  }
+
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if (m_status == Status::Connecting) {
+    if (m_lastStartAttemptMs > 0 &&
+        (nowMs - m_lastStartAttemptMs) >= kConnectingTimeoutMs) {
+      scheduleReconnect(QStringLiteral("display connect timeout"));
+    }
+    return;
+  }
+
+  if (m_status != Status::Live) {
+    return;
+  }
+
+  if (m_lastFrameTimestampMs <= 0 ||
+      (nowMs - m_lastFrameTimestampMs) >= kDisplayFrameTimeoutMs) {
+    scheduleReconnect(QStringLiteral("display frame timeout"));
+  }
+}
+
+void CameraSource::onReconnectTimeout() {
+  if (!m_shouldRun) {
+    return;
+  }
+  startDisplayStream(true, true, QStringLiteral("backoff reconnect"));
+}
+
+void CameraSource::setStatus(Status status, const QString &detail) {
+  if (m_status == status && m_statusDetail == detail) {
+    return;
+  }
+
+  m_status = status;
+  m_statusDetail = detail;
+  emit statusChanged(m_cardIndex, m_status, m_statusDetail);
+}
+
+void CameraSource::scheduleReconnect(const QString &reason) {
+  if (!m_shouldRun || !m_cameraManager) {
+    return;
+  }
+
+  const int delayMs =
+      std::min(kReconnectBaseDelayMs << std::min(m_reconnectAttempt, 5),
+               kReconnectMaxDelayMs);
+  ++m_reconnectAttempt;
+
+  if (m_healthTimer && !m_healthTimer->isActive()) {
+    m_healthTimer->start();
+  }
+
+  if (m_cameraManager->isDisplayRunning()) {
+    m_cameraManager->restartDisplayPipeline();
+  }
+
+  setStatus(Status::Error,
+            QString("%1; retry in %2 ms").arg(reason).arg(delayMs));
+  emit logMessage(QString("[Camera] %1 display reconnect scheduled: %2 (%3 ms)")
+                      .arg(m_cameraKey, reason)
+                      .arg(delayMs));
+
+  if (m_reconnectTimer) {
+    m_reconnectTimer->start(delayMs);
+  }
+}
+
+void CameraSource::clearReconnect() {
+  if (m_reconnectTimer && m_reconnectTimer->isActive()) {
+    m_reconnectTimer->stop();
+  }
+}
+
+void CameraSource::startDisplayStream(bool forceRestart, bool reloadConfig,
+                                      const QString &reason) {
+  if (!m_shouldRun || !m_cameraManager) {
+    return;
+  }
+
+  const QString profile = desiredProfile();
+  if (!refreshConnectionFromConfig(profile, reloadConfig)) {
+    setStatus(Status::Error, QStringLiteral("invalid camera config"));
+    scheduleReconnect(QStringLiteral("invalid camera config"));
+    return;
+  }
+
+  m_lastStartAttemptMs = QDateTime::currentMSecsSinceEpoch();
+  m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps : 0);
+
+  setStatus(Status::Connecting, reason);
+  if (m_healthTimer && !m_healthTimer->isActive()) {
+    m_healthTimer->start();
+  }
+
+  if (forceRestart && m_cameraManager->isDisplayRunning()) {
+    m_cameraManager->restartDisplayPipeline();
+    emit logMessage(QString("[Camera] %1 display 재연결: %2 (%3)")
+                        .arg(m_cameraKey, m_displayProfile, reason));
+    return;
+  }
+
+  if (!m_cameraManager->isDisplayRunning()) {
+    m_cameraManager->startDisplayOnly();
+    emit logMessage(QString("[Camera] %1 display 연결 시작: %2 (%3)")
+                        .arg(m_cameraKey, m_displayProfile, reason));
   }
 }

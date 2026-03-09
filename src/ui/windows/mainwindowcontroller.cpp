@@ -429,15 +429,40 @@ void MainWindowController::updateChannelCardSelection() {
     }
     if (m_ui.channelStatusDots[i]) {
       const bool hasSignal = i < cameraKeys.size();
-      const QString style =
-          (i == primaryIndex || i == secondaryIndex)
-              ? QStringLiteral(
-                    "background: #00e676; border-radius: 5px; border: none;")
-              : hasSignal
-                    ? QStringLiteral(
-                          "background: #666; border-radius: 5px; border: none;")
-                    : QStringLiteral(
-                          "background: #ef4444; border-radius: 5px; border: none;");
+      const bool isSelected = (i == primaryIndex || i == secondaryIndex);
+      const CameraSource *source = sourceAt(i);
+
+      QString style;
+      if (!hasSignal) {
+        style = QStringLiteral(
+            "background: #ef4444; border-radius: 5px; border: none;");
+      } else if (!source) {
+        style = QStringLiteral(
+            "background: #666; border-radius: 5px; border: none;");
+      } else {
+        switch (source->status()) {
+        case CameraSource::Status::Live:
+          style = isSelected
+                      ? QStringLiteral(
+                            "background: #00e676; border-radius: 5px; border: none;")
+                      : QStringLiteral(
+                            "background: #10b981; border-radius: 5px; border: none;");
+          break;
+        case CameraSource::Status::Connecting:
+          style = QStringLiteral(
+              "background: #f59e0b; border-radius: 5px; border: none;");
+          break;
+        case CameraSource::Status::Error:
+          style = QStringLiteral(
+              "background: #ef4444; border-radius: 5px; border: none;");
+          break;
+        case CameraSource::Status::Stopped:
+        default:
+          style = QStringLiteral(
+              "background: #666; border-radius: 5px; border: none;");
+          break;
+        }
+      }
       m_ui.channelStatusDots[i]->setStyleSheet(style);
     }
   }
@@ -461,6 +486,10 @@ void MainWindowController::startCameraSources() {
     source->initialize(m_telegramApi);
     connect(source, &CameraSource::thumbnailFrameReady, this,
             &MainWindowController::updateThumbnailForCard);
+    connect(source, &CameraSource::statusChanged, this,
+            [this](int, CameraSource::Status, const QString &) {
+              updateChannelCardSelection();
+            });
     connect(source, &CameraSource::logMessage, this,
             &MainWindowController::onLogMessage);
     m_cameraSources[static_cast<size_t>(i)] = source;
