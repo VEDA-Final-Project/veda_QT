@@ -23,12 +23,18 @@
     "offsetX": 0
   },
   "ocr": {
-    "modelPath": "C:/Users/1-22/Downloads/rec.onnx",
-    "dictPath": "C:/Users/1-22/Downloads/dict.txt",
+    "modelPath": "models/korean/rec.onnx",
+    "dictPath": "models/korean/dict.txt",
     "inputWidth": 320,
     "inputHeight": 48
   },
   "sync": {
     "defaultDelayMs": 100
+  },
+  "auth": {
+    "host": "192.168.0.67",
+    "port": 9000,
+    "connectTimeoutMs": 3000,
+    "requestTimeoutMs": 5000
   }
 }

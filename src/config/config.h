@@ -44,6 +44,12 @@ public:
   // Sync
   int defaultDelayMs() const;
 
+  // Auth
+  QString authHost() const;
+  int authPort() const;
+  int authConnectTimeoutMs() const;
+  int authRequestTimeoutMs() const;
+
 private:
   explicit Config(QObject *parent = nullptr);
   Config(const Config &) = delete;
@@ -54,6 +60,7 @@ private:
   QJsonObject m_video;
   QJsonObject m_ocr;
   QJsonObject m_sync;
+  QJsonObject m_auth;
   bool m_loaded = false;
 };
 

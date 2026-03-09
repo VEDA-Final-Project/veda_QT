@@ -138,6 +138,7 @@ bool Config::load(const QString &path) {
   m_video = root["video"].toObject();
   m_ocr = root["ocr"].toObject();
   m_sync = root["sync"].toObject();
+  m_auth = root["auth"].toObject();
   m_loaded = true;
 
   qDebug() << "Config loaded from:" << loadedPath;
@@ -267,3 +268,21 @@ int Config::ocrInputHeight() const {
  * @brief 기본 동기화 지연 시간 (ms)
  */
 int Config::defaultDelayMs() const { return m_sync["defaultDelayMs"].toInt(0); }
+
+/* =========================
+ * Auth 관련 설정
+ * ========================= */
+
+QString Config::authHost() const {
+  return m_auth["host"].toString(QStringLiteral("127.0.0.1"));
+}
+
+int Config::authPort() const { return m_auth["port"].toInt(5001); }
+
+int Config::authConnectTimeoutMs() const {
+  return m_auth["connectTimeoutMs"].toInt(3000);
+}
+
+int Config::authRequestTimeoutMs() const {
+  return m_auth["requestTimeoutMs"].toInt(5000);
+}
