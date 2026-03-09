@@ -16,6 +16,7 @@
 #include "telegram/telegrambotapi.h"
 
 class CameraChannelRuntime;
+class CameraSource;
 class DbPanelController;
 class ParkingService;
 class RoiService;
@@ -70,8 +71,11 @@ private:
   void refreshRoiSelectorForTarget();
   void refreshZoneTableAllChannels();
   void updateChannelCardSelection();
+  void startCameraSources();
   void updateThumbnailForCard(int cardIndex, const QImage &image);
+  bool isCameraSourceRunning(int cardIndex) const;
   CameraChannelRuntime *channelAt(int index) const;
+  CameraSource *sourceAt(int cardIndex) const;
   VideoWidget *videoWidgetForTarget(RoiTarget target) const;
   RoiService *roiServiceForTarget(RoiTarget target);
   const RoiService *roiServiceForTarget(RoiTarget target) const;
@@ -84,6 +88,8 @@ private:
   RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
   std::array<CameraChannelRuntime *, 2> m_channels{{nullptr, nullptr}};
+  std::array<CameraSource *, 4> m_cameraSources{{nullptr, nullptr, nullptr,
+                                                 nullptr}};
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
   QTimer *m_resizeDebounceTimer = nullptr;

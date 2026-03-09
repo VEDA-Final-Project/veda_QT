@@ -34,17 +34,18 @@ public:
 
   void setConnectionInfo(const CameraConnectionInfo &connectionInfo);
   void start();
-  void startVideoOnly();
+  void startDisplayOnly();
+  void startAnalytics();
+  void stopAnalytics();
   void stop();
   void setTargetFps(int fps);
   void restart();
   void restartDisplayPipeline();
   bool isRunning() const;
+  bool isDisplayRunning() const;
+  bool isAnalyticsRunning() const;
 
-  void setDisabledObjectTypes(const QSet<QString> &types) {
-    if (m_metadataThread)
-      m_metadataThread->setDisabledTypes(types);
-  }
+  void setDisabledObjectTypes(const QSet<QString> &types);
 
 signals:
   void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
@@ -55,9 +56,11 @@ signals:
 private:
   void createThreads();
   void startDisplayPipeline();
+  void startAnalyticsPipeline();
   void stopThread(QThread *thread, const QString &name, bool warnOnFailure);
 
   CameraConnectionInfo m_connectionInfo;
+  QSet<QString> m_disabledTypes;
   VideoThread *m_videoThread;
   VideoThread *m_ocrVideoThread;
   MetadataThread *m_metadataThread;

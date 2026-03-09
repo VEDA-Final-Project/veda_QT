@@ -7,19 +7,11 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
-/**
- * @brief MetadataThread 생성자
- * - QThread 기반 메타데이터 수집 스레드
- * - FFmpeg 프로세스를 통해 RTSP 메타데이터 추출
- */
 MetadataThread::MetadataThread(QObject *parent)
     : QThread(parent), m_process(nullptr) {}
 
-/**
- * @brief MetadataThread 소멸자
- * - 실행 중인 스레드 및 프로세스를 안전하게 종료
- */
-MetadataThread::~MetadataThread() {
+MetadataThread::~MetadataThread()
+{
   stop();
   wait();
 }
@@ -33,50 +25,42 @@ MetadataThread::~MetadataThread() {
  */
 void MetadataThread::setConnectionInfo(const QString &ip, const QString &user,
                                        const QString &password,
-                                       const QString &profile) {
+                                       const QString &profile)
+{
   // === 멀티스레드 안전을 위한 뮤텍스 보호 ===
   QMutexLocker locker(&m_mutex);
 
   m_ip = ip;
   m_user = user;
   m_password = password;
-
-  // === RTSP URL 안정화를 위한 profile 정규화 ===
   m_profile = profile;
 
   // 앞에 '/'가 있으면 제거 (중복 슬래시 방지)
-  if (m_profile.startsWith('/')) {
+  if (m_profile.startsWith('/'))
+  {
     m_profile.remove(0, 1);
   }
-
   // profile이 비어있으면 기본값 사용
-  if (m_profile.isEmpty()) {
-    m_profile = "profile2/media.smp";
+  if (m_profile.isEmpty())
+  {
+    m_profile = "profile6/media.smp";
   }
 }
 
-void MetadataThread::setDisabledTypes(const QSet<QString> &types) {
+void MetadataThread::setDisabledTypes(const QSet<QString> &types)
+{
   QMutexLocker locker(&m_mutex);
   m_disabledTypes = types;
 }
 
-/**
- * @brief 메타데이터 스레드 종료 요청
- * - 이벤트 루프 종료 → run() 정리 단계로 이동
- */
-void MetadataThread::stop() {
-  // 이벤트 루프 종료 요청만 수행한다.
-  // 실제 대기는 상위 호출자(CameraManager)에서 타임아웃 정책으로 처리한다.
+void MetadataThread::stop()
+{
   requestInterruption();
   quit();
 }
 
-/**
- * @brief 메타데이터 수집 메인 루프
- * - FFmpeg 프로세스 실행
- * - 표준 출력으로 들어오는 메타데이터 처리
- */
-void MetadataThread::run() {
+void MetadataThread::run()
+{
 
   // === 내부 버퍼 초기화 ===
   m_buffer.clear();
@@ -94,15 +78,10 @@ void MetadataThread::run() {
   connect(m_process, &QProcess::readyReadStandardOutput, this,
           &MetadataThread::onReadyReadStandardOutput, Qt::DirectConnection);
 
-  // === FFmpeg 표준 에러 출력 처리 (디버그 용도) ===
-  connect(m_process, &QProcess::readyReadStandardError, this, [=]() {
-    // 필요 시 에러 로그 처리 가능
-    // QByteArray err = m_process->readAllStandardError();
-  });
-
   // === FFmpeg 실행 파일 경로 탐색 ===
   QString program = findFFmpegPath();
-  if (program.isEmpty()) {
+  if (program.isEmpty())
+  {
     emit logMessage("FFmpeg not found! Please install FFmpeg and add to PATH "
                     "or set FFMPEG_PATH environment variable.");
     delete m_process;
@@ -139,7 +118,8 @@ void MetadataThread::run() {
   m_process->start(program, args);
 
   // === 실행 실패 처리 ===
-  if (!m_process->waitForStarted()) {
+  if (!m_process->waitForStarted())
+  {
     emit logMessage("Failed to start FFmpeg: " + m_process->errorString());
     delete m_process;
     m_process = nullptr;
@@ -154,10 +134,13 @@ void MetadataThread::run() {
   exec();
 
   // === 이벤트 루프 종료 후 프로세스 정리 ===
-  if (m_process) {
-    if (m_process->state() != QProcess::NotRunning) {
+  if (m_process)
+  {
+    if (m_process->state() != QProcess::NotRunning)
+    {
       m_process->terminate();
-      if (!m_process->waitForFinished(500)) {
+      if (!m_process->waitForFinished(500))
+      {
         m_process->kill();
       }
     }
@@ -170,9 +153,11 @@ void MetadataThread::run() {
  * @brief FFmpeg 표준 출력 데이터 수신 슬롯
  * - Worker Thread에서 실행됨
  */
-void MetadataThread::onReadyReadStandardOutput() {
+void MetadataThread::onReadyReadStandardOutput()
+{
 
-  if (isInterruptionRequested()) {
+  if (isInterruptionRequested())
+  {
     return;
   }
 
@@ -191,43 +176,52 @@ void MetadataThread::onReadyReadStandardOutput() {
  * @brief 메타데이터 버퍼 처리
  * - XML 프레임 단위로 잘라서 파싱
  */
-void MetadataThread::processBuffer() {
+void MetadataThread::processBuffer()
+{
 
-  if (isInterruptionRequested()) {
+  if (isInterruptionRequested())
+  {
     return;
   }
 
   // === 버퍼 폭주 방지 안전장치 ===
-  if (m_buffer.size() > 4 * 1024 * 1024) {
+  if (m_buffer.size() > 4 * 1024 * 1024)
+  {
     emit logMessage("Buffer too large, clearing...");
     m_buffer.clear();
     return;
   }
 
-  while (true) {
-    if (isInterruptionRequested()) {
+  while (true)
+  {
+    if (isInterruptionRequested())
+    {
       return;
     }
 
     // === MetadataStream 시작 태그 탐색 ===
     int startTagIndex = m_buffer.indexOf("<tt:MetadataStream");
-    if (startTagIndex == -1) {
+    if (startTagIndex == -1)
+    {
 
       // 시작 태그를 오래 못 찾으면 버퍼 정리
-      if (m_buffer.size() > 1024 * 1024) {
+      if (m_buffer.size() > 1024 * 1024)
+      {
         m_buffer.clear();
       }
       break;
     }
 
     // === 시작 태그 이전 쓰레기 데이터 제거 ===
-    if (startTagIndex > 0) {
+    if (startTagIndex > 0)
+    {
       m_buffer.remove(0, startTagIndex);
     }
 
     // === Frame 종료 태그 탐색 ===
     int endTagIndex = m_buffer.indexOf("</tt:Frame>");
-    if (endTagIndex == -1) {
+    if (endTagIndex == -1)
+    {
       // 프레임이 아직 완성되지 않음
       break;
     }
@@ -248,9 +242,11 @@ void MetadataThread::processBuffer() {
  * @brief 단일 메타데이터 프레임 파싱
  * @param frameXml XML 문자열
  */
-void MetadataThread::parseFrame(const QString &frameXml) {
+void MetadataThread::parseFrame(const QString &frameXml)
+{
 
-  if (isInterruptionRequested()) {
+  if (isInterruptionRequested())
+  {
     return;
   }
 
@@ -263,8 +259,10 @@ void MetadataThread::parseFrame(const QString &frameXml) {
 
   QRegularExpressionMatchIterator i = objectRe.globalMatch(frameXml);
 
-  while (i.hasNext()) {
-    if (isInterruptionRequested()) {
+  while (i.hasNext())
+  {
+    if (isInterruptionRequested())
+    {
       return;
     }
     QRegularExpressionMatch match = i.next();
@@ -298,7 +296,8 @@ void MetadataThread::parseFrame(const QString &frameXml) {
     // UI 체크박스에서 체크 해제된 타입은 건너뜁니다.
     {
       QMutexLocker locker(&m_mutex);
-      if (m_disabledTypes.contains(info.type)) {
+      if (m_disabledTypes.contains(info.type))
+      {
         continue;
       }
     }
@@ -307,9 +306,12 @@ void MetadataThread::parseFrame(const QString &frameXml) {
     // Likelihood="0.95" 또는 Confidence="0.95" 등 검색
     QRegularExpression scoreRe("(Likelihood|confidence|Score)=\"([\\d\\.]+)\"");
     QRegularExpressionMatch scoreMatch = scoreRe.match(objectContent);
-    if (scoreMatch.hasMatch()) {
+    if (scoreMatch.hasMatch())
+    {
       info.score = scoreMatch.captured(2).toFloat();
-    } else {
+    }
+    else
+    {
       info.score = 0.0f;
     }
 
@@ -321,20 +323,25 @@ void MetadataThread::parseFrame(const QString &frameXml) {
     QRegularExpression plateRe(
         "<tt:(PlateNumber|Plate)[^>]*>([^<]+)</tt:(PlateNumber|Plate)>");
     QRegularExpressionMatch plateMatch = plateRe.match(objectContent);
-    if (plateMatch.hasMatch()) {
+    if (plateMatch.hasMatch())
+    {
       info.extraInfo = plateMatch.captured(2);
       info.plate = info.extraInfo;
-    } else {
+    }
+    else
+    {
       // 속성형태 체크: Plate="123가4567"
       QRegularExpression plateAttrRe("Plate=\"([^\"]+)\"");
       QRegularExpressionMatch plateAttrMatch = plateAttrRe.match(objectContent);
-      if (plateAttrMatch.hasMatch()) {
+      if (plateAttrMatch.hasMatch())
+      {
         info.plate = plateAttrMatch.captured(1);
         info.extraInfo = info.plate;
       }
     }
 
-    if (!info.plate.isEmpty()) {
+    if (!info.plate.isEmpty())
+    {
       emit logMessage(QString("Plate Detected! ID: %1, Num: %2")
                           .arg(info.id)
                           .arg(info.plate));
@@ -352,26 +359,31 @@ void MetadataThread::parseFrame(const QString &frameXml) {
  * @brief FFmpeg 실행 경로 탐색
  * @return ffmpeg 실행 파일 경로 (없으면 빈 문자열)
  */
-QString MetadataThread::findFFmpegPath() {
+QString MetadataThread::findFFmpegPath()
+{
 
   // === 1순위: FFMPEG_PATH 환경 변수 ===
   QString envPath = qEnvironmentVariable("FFMPEG_PATH");
-  if (!envPath.isEmpty()) {
+  if (!envPath.isEmpty())
+  {
     QFileInfo fi(envPath);
-    if (fi.exists() && fi.isExecutable()) {
+    if (fi.exists() && fi.isExecutable())
+    {
       return envPath;
     }
 
     // 디렉토리인 경우 ffmpeg.exe 추가
     QString exePath = envPath + "/ffmpeg.exe";
-    if (QFileInfo::exists(exePath)) {
+    if (QFileInfo::exists(exePath))
+    {
       return exePath;
     }
   }
 
   // === 2순위: 시스템 PATH 검색 ===
   QString found = QStandardPaths::findExecutable("ffmpeg");
-  if (!found.isEmpty()) {
+  if (!found.isEmpty())
+  {
     return found;
   }
 

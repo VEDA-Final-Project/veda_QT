@@ -1,5 +1,6 @@
 #include "mainwindowcontroller.h"
 
+#include "camera/camerasource.h"
 #include "camerachannelruntime.h"
 #include "config/config.h"
 #include "database/databasecontext.h"
@@ -45,24 +46,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   m_channels[0] = new CameraChannelRuntime(CameraChannelRuntime::Slot::Primary,
                                            QStringLiteral("A"),
                                            m_ui.videoWidgetPrimary,
-                                           QStringLiteral("camera"),
                                            channelUiRefs, this);
   m_channels[1] = new CameraChannelRuntime(CameraChannelRuntime::Slot::Secondary,
                                            QStringLiteral("B"),
                                            m_ui.videoWidgetSecondary,
-                                           QStringLiteral("camera2"),
                                            channelUiRefs, this);
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (!m_channels[i]) {
       continue;
     }
-    connect(m_channels[i], &CameraChannelRuntime::logMessage, this,
-            &MainWindowController::onLogMessage);
-    connect(m_channels[i], &CameraChannelRuntime::thumbnailFrameReady, this,
-            [this](int cardIndex, const QImage &image) {
-              updateThumbnailForCard(cardIndex, image);
-            });
     connect(m_channels[i], &CameraChannelRuntime::zoneStateChanged, this,
             &MainWindowController::refreshZoneTableAllChannels);
   }
@@ -92,15 +85,8 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
   DatabaseContext::init(dbPath);
 
-  for (CameraChannelRuntime *channel : m_channels) {
-    if (!channel) {
-      continue;
-    }
-    channel->initializeParkingService();
-    channel->setTelegramApi(m_telegramApi);
-  }
-
   initChannelCards();
+  startCameraSources();
 
   DbPanelController::UiRefs dbUiRefs;
   dbUiRefs.parkingLogTable = m_ui.parkingLogTable;
@@ -233,6 +219,11 @@ void MainWindowController::shutdown() {
       channel->shutdown();
     }
   }
+  for (CameraSource *source : m_cameraSources) {
+    if (source) {
+      source->stop();
+    }
+  }
   if (m_rpiPanelController) {
     m_rpiPanelController->shutdown();
   }
@@ -330,8 +321,11 @@ void MainWindowController::refreshZoneTableAllChannels() {
 void MainWindowController::initRoiDb() { initRoiDbForChannels(); }
 
 void MainWindowController::initRoiDbForChannels() {
-  reloadRoiForTarget(RoiTarget::Primary, false);
-  reloadRoiForTarget(RoiTarget::Secondary, false);
+  for (CameraSource *source : m_cameraSources) {
+    if (source) {
+      source->reloadRoi(false);
+    }
+  }
 }
 
 void MainWindowController::reloadRoiForTarget(RoiTarget target, bool writeLog) {
@@ -449,6 +443,31 @@ void MainWindowController::updateChannelCardSelection() {
   }
 }
 
+void MainWindowController::startCameraSources() {
+  QStringList cameraKeys = Config::instance().cameraKeys();
+  if (cameraKeys.isEmpty()) {
+    cameraKeys << QStringLiteral("camera");
+  }
+
+  for (int i = 0; i < static_cast<int>(m_cameraSources.size()); ++i) {
+    if (i >= cameraKeys.size()) {
+      continue;
+    }
+    if (m_cameraSources[static_cast<size_t>(i)]) {
+      continue;
+    }
+
+    CameraSource *source = new CameraSource(cameraKeys[i], i, this);
+    source->initialize(m_telegramApi);
+    connect(source, &CameraSource::thumbnailFrameReady, this,
+            &MainWindowController::updateThumbnailForCard);
+    connect(source, &CameraSource::logMessage, this,
+            &MainWindowController::onLogMessage);
+    m_cameraSources[static_cast<size_t>(i)] = source;
+    source->start();
+  }
+}
+
 void MainWindowController::onRoiTargetChanged(int index) {
   m_roiTarget = (index == 1) ? RoiTarget::Secondary : RoiTarget::Primary;
   if (m_channels[0]) {
@@ -480,10 +499,13 @@ void MainWindowController::onChannelCardClicked(int index) {
   }
 
   const bool isNoSignal = (index >= cameraKeys.size());
-  const QString newCameraKey = isNoSignal ? QString() : cameraKeys[index];
+  CameraSource *newSource = isNoSignal ? nullptr : sourceAt(index);
 
   auto clearThumbnail = [this, &cameraKeys](int cardIndex) {
     if (cardIndex < 0 || cardIndex >= 4 || !m_ui.thumbnailLabels[cardIndex]) {
+      return;
+    }
+    if (isCameraSourceRunning(cardIndex)) {
       return;
     }
     m_ui.thumbnailLabels[cardIndex]->setPixmap(QPixmap());
@@ -502,7 +524,7 @@ void MainWindowController::onChannelCardClicked(int index) {
     refreshRoiSelectorForTarget();
   };
 
-  auto activateChannel = [this, index, isNoSignal, &newCameraKey](
+  auto activateChannel = [this, index, isNoSignal, newSource](
                              CameraChannelRuntime *channel, int targetIndex) {
     if (isNoSignal) {
       channel->selectCardWithoutStream(index);
@@ -513,8 +535,10 @@ void MainWindowController::onChannelCardClicked(int index) {
     }
 
     onLogMessage(
-        QString("[Camera] Ch %1 켜기: %2").arg(index + 1).arg(newCameraKey));
-    if (!channel->activate(newCameraKey, index)) {
+        QString("[Camera] Ch %1 켜기: %2")
+            .arg(index + 1)
+            .arg(newSource ? newSource->cameraKey() : QStringLiteral("N/A")));
+    if (!channel->activate(newSource, index)) {
       updateChannelCardSelection();
       return;
     }
@@ -551,9 +575,9 @@ void MainWindowController::onChannelCardClicked(int index) {
 
 void MainWindowController::updateObjectFilter(
     const QSet<QString> &disabledTypes) {
-  for (CameraChannelRuntime *channel : m_channels) {
-    if (channel) {
-      channel->updateObjectFilter(disabledTypes);
+  for (CameraSource *source : m_cameraSources) {
+    if (source) {
+      source->updateObjectFilter(disabledTypes);
     }
   }
 }
@@ -887,6 +911,13 @@ CameraChannelRuntime *MainWindowController::channelAt(int index) const {
   return m_channels[static_cast<size_t>(index)];
 }
 
+CameraSource *MainWindowController::sourceAt(int cardIndex) const {
+  if (cardIndex < 0 || cardIndex >= static_cast<int>(m_cameraSources.size())) {
+    return nullptr;
+  }
+  return m_cameraSources[static_cast<size_t>(cardIndex)];
+}
+
 VideoWidget *MainWindowController::videoWidgetForTarget(RoiTarget target) const {
   CameraChannelRuntime *channel = channelAt(static_cast<int>(target));
   return channel ? channel->videoWidget() : nullptr;
@@ -933,4 +964,13 @@ void MainWindowController::updateThumbnailForCard(int cardIndex,
   m_ui.thumbnailLabels[cardIndex]->setText(QString());
   QMetaObject::invokeMethod(m_ui.thumbnailLabels[cardIndex], "setPixmap",
                             Qt::QueuedConnection, Q_ARG(QPixmap, pixmap));
+}
+
+bool MainWindowController::isCameraSourceRunning(int cardIndex) const {
+  if (cardIndex < 0 || cardIndex >= static_cast<int>(m_cameraSources.size())) {
+    return false;
+  }
+
+  CameraSource *source = m_cameraSources[static_cast<size_t>(cardIndex)];
+  return source && source->isRunning();
 }

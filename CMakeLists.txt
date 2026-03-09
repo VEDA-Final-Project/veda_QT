@@ -58,6 +58,8 @@ qt_add_executable(rtsp_test
     src/config/logfilterconfig.h
     src/camera/cameramanager.cpp
     src/camera/cameramanager.h
+    src/camera/camerasource.cpp
+    src/camera/camerasource.h
     src/camera/camerasessionservice.cpp
     src/camera/camerasessionservice.h
     src/logging/logdeduplicator.cpp
