@@ -49,9 +49,7 @@ public:
     QLabel *videoTimeLabel = nullptr;
 
     // Continuous Recording (상시 녹화)
-    QCheckBox *chkContinuousEnable = nullptr;
     QSpinBox *spinRecordRetention = nullptr;
-    QSpinBox *spinRecordInterval = nullptr;
     QLabel *lblContinuousStatus = nullptr;
     QPushButton *btnViewContinuous = nullptr;
   };

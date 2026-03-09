@@ -35,6 +35,11 @@ public:
   // 1시간 초과된 오래된 기록 조회 (자동 삭제용)
   QVector<QJsonObject>
   getOldMediaRecords(int hours = 1, QString *errorMessage = nullptr) const;
+
+  // 분 단위로 오래된 기록 조회
+  QVector<QJsonObject>
+  getOldMediaRecordsByMinutes(int minutes = 60,
+                              QString *errorMessage = nullptr) const;
 };
 
 #endif // MEDIAREPOSITORY_H

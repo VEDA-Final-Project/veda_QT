@@ -76,6 +76,7 @@ public slots:
   void onContinuousRecordTimeout();
   void onCleanupTimeout();
   void onContinuousSettingChanged();
+  void onApplyContinuousSettingClicked();
 
   // Telegram Slots
   void onSendEntry();
@@ -156,6 +157,7 @@ private:
   // Continuous Recording
   VideoBufferManager *m_continuousBuffers[4] = {nullptr, nullptr, nullptr,
                                                 nullptr};
+  QElapsedTimer m_continuousThrottleTimers[4];
   QTimer *m_continuousRecordTimer = nullptr;
   QTimer *m_cleanupTimer = nullptr;
 };

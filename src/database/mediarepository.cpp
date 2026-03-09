@@ -172,6 +172,12 @@ bool MediaRepository::deleteMediaRecord(int id, QString *errorMessage) {
 
 QVector<QJsonObject>
 MediaRepository::getOldMediaRecords(int hours, QString *errorMessage) const {
+  return getOldMediaRecordsByMinutes(hours * 60, errorMessage);
+}
+
+QVector<QJsonObject>
+MediaRepository::getOldMediaRecordsByMinutes(int minutes,
+                                             QString *errorMessage) const {
   QVector<QJsonObject> results;
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
@@ -179,7 +185,7 @@ MediaRepository::getOldMediaRecords(int hours, QString *errorMessage) const {
   query.prepare(QStringLiteral(
       "SELECT id, type, file_path FROM media_logs "
       "WHERE datetime(created_at) < datetime('now', 'localtime', :offset)"));
-  query.bindValue(":offset", QString("-%1 hours").arg(hours));
+  query.bindValue(":offset", QString("-%1 minutes").arg(minutes));
 
   if (!query.exec()) {
     if (errorMessage)

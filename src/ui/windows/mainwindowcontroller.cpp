@@ -176,9 +176,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   recordUiRefs.cmbManualCamera = m_ui.cmbManualCamera;
 
   // 상시 녹화 컨트롤 연결
-  recordUiRefs.chkContinuousEnable = m_ui.chkContinuousEnable;
   recordUiRefs.spinRecordRetention = m_ui.spinRecordRetention;
-  recordUiRefs.spinRecordInterval = m_ui.spinRecordInterval;
   recordUiRefs.lblContinuousStatus = m_ui.lblContinuousStatus;
   recordUiRefs.btnViewContinuous = m_ui.btnViewContinuous;
 
@@ -323,11 +321,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   m_continuousRecordTimer->start();
   m_cleanupTimer->start();
 
-  // 설정값 변경 시그널 연결
-  if (m_ui.spinRecordInterval) {
-    connect(m_ui.spinRecordInterval,
-            QOverload<int>::of(&QSpinBox::valueChanged), this,
-            &MainWindowController::onContinuousSettingChanged);
+  // 설정값 적용 버튼 연결
+  if (m_ui.btnApplyContinuousSetting) {
+    connect(m_ui.btnApplyContinuousSetting, &QPushButton::clicked, this,
+            &MainWindowController::onApplyContinuousSettingClicked);
   }
 }
 
@@ -1413,19 +1410,15 @@ void MainWindowController::onFrameCapturedPrimary(
     return;
   }
 
-  // 링 버퍼에 프레임 추가 (해당 카메라 키에 맞는 버퍼에 분기 저장)
-  if (m_selectedCameraKeyPrimary == QStringLiteral("camera")) {
-    if (m_primaryBuffer)
-      m_primaryBuffer->addFrame(framePtr);
-  } else if (m_selectedCameraKeyPrimary == QStringLiteral("camera2")) {
-    if (m_secondaryBuffer)
-      m_secondaryBuffer->addFrame(framePtr);
-  } else if (m_selectedCameraKeyPrimary == QStringLiteral("camera3")) {
-    if (m_buffer3)
-      m_buffer3->addFrame(framePtr);
-  } else if (m_selectedCameraKeyPrimary == QStringLiteral("camera4")) {
-    if (m_buffer4)
-      m_buffer4->addFrame(framePtr);
+  // 상시녹화 버퍼 추가 (5 FPS 유지)
+  if (m_selectedChannelIndex >= 0 && m_selectedChannelIndex < 4) {
+    if (!m_continuousThrottleTimers[m_selectedChannelIndex].isValid() ||
+        m_continuousThrottleTimers[m_selectedChannelIndex].elapsed() >= 200) {
+      if (m_continuousBuffers[m_selectedChannelIndex]) {
+        m_continuousBuffers[m_selectedChannelIndex]->addFrame(framePtr);
+        m_continuousThrottleTimers[m_selectedChannelIndex].restart();
+      }
+    }
   }
 
   // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
@@ -1484,19 +1477,15 @@ void MainWindowController::onFrameCapturedSecondary(
   if ((nowMs - timestampMs) > 60) {
     return;
   }
-  // 링 버퍼에 프레임 추가 (해당 카메라 키에 맞는 버퍼에 분기 저장)
-  if (m_selectedCameraKeySecondary == QStringLiteral("camera2")) {
-    if (m_secondaryBuffer)
-      m_secondaryBuffer->addFrame(framePtr);
-  } else if (m_selectedCameraKeySecondary == QStringLiteral("camera")) {
-    if (m_primaryBuffer)
-      m_primaryBuffer->addFrame(framePtr);
-  } else if (m_selectedCameraKeySecondary == QStringLiteral("camera3")) {
-    if (m_buffer3)
-      m_buffer3->addFrame(framePtr);
-  } else if (m_selectedCameraKeySecondary == QStringLiteral("camera4")) {
-    if (m_buffer4)
-      m_buffer4->addFrame(framePtr);
+  // 상시녹화 버퍼 추가 (5 FPS 유지)
+  if (m_secondaryChannelIndex >= 0 && m_secondaryChannelIndex < 4) {
+    if (!m_continuousThrottleTimers[m_secondaryChannelIndex].isValid() ||
+        m_continuousThrottleTimers[m_secondaryChannelIndex].elapsed() >= 200) {
+      if (m_continuousBuffers[m_secondaryChannelIndex]) {
+        m_continuousBuffers[m_secondaryChannelIndex]->addFrame(framePtr);
+        m_continuousThrottleTimers[m_secondaryChannelIndex].restart();
+      }
+    }
   }
 
   // 프레임은 VideoThread에서 이미 RGB로 변환된 상태로 도착합니다.
@@ -1567,9 +1556,13 @@ void MainWindowController::onFrameCapturedThumb(
 
   // 1. 상시 녹화 버퍼에 추가 (활성화된 경우)
   // UI 쓰로틀링(200ms) 이전에 수행하여 녹화 유실 방지
-  if (m_ui.chkContinuousEnable && m_ui.chkContinuousEnable->isChecked()) {
-    if (m_continuousBuffers[index]) {
+  // 1. 상시 녹화 버퍼에 추가 (항상 수행하도록 변경)
+  // UI 쓰로틀링(200ms) 이전에 수행하여 녹화 유실 방지
+  if (m_continuousBuffers[index]) {
+    if (!m_continuousThrottleTimers[index].isValid() ||
+        m_continuousThrottleTimers[index].elapsed() >= 200) {
       m_continuousBuffers[index]->addFrame(framePtr);
+      m_continuousThrottleTimers[index].restart();
     }
   }
 
@@ -1972,11 +1965,8 @@ void MainWindowController::onMediaSaveFinished(bool success,
 }
 
 void MainWindowController::onContinuousRecordTimeout() {
-  if (!m_ui.chkContinuousEnable || !m_ui.chkContinuousEnable->isChecked())
-    return;
-
-  int intervalMin =
-      m_ui.spinRecordInterval ? m_ui.spinRecordInterval->value() : 1;
+  // 활성화 체크박스 제거로 상시 실행
+  int intervalMin = 1; // 1분 고정
   QString camId;
 
   for (int i = 0; i < 4; ++i) {
@@ -2003,14 +1993,23 @@ void MainWindowController::onContinuousRecordTimeout() {
   }
 }
 
+void MainWindowController::onApplyContinuousSettingClicked() {
+  onLogMessage(QString("[System] 상시녹화 설정 적용: 보존기간 %1분")
+                   .arg(m_ui.spinRecordRetention->value()));
+  // 즉시 삭제 체크 트리거
+  onCleanupTimeout();
+}
+
 void MainWindowController::onCleanupTimeout() {
-  int retentionHours =
-      m_ui.spinRecordRetention ? m_ui.spinRecordRetention->value() : 1;
+  // 보존 기간을 분 단위로 해석
+  int retentionMinutes =
+      m_ui.spinRecordRetention ? m_ui.spinRecordRetention->value() : 60;
   if (!m_mediaRepo)
     return;
 
   QString error;
-  auto oldRecords = m_mediaRepo->getOldMediaRecords(retentionHours, &error);
+  auto oldRecords =
+      m_mediaRepo->getOldMediaRecordsByMinutes(retentionMinutes, &error);
 
   int deleteCount = 0;
   for (const auto &record : oldRecords) {
@@ -2044,13 +2043,7 @@ void MainWindowController::onCleanupTimeout() {
 }
 
 void MainWindowController::onContinuousSettingChanged() {
-  if (m_continuousRecordTimer) {
-    int intervalMin =
-        m_ui.spinRecordInterval ? m_ui.spinRecordInterval->value() : 1;
-    m_continuousRecordTimer->setInterval(intervalMin * 60 * 1000);
-    onLogMessage(
-        QString("[Recorder] 상시녹화 간격 변경: %1분").arg(intervalMin));
-  }
+  // spinRecordInterval 제거로 인해 더 이상 사용하지 않음
 }
 
 VideoBufferManager *MainWindowController::getBufferByIndex(int index) const {

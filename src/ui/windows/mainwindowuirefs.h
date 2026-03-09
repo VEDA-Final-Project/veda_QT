@@ -121,10 +121,9 @@ struct MainWindowUiRefs {
   QLabel *videoTimeLabel = nullptr;
 
   // Continuous Recording (상시 녹화)
-  QCheckBox *chkContinuousEnable = nullptr;
   QSpinBox *spinRecordRetention = nullptr;
-  QSpinBox *spinRecordInterval = nullptr;
   QLabel *lblContinuousStatus = nullptr;
+  QPushButton *btnApplyContinuousSetting = nullptr;
   QPushButton *btnViewContinuous = nullptr;
 };
 

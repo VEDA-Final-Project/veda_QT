@@ -177,10 +177,9 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.videoSeekSlider = m_videoSeekSlider;
   uiRefs.videoTimeLabel = m_videoTimeLabel;
 
-  uiRefs.chkContinuousEnable = m_chkContinuousEnable;
   uiRefs.spinRecordRetention = m_spinRecordRetention;
-  uiRefs.spinRecordInterval = m_spinRecordInterval;
   uiRefs.lblContinuousStatus = m_lblContinuousStatus;
+  uiRefs.btnApplyContinuousSetting = m_btnApplyContinuousSetting;
   uiRefs.btnViewContinuous = m_btnViewContinuous;
 
   uiRefs.btnCaptureManual = m_btnCaptureManual;
@@ -1291,23 +1290,20 @@ void MainWindow::setupUi() {
       new QGroupBox(QString::fromUtf8("상시 녹화 제어"), this);
   QHBoxLayout *continuousLayout = new QHBoxLayout(continuousGroup);
 
-  m_chkContinuousEnable = new QCheckBox(QString::fromUtf8("활성화"), this);
-  m_chkContinuousEnable->setChecked(true);
-  continuousLayout->addWidget(m_chkContinuousEnable);
-
-  continuousLayout->addWidget(new QLabel(QString::fromUtf8("보존(h):"), this));
+  continuousLayout->addWidget(new QLabel(QString::fromUtf8("보존(m):"), this));
   m_spinRecordRetention = new QSpinBox(this);
-  m_spinRecordRetention->setRange(1, 24 * 7); // 최대 1주일
-  m_spinRecordRetention->setValue(1);
+  m_spinRecordRetention->setRange(1, 10080); // 최대 1주일(분 단위)
+  m_spinRecordRetention->setValue(60);       // 기본 60분
   m_spinRecordRetention->setMinimumHeight(32);
   continuousLayout->addWidget(m_spinRecordRetention);
 
-  continuousLayout->addWidget(new QLabel(QString::fromUtf8("간격(m):"), this));
-  m_spinRecordInterval = new QSpinBox(this);
-  m_spinRecordInterval->setRange(1, 60);
-  m_spinRecordInterval->setValue(1);
-  m_spinRecordInterval->setMinimumHeight(32);
-  continuousLayout->addWidget(m_spinRecordInterval);
+  m_btnApplyContinuousSetting =
+      new QPushButton(QString::fromUtf8("적용"), this);
+  m_btnApplyContinuousSetting->setMinimumHeight(32);
+  m_btnApplyContinuousSetting->setStyleSheet(
+      "background: #4B5563; color: white; border-radius: 4px; font-weight: "
+      "bold; padding: 0 12px;");
+  continuousLayout->addWidget(m_btnApplyContinuousSetting);
 
   m_lblContinuousStatus = new QLabel(QString::fromUtf8("녹화 중"), this);
   m_lblContinuousStatus->setStyleSheet(
