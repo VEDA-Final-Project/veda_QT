@@ -30,5 +30,11 @@
   },
   "sync": {
     "defaultDelayMs": 100
+  },
+  "auth": {
+    "host": "192.168.0.67",
+    "port": 9000,
+    "connectTimeoutMs": 3000,
+    "requestTimeoutMs": 5000
   }
 }
