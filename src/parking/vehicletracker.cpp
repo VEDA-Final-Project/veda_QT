@@ -81,7 +81,8 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     }
 
     QMap<int, int> counts;
-    for (int roi : vs.roiHistory) {
+    const QList<int> &roiHistory = vs.roiHistory;
+    for (int roi : roiHistory) {
       counts[roi]++;
     }
 

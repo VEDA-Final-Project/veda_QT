@@ -158,7 +158,7 @@ target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
 
 # ONNX Runtime 패키지 찾기 (vcpkg 또는 ONNXRUNTIME_ROOT 환경 변수)
-find_package(onnxruntime CONFIG QUIET)
+find_package(ONNXRUNTIME CONFIG QUIET)
 
 if(TARGET onnxruntime::onnxruntime)
     target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime::onnxruntime)

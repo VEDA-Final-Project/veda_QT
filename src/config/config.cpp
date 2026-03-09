@@ -102,9 +102,10 @@ bool Config::load(const QString &path) {
 
   QFile file;
   QString loadedPath;
+  const QStringList &candidatePaths = candidates;
 
   // === 후보 경로 순회하며 설정 파일 탐색 ===
-  for (const auto &candidate : candidates) {
+  for (const QString &candidate : candidatePaths) {
     file.setFileName(candidate);
     if (file.open(QIODevice::ReadOnly)) {
       loadedPath = candidate;

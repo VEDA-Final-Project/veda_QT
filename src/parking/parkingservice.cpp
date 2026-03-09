@@ -27,7 +27,7 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
   // 1. 차량 추적 업데이트 → 새로 ROI에 진입한 차량 감지
-  QList<VehicleState> newEntries = m_tracker.update(
+  const QList<VehicleState> newEntries = m_tracker.update(
       objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
 
   // 2. 새로 진입한 차량 이벤트 로깅
@@ -40,7 +40,8 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   }
 
   // 3. 타임아웃된 차량 정리 (출차 처리)
-  QList<VehicleState> departed = m_tracker.pruneStale(nowMs, pruneTimeoutMs);
+  const QList<VehicleState> departed =
+      m_tracker.pruneStale(nowMs, pruneTimeoutMs);
   for (const VehicleState &vs : departed) {
     handleDeparture(vs);
   }
@@ -83,8 +84,7 @@ void ParkingService::forceObjectData(int objectId, const QString &type,
                                      const QRectF &bbox) {
   emit logMessage(QString("[Parking] Force Object: ID=%1, Type=%2, Plate=%3")
                       .arg(objectId)
-                      .arg(type)
-                      .arg(plate));
+                      .arg(type, plate));
 
   ObjectInfo info;
   info.id = objectId;
