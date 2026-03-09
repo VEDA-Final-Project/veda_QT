@@ -328,7 +328,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
           &MainWindowController::onContinuousRecordTimeout);
 
   m_cleanupTimer = new QTimer(this);
-  m_cleanupTimer->setInterval(300000); // 5분마다 자동 삭제 체크
+  m_cleanupTimer->setInterval(60000); // 1분마다 자동 삭제 체크
   connect(m_cleanupTimer, &QTimer::timeout, this,
           &MainWindowController::onCleanupTimeout);
 
@@ -1393,6 +1393,9 @@ void MainWindowController::onContinuousRecordTimeout() {
         Q_ARG(QString, filePath), Q_ARG(int, 5), Q_ARG(QString, "CONTINUOUS"),
         Q_ARG(QString, "상시녹화"), Q_ARG(QString, camId));
   }
+
+  // 상시녹화 파일 생성 후 즉시 오래된 파일 정리 수행 (UX 향상)
+  onCleanupTimeout();
 }
 
 void MainWindowController::onApplyContinuousSettingClicked() {
@@ -1413,7 +1416,14 @@ void MainWindowController::onCleanupTimeout() {
   auto oldRecords =
       m_mediaRepo->getOldMediaRecordsByMinutes(retentionMinutes, &error);
 
+  if (!error.isEmpty()) {
+    onLogMessage(QString("[Recorder] DB 조회 오류: %1").arg(error));
+    return;
+  }
+
   int deleteCount = 0;
+  int failCount = 0;
+
   for (const auto &record : oldRecords) {
     // 상시녹화(CONTINUOUS) 타입만 자동 삭제 대상으로 지정
     if (record["type"].toString() != "CONTINUOUS")
@@ -1426,11 +1436,14 @@ void MainWindowController::onCleanupTimeout() {
       m_mediaRepo->deleteMediaRecord(id);
       deleteCount++;
     } else {
-      // 파일이 어떤 이유로 이미 없더라도 DB에서는 지워야 함 (Zombie 레코드
-      // 방지)
       if (!QFile::exists(path)) {
+        // 파일이 이미 없는 경우 DB에서도 제거
         m_mediaRepo->deleteMediaRecord(id);
         deleteCount++;
+      } else {
+        // 파일이 존재하지만 삭제 실패 (잠김 상태 등)
+        failCount++;
+        qWarning() << "[Recorder] 파일 삭제 실패 (잠김 예상):" << path;
       }
     }
   }
@@ -1441,6 +1454,13 @@ void MainWindowController::onCleanupTimeout() {
     if (m_recordPanelController) {
       m_recordPanelController->refreshLogTable();
     }
+  }
+
+  if (failCount > 0) {
+    onLogMessage(
+        QString(
+            "[Recorder] 상시녹화 파일 %1개를 삭제하지 못했습니다. (사용 중)")
+            .arg(failCount));
   }
 }
 

@@ -231,17 +231,11 @@ void RecordPanelController::refreshLogTable() {
     m_ui.recordLogTable->insertRow(r);
 
     m_ui.recordLogTable->setItem(
-        r, 0, new QTableWidgetItem(QString::number(row["id"].toInt())));
+        r, 0, new QTableWidgetItem(row["created_at"].toString()));
     m_ui.recordLogTable->setItem(r, 1,
                                  new QTableWidgetItem(row["type"].toString()));
     m_ui.recordLogTable->setItem(
         r, 2, new QTableWidgetItem(row["description"].toString()));
-    m_ui.recordLogTable->setItem(
-        r, 3, new QTableWidgetItem(row["camera_id"].toString()));
-    m_ui.recordLogTable->setItem(
-        r, 4, new QTableWidgetItem(row["created_at"].toString()));
-    m_ui.recordLogTable->setItem(
-        r, 5, new QTableWidgetItem(row["file_path"].toString()));
   }
   m_ui.recordLogTable->blockSignals(false);
 }
@@ -249,7 +243,6 @@ void RecordPanelController::refreshLogTable() {
 // ──────────────────────────────────────────────────────────────
 // 새로고침 / 삭제
 // ──────────────────────────────────────────────────────────────
-void RecordPanelController::onRefreshClicked() { refreshLogTable(); }
 
 void RecordPanelController::onDeleteClicked() {
   if (!m_ui.recordLogTable)
@@ -340,9 +333,14 @@ void RecordPanelController::onRowSelectionChanged() {
     };
 
     m_ui.recordPreviewPathLabel->setText(
-        QString::fromUtf8("파일: ") + fi.fileName() + " (" +
-        formatSize(fi.size()) + ")" + QString::fromUtf8("  |  경로: ") +
-        filePath);
+        QString::fromUtf8(
+            "파일: %1 (%2)  |  ID: %3  |  카메라: %4\n시간: %5  |  경로: %6")
+            .arg(fi.fileName())
+            .arg(formatSize(fi.size()))
+            .arg(m_currentRecords[row]["id"].toInt())
+            .arg(m_currentRecords[row]["camera_id"].toString())
+            .arg(m_currentRecords[row]["created_at"].toString())
+            .arg(filePath));
   }
 
   if (type == "IMAGE") {
@@ -769,4 +767,11 @@ void RecordPanelController::onApplyEventSettingClicked() {
   int interval =
       m_ui.recordIntervalSpin ? m_ui.recordIntervalSpin->value() : 10;
   qDebug() << "[RecordPanel] 이벤트 저장 구간 설정 적용:" << interval << "초";
+}
+
+void RecordPanelController::onRefreshClicked() {
+  if (m_repo) {
+    m_repo->cleanupMissingRecords();
+  }
+  refreshLogTable();
 }

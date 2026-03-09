@@ -32,6 +32,9 @@ public:
   // 특정 기록 삭제
   bool deleteMediaRecord(int id, QString *errorMessage = nullptr);
 
+  // 실재하지 않는 파일에 대한 데이터베이스 기록 정리
+  bool cleanupMissingRecords(QString *errorMessage = nullptr);
+
   // 1시간 초과된 오래된 기록 조회 (자동 삭제용)
   QVector<QJsonObject>
   getOldMediaRecords(int hours = 1, QString *errorMessage = nullptr) const;

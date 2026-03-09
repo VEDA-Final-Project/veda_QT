@@ -2,6 +2,7 @@
 #include "database/databasecontext.h"
 #include <QDateTime>
 #include <QDebug>
+#include <QFile>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
@@ -49,11 +50,13 @@ bool MediaRepository::addMediaRecord(const QString &type,
   query.prepare(QStringLiteral(
       "INSERT INTO media_logs (type, description, camera_id, file_path, "
       "created_at) "
-      "VALUES (:type, :desc, :cam, :path, datetime('now','localtime'))"));
+      "VALUES (:type, :desc, :cam, :path, :created_at)"));
   query.bindValue(":type", type);
   query.bindValue(":desc", description);
   query.bindValue(":cam", cameraId);
   query.bindValue(":path", filePath);
+  query.bindValue(":created_at",
+                  QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss"));
 
   if (!query.exec()) {
     const QString err = QStringLiteral("Failed to add media record: ") +
@@ -182,10 +185,12 @@ MediaRepository::getOldMediaRecordsByMinutes(int minutes,
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
 
-  query.prepare(QStringLiteral(
-      "SELECT id, type, file_path FROM media_logs "
-      "WHERE datetime(created_at) < datetime('now', 'localtime', :offset)"));
-  query.bindValue(":offset", QString("-%1 minutes").arg(minutes));
+  query.prepare(QStringLiteral("SELECT id, type, file_path FROM media_logs "
+                               "WHERE created_at < :cutoff"));
+  QString cutoff = QDateTime::currentDateTime()
+                       .addSecs(-minutes * 60)
+                       .toString("yyyy-MM-dd HH:mm:ss");
+  query.bindValue(":cutoff", cutoff);
 
   if (!query.exec()) {
     if (errorMessage)
@@ -201,4 +206,23 @@ MediaRepository::getOldMediaRecordsByMinutes(int minutes,
     results.append(row);
   }
   return results;
+}
+
+bool MediaRepository::cleanupMissingRecords(QString *errorMessage) {
+  QVector<QJsonObject> allRecords = getAllMediaRecords(errorMessage);
+  bool success = true;
+
+  for (const auto &record : allRecords) {
+    int id = record["id"].toInt();
+    QString filePath = record["file_path"].toString();
+
+    if (!QFile::exists(filePath)) {
+      qDebug() << "[MediaRepo] Removing orphaned record. ID:" << id
+               << "Path:" << filePath;
+      if (!deleteMediaRecord(id, errorMessage)) {
+        success = false;
+      }
+    }
+  }
+  return success;
 }
