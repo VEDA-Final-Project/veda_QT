@@ -23,8 +23,8 @@
     "offsetX": 0
   },
   "ocr": {
-    "modelPath": "C:/Users/1-22/Downloads/rec.onnx",
-    "dictPath": "C:/Users/1-22/Downloads/dict.txt",
+    "modelPath": "models/korean/rec.onnx",
+    "dictPath": "models/korean/dict.txt",
     "inputWidth": 320,
     "inputHeight": 48
   },
