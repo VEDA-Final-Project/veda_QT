@@ -13,12 +13,12 @@ constexpr unsigned long kForceStopWaitMs = 500;
 CameraManager::CameraManager(QObject *parent)
     : QObject(parent), m_videoThread(nullptr), m_ocrVideoThread(nullptr),
       m_metadataThread(nullptr) {
-  createThreads();
+  createDisplayThread();
 }
 
 CameraManager::~CameraManager() { stop(); }
 
-void CameraManager::createThreads() {
+void CameraManager::createDisplayThread() {
   if (!m_videoThread) {
     m_videoThread = new VideoThread(this);
     connect(m_videoThread, &VideoThread::frameCaptured, this,
@@ -26,7 +26,9 @@ void CameraManager::createThreads() {
     connect(m_videoThread, &VideoThread::logMessage, this,
             &CameraManager::logMessage);
   }
+}
 
+void CameraManager::createAnalyticsThreads() {
   if (!m_ocrVideoThread) {
     m_ocrVideoThread = new VideoThread(this);
     connect(m_ocrVideoThread, &VideoThread::frameCaptured, this,
@@ -37,6 +39,7 @@ void CameraManager::createThreads() {
 
   if (!m_metadataThread) {
     m_metadataThread = new MetadataThread(this);
+    m_metadataThread->setDisabledTypes(m_disabledTypes);
     connect(m_metadataThread, &MetadataThread::metadataReceived, this,
             &CameraManager::metadataReceived);
     connect(m_metadataThread, &MetadataThread::logMessage, this,
@@ -49,11 +52,8 @@ void CameraManager::setConnectionInfo(
   m_connectionInfo = connectionInfo;
 }
 
-void CameraManager::start() {
-  if (isRunning())
-    return;
-
-  createThreads();
+void CameraManager::startDisplayPipeline() {
+  createDisplayThread();
 
   if (!m_connectionInfo.isValid()) {
     emit logMessage("Error: camera connection info is not configured.");
@@ -63,6 +63,24 @@ void CameraManager::start() {
   const QString url =
       buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
                    m_connectionInfo.password, m_connectionInfo.profile);
+  emit logMessage(
+      QString("Starting camera[%1] display pipeline with IP=%2, profile=%3")
+          .arg(m_connectionInfo.cameraId.isEmpty() ? QStringLiteral("camera-1")
+                                                   : m_connectionInfo.cameraId,
+               m_connectionInfo.ip, m_connectionInfo.profile));
+
+  m_videoThread->setUrl(url);
+  m_videoThread->start();
+}
+
+void CameraManager::startAnalyticsPipeline() {
+  createAnalyticsThreads();
+
+  if (!m_connectionInfo.isValid()) {
+    emit logMessage("Error: camera connection info is not configured.");
+    return;
+  }
+
   const QString ocrProfile = m_connectionInfo.subProfile.trimmed().isEmpty()
                                  ? m_connectionInfo.profile
                                  : m_connectionInfo.subProfile.trimmed();
@@ -70,36 +88,32 @@ void CameraManager::start() {
       buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
                    m_connectionInfo.password, ocrProfile);
 
-  emit logMessage(QString("Starting camera[%1] with IP=%2, profile=%3")
-                      .arg(m_connectionInfo.cameraId.isEmpty()
-                               ? QStringLiteral("camera-1")
-                               : m_connectionInfo.cameraId,
-                           m_connectionInfo.ip, m_connectionInfo.profile));
-
-  m_videoThread->setUrl(url);
-  m_videoThread->start();
-
-  // === OCR 전용 비디오 스트림 시작 ===
-  if (m_ocrVideoThread) {
-    m_ocrVideoThread->setUrl(ocrUrl);
-    m_ocrVideoThread->setTargetFps(
-        2); // 4K OCR은 초당 2프레임이면 충분함 (CPU 부하 대폭 감소)
-    m_ocrVideoThread->start();
-  }
-
-  // === 메타데이터 스트림 시작 ===
-  // 비디오와 동일한 profile 사용 → 싱크 유지
   m_metadataThread->setConnectionInfo(
       m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
-      m_connectionInfo.profile);
-  m_metadataThread->start();
+      ocrProfile);
+  if (m_metadataThread && !m_metadataThread->isRunning()) {
+    m_metadataThread->start();
+  }
+  if (m_ocrVideoThread) {
+    m_ocrVideoThread->setUrl(ocrUrl);
+    m_ocrVideoThread->setTargetFps(2);
+    if (!m_ocrVideoThread->isRunning()) {
+      m_ocrVideoThread->start();
+    }
+  }
 }
 
-void CameraManager::startVideoOnly() {
-  if (isRunning())
-    return;
+void CameraManager::start() {
+  startDisplayOnly();
+  startAnalytics();
+}
 
-  createThreads();
+void CameraManager::startDisplayOnly() {
+  if (isDisplayRunning()) {
+    return;
+  }
+
+  createDisplayThread();
 
   if (!m_connectionInfo.isValid()) {
     emit logMessage("Error: camera connection info is not configured.");
@@ -120,9 +134,39 @@ void CameraManager::startVideoOnly() {
   m_videoThread->start();
 }
 
+void CameraManager::startAnalytics() {
+  if (isAnalyticsRunning()) {
+    return;
+  }
+
+  startAnalyticsPipeline();
+}
+
+void CameraManager::stopAnalytics() {
+  stopThread(m_ocrVideoThread, QStringLiteral("OCR video thread"), true);
+  stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
+
+  if (m_ocrVideoThread) {
+    m_ocrVideoThread->deleteLater();
+    m_ocrVideoThread = nullptr;
+  }
+
+  if (m_metadataThread) {
+    m_metadataThread->deleteLater();
+    m_metadataThread = nullptr;
+  }
+}
+
 void CameraManager::setTargetFps(int fps) {
   if (m_videoThread) {
     m_videoThread->setTargetFps(fps);
+  }
+}
+
+void CameraManager::setDisabledObjectTypes(const QSet<QString> &types) {
+  m_disabledTypes = types;
+  if (m_metadataThread) {
+    m_metadataThread->setDisabledTypes(m_disabledTypes);
   }
 }
 
@@ -131,40 +175,62 @@ void CameraManager::restart() {
   this->start();
 }
 
+void CameraManager::restartDisplayPipeline() {
+  if (!m_connectionInfo.isValid()) {
+    emit logMessage("Error: camera connection info is not configured.");
+    return;
+  }
+
+  createDisplayThread();
+  stopThread(m_videoThread, QStringLiteral("display video thread"), false);
+
+  const QString url =
+      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
+                   m_connectionInfo.password, m_connectionInfo.profile);
+  emit logMessage(
+      QString("Starting camera[%1] display pipeline with IP=%2, profile=%3")
+          .arg(m_connectionInfo.cameraId.isEmpty() ? QStringLiteral("camera-1")
+                                                   : m_connectionInfo.cameraId,
+               m_connectionInfo.ip, m_connectionInfo.profile));
+
+  m_videoThread->setUrl(url);
+  m_videoThread->start();
+}
+
+void CameraManager::stopThread(QThread *thread, const QString &name,
+                               bool warnOnFailure) {
+  if (!thread || !thread->isRunning()) {
+    return;
+  }
+
+  if (auto *videoThread = qobject_cast<VideoThread *>(thread)) {
+    videoThread->stop();
+  } else if (auto *metadataThread = qobject_cast<MetadataThread *>(thread)) {
+    metadataThread->stop();
+  } else {
+    thread->quit();
+  }
+
+  if (!thread->wait(kThreadStopTimeoutMs)) {
+    if (warnOnFailure) {
+      emit logMessage(QString("Warning: %1 stop timeout (%2 ms). Forcing terminate.")
+                          .arg(name)
+                          .arg(kThreadStopTimeoutMs));
+    }
+    thread->terminate();
+    if (!thread->wait(kForceStopWaitMs) && warnOnFailure) {
+      emit logMessage(QString("Error: %1 did not terminate cleanly.").arg(name));
+    }
+  }
+}
+
 void CameraManager::stop() {
   QElapsedTimer shutdownTimer;
   shutdownTimer.start();
 
-  if (m_videoThread && m_videoThread->isRunning()) {
-    m_videoThread->stop();
-    if (!m_videoThread->wait(kThreadStopTimeoutMs)) {
-      m_videoThread->terminate();
-      m_videoThread->wait(kForceStopWaitMs);
-    }
-  }
-
-  if (m_ocrVideoThread && m_ocrVideoThread->isRunning()) {
-    m_ocrVideoThread->stop();
-    if (!m_ocrVideoThread->wait(kThreadStopTimeoutMs)) {
-      emit logMessage(
-          QString("Warning: OCR video thread stop timeout (%1 ms). Forcing "
-                  "terminate.")
-              .arg(kThreadStopTimeoutMs));
-      m_ocrVideoThread->terminate();
-      if (!m_ocrVideoThread->wait(kForceStopWaitMs)) {
-        emit logMessage("Error: OCR video thread did not terminate cleanly.");
-      }
-    }
-  }
-
-  // === 메타데이터 스레드 종료 ===
-  if (m_metadataThread && m_metadataThread->isRunning()) {
-    m_metadataThread->stop();
-    if (!m_metadataThread->wait(kThreadStopTimeoutMs)) {
-      m_metadataThread->terminate();
-      m_metadataThread->wait(kForceStopWaitMs);
-    }
-  }
+  stopThread(m_videoThread, QStringLiteral("display video thread"), false);
+  stopThread(m_ocrVideoThread, QStringLiteral("OCR video thread"), true);
+  stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
 
   if (m_videoThread) {
     m_videoThread->deleteLater();
@@ -190,4 +256,14 @@ bool CameraManager::isRunning() const {
   bool ocrVideoRunning = m_ocrVideoThread && m_ocrVideoThread->isRunning();
   bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
   return videoRunning || ocrVideoRunning || metaRunning;
+}
+
+bool CameraManager::isDisplayRunning() const {
+  return m_videoThread && m_videoThread->isRunning();
+}
+
+bool CameraManager::isAnalyticsRunning() const {
+  bool ocrVideoRunning = m_ocrVideoThread && m_ocrVideoThread->isRunning();
+  bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
+  return ocrVideoRunning || metaRunning;
 }

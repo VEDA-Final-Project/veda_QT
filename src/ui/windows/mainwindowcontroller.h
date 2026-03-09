@@ -1,24 +1,29 @@
 #ifndef MAINWINDOWCONTROLLER_H
 #define MAINWINDOWCONTROLLER_H
 
-#include "camera/camerasessionservice.h"
 #include "logging/logdeduplicator.h"
 #include "mainwindowuirefs.h"
-#include "ocr/plateocrcoordinator.h"
-#include "parking/parkingservice.h"
-#include "roi/roiservice.h"
-#include <QComboBox>
 #include <QElapsedTimer>
+#include <QImage>
 #include <QJsonObject>
 #include <QObject>
-#include <QPushButton>
+#include <QPolygon>
+#include <QRect>
 #include <QSet>
-#include <QTextEdit>
+#include <QSize>
+#include <array>
 
 #include "telegram/telegrambotapi.h"
 
-class RpiPanelController;
+class CameraChannelRuntime;
+class CameraSource;
 class DbPanelController;
+class ParkingService;
+class RoiService;
+class RpiPanelController;
+class VideoWidget;
+class QEvent;
+class QTimer;
 
 class MainWindowController : public QObject {
   Q_OBJECT
@@ -41,30 +46,15 @@ public slots:
   void appendRoiStructuredLog(const QJsonObject &roiData);
   void updateObjectFilter(const QSet<QString> &disabledTypes);
   void onLogMessage(const QString &msg);
-  void onOcrResultPrimary(int objectId, const OcrFullResult &result);
-  void onOcrResultSecondary(int objectId, const OcrFullResult &result);
   void onStartRoiDraw();
-  void onCompleteRoiDraw();   // Renamed from onFinishRoiDraw
-  void onDeleteSelectedRoi(); // Renamed from onDeleteRoi
+  void onCompleteRoiDraw();
+  void onDeleteSelectedRoi();
   void onRoiChanged(const QRect &roi);
   void onRoiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
   void onRoiTargetChanged(int index);
   void onChannelCardClicked(int index);
-  void onMetadataReceivedPrimary(const QList<ObjectInfo> &objects);
-  void onMetadataReceivedSecondary(const QList<ObjectInfo> &objects);
-  void onFrameCapturedPrimary(QSharedPointer<cv::Mat> framePtr,
-                              qint64 timestampMs);
-  void onFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
-                                qint64 timestampMs);
-  void onOcrFrameCapturedPrimary(QSharedPointer<cv::Mat> framePtr,
-                                 qint64 timestampMs);
-  void onOcrFrameCapturedSecondary(QSharedPointer<cv::Mat> framePtr,
-                                   qint64 timestampMs);
-  void onFrameCapturedThumb(int index, QSharedPointer<cv::Mat> framePtr,
-                            qint64 timestampMs);
   void onReidTableCellClicked(int row, int column);
 
-  // Telegram Slots
   void onSendEntry();
   void onSendExit();
   void onTelegramLog(const QString &msg);
@@ -81,11 +71,11 @@ private:
   void refreshRoiSelectorForTarget();
   void refreshZoneTableAllChannels();
   void updateChannelCardSelection();
-  bool refreshCameraConnectionFromConfig(
-      CameraManager *cameraManager, const QString &cameraKey,
-      QString *resolvedKey = nullptr, const QString &profileSuffix = QString(),
-      bool reloadConfig = true);
-  QString getBestProfileForSize(const QSize &size) const;
+  void startCameraSources();
+  void updateThumbnailForCard(int cardIndex, const QImage &image);
+  bool isCameraSourceRunning(int cardIndex) const;
+  CameraChannelRuntime *channelAt(int index) const;
+  CameraSource *sourceAt(int cardIndex) const;
   VideoWidget *videoWidgetForTarget(RoiTarget target) const;
   RoiService *roiServiceForTarget(RoiTarget target);
   const RoiService *roiServiceForTarget(RoiTarget target) const;
@@ -94,35 +84,15 @@ private:
 
   MainWindowUiRefs m_ui;
   RoiTarget m_roiTarget = RoiTarget::Primary;
-  int m_selectedChannelIndex = -1;
-  int m_secondaryChannelIndex = -1;
-  QString m_selectedCameraKeyPrimary = QStringLiteral("camera");
-  QString m_selectedCameraKeySecondary = QStringLiteral("camera2");
-  CameraManager *m_cameraManagerPrimary = nullptr;
-  CameraManager *m_cameraManagerSecondary = nullptr;
-  PlateOcrCoordinator *m_ocrCoordinatorPrimary = nullptr;
-  PlateOcrCoordinator *m_ocrCoordinatorSecondary = nullptr;
   TelegramBotAPI *m_telegramApi = nullptr;
   RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
-  CameraSessionService m_cameraSessionPrimary;
-  CameraSessionService m_cameraSessionSecondary;
-  CameraManager *m_thumbManagers[4] = {nullptr, nullptr, nullptr, nullptr};
-  CameraSessionService *m_thumbSessions[4] = {nullptr, nullptr, nullptr,
-                                              nullptr};
-  QString m_thumbCameraKeys[4];
-  RoiService m_roiServicePrimary;
-  RoiService m_roiServiceSecondary;
-  ParkingService *m_parkingServicePrimary = nullptr;
-  ParkingService *m_parkingServiceSecondary = nullptr;
+  std::array<CameraChannelRuntime *, 2> m_channels{{nullptr, nullptr}};
+  std::array<CameraSource *, 4> m_cameraSources{{nullptr, nullptr, nullptr,
+                                                 nullptr}};
   LogDeduplicator m_logDeduplicator;
-  QElapsedTimer m_renderTimerPrimary;
-  QElapsedTimer m_renderTimerSecondary;
   QElapsedTimer m_renderTimerThumbs[4];
   QTimer *m_resizeDebounceTimer = nullptr;
-  QString m_currentProfilePrimary;
-  QString m_currentProfileSecondary;
-  bool m_primaryVideoReadyNotified = false;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

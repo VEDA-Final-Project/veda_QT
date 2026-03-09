@@ -17,6 +17,8 @@ qt_add_executable(rtsp_test
     src/ui/windows/mainwindowuirefs.h
     src/ui/windows/loginpage.cpp
     src/ui/windows/loginpage.h
+    src/ui/windows/camerachannelruntime.cpp
+    src/ui/windows/camerachannelruntime.h
     src/ui/windows/mainwindowcontroller.cpp
     src/ui/windows/mainwindowcontroller.h
     src/ui/windows/dbpanelcontroller.cpp
@@ -56,6 +58,8 @@ qt_add_executable(rtsp_test
     src/config/logfilterconfig.h
     src/camera/cameramanager.cpp
     src/camera/cameramanager.h
+    src/camera/camerasource.cpp
+    src/camera/camerasource.h
     src/camera/camerasessionservice.cpp
     src/camera/camerasessionservice.h
     src/logging/logdeduplicator.cpp
@@ -158,7 +162,7 @@ target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
 
 # ONNX Runtime 패키지 찾기 (vcpkg 또는 ONNXRUNTIME_ROOT 환경 변수)
-find_package(onnxruntime CONFIG QUIET)
+find_package(ONNXRUNTIME CONFIG QUIET)
 
 if(TARGET onnxruntime::onnxruntime)
     target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime::onnxruntime)
