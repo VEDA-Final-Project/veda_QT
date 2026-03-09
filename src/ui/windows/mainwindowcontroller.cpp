@@ -204,63 +204,63 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   // 이벤트 구간 저장: RecordPanel -> MainWindowController 연결
   // 클릭 시점 기준으로 '과거(preSec) + 미래(postSec)' 프레임을 모두 포함하기
   // 위해 postSec만큼 기다린 후 버퍼에서 프레임을 추출하여 저장합니다.
-  connect(m_recordPanelController, &RecordPanelController::eventRecordRequested,
-          this, [this](const QString &desc, int preSec, int postSec) {
-            onLogMessage(
-                QString("[Recorder] 이벤트 감지: %1초 후 저장을 시작합니다...")
-                    .arg(postSec));
+  connect(
+      m_recordPanelController, &RecordPanelController::eventRecordRequested,
+      this, [this](const QString &desc, int preSec, int postSec) {
+        onLogMessage(
+            QString("[Recorder] 이벤트 감지: %1초 후 저장을 시작합니다...")
+                .arg(postSec));
 
-            // postSec (미래 프레임)이 쌓일 때까지 대기
-            QTimer::singleShot(
-                postSec * 1000, this, [this, desc, preSec, postSec]() {
-                  int idx = m_ui.cmbManualCamera
-                                ? m_ui.cmbManualCamera->currentIndex()
-                                : 0;
-                  VideoBufferManager *targetBuffer = getBufferByIndex(idx);
-                  QString camId = QString("Ch %1").arg(idx + 1);
+        int idx =
+            m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+        QString camId = QString("Ch %1").arg(idx + 1);
 
-                  if (!targetBuffer)
-                    return;
+        // postSec (미래 프레임)이 쌓일 때까지 대기
+        QTimer::singleShot(
+            postSec * 1000, this, [this, desc, preSec, postSec, idx, camId]() {
+              VideoBufferManager *targetBuffer = getBufferByIndex(idx);
 
-                  // 실제 스트림 FPS 반영 (preSec + postSec 구간의 정확한 프레임
-                  // 스와핑을 위해)
-                  double actualFps = m_recordPanelController->getLiveFps();
-                  if (actualFps <= 0)
-                    actualFps = 15.0; // 세이프가드
+              if (!targetBuffer)
+                return;
 
-                  // 전체 구간(preSec + postSec)에 해당하는 프레임 추출
-                  auto frames = targetBuffer->getFrames(
-                      preSec, postSec, static_cast<int>(actualFps));
-                  if (frames.empty()) {
-                    onLogMessage(QString::fromUtf8(
-                        "[Recorder] 버퍼에 저장된 프레임이 없습니다."));
-                    return;
-                  }
+              // 실제 스트림 FPS 반영 (preSec + postSec 구간의 정확한 프레임
+              // 스와핑을 위해)
+              double actualFps = m_recordPanelController->getLiveFps();
+              if (actualFps <= 0)
+                actualFps = 15.0; // 세이프가드
 
-                  QString fileName =
-                      QString("event_%1.mp4")
-                          .arg(QDateTime::currentDateTime().toString(
-                              "yyyyMMdd_HHmmss"));
-                  QString filePath =
-                      QDir(QCoreApplication::applicationDirPath())
-                          .filePath("records/videos/" + fileName);
+              // 전체 구간(preSec + postSec)에 해당하는 프레임 추출
+              auto frames = targetBuffer->getFrames(
+                  preSec, postSec, static_cast<int>(actualFps));
+              if (frames.empty()) {
+                onLogMessage(QString::fromUtf8(
+                    "[Recorder] 버퍼에 저장된 프레임이 없습니다."));
+                return;
+              }
 
-                  QMetaObject::invokeMethod(
-                      m_recorderWorker, "saveVideo",
-                      Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
-                      Q_ARG(QString, filePath),
-                      Q_ARG(int, static_cast<int>(actualFps)),
-                      Q_ARG(QString, "VIDEO"), Q_ARG(QString, desc),
-                      Q_ARG(QString, camId));
+              QString fileName = QString("event_Ch%1_%2.mp4")
+                                     .arg(idx + 1)
+                                     .arg(QDateTime::currentDateTime().toString(
+                                         "yyyyMMdd_HHmmss"));
+              QString filePath = QDir(QCoreApplication::applicationDirPath())
+                                     .filePath("records/videos/" + fileName);
 
-                  onLogMessage(QString("[Recorder] 이벤트 구간 저장 완료: %1 "
-                                       "(%2초 전 ~ %3초 후, FPS: %4)")
-                                   .arg(fileName)
-                                   .arg(preSec)
-                                   .arg(postSec)
-                                   .arg(actualFps));
-                });
-          });
+              QMetaObject::invokeMethod(
+                  m_recorderWorker, "saveVideo",
+                  Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
+                  Q_ARG(QString, filePath),
+                  Q_ARG(int, static_cast<int>(actualFps)),
+                  Q_ARG(QString, "VIDEO"), Q_ARG(QString, desc),
+                  Q_ARG(QString, camId));
+
+              onLogMessage(QString("[Recorder] 이벤트 구간 저장 완료: %1 "
+                                   "(%2초 전 ~ %3초 후, FPS: %4)")
+                               .arg(fileName)
+                               .arg(preSec)
+                               .arg(postSec)
+                               .arg(actualFps));
+            });
+      });
 
   m_recorderWorker = new MediaRecorderWorker();
   m_recorderThread = new QThread(this);
@@ -1789,7 +1789,18 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
 }
 
 void MainWindowController::onCaptureManual() {
-  int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+  QPushButton *senderBtn = qobject_cast<QPushButton *>(sender());
+  int idx = m_selectedChannelIndex;
+
+  if (!senderBtn && m_ui.cmbManualCamera) {
+    idx = m_ui.cmbManualCamera->currentIndex();
+  } else if (senderBtn && m_ui.btnCaptureRecordTab &&
+             senderBtn == m_ui.btnCaptureRecordTab) {
+    idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+  }
+  if (idx < 0)
+    idx = 0;
+
   VideoBufferManager *targetBuffer = getBufferByIndex(idx);
   QString camId = QString("Ch %1").arg(idx + 1);
 
@@ -1813,7 +1824,8 @@ void MainWindowController::onCaptureManual() {
   }
 
   QString fileName =
-      QString("capture_%1.jpg")
+      QString("capture_Ch%1_%2.jpg")
+          .arg(idx + 1)
           .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
   QString filePath = QDir(QCoreApplication::applicationDirPath())
                          .filePath("records/images/" + fileName);
@@ -1869,17 +1881,28 @@ void MainWindowController::onRecordManualToggled(bool checked) {
 
   if (checked) {
     m_isManualRecording = true;
-    // 카메라 ID 미리 특정
-    int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
-    QString camId = QString("Ch %1").arg(idx + 1);
+
+    QPushButton *senderBtn = qobject_cast<QPushButton *>(sender());
+    int idx = m_selectedChannelIndex;
+    if (!senderBtn && m_ui.cmbManualCamera) {
+      idx = m_ui.cmbManualCamera->currentIndex();
+    } else if (senderBtn && m_ui.btnRecordRecordTab &&
+               senderBtn == m_ui.btnRecordRecordTab) {
+      idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+    }
+    if (idx < 0)
+      idx = 0;
+
+    m_manualRecordChannelIdx = idx;
     VideoBufferManager *buf = getBufferByIndex(idx);
-    int bufSize = buf ? (int)buf->getFrames().size() : -1;
-    onLogMessage(
-        QString("[Recorder] [%1] 수동 녹화 시작 (현재 버퍼: %2 프레임)")
-            .arg(camId)
-            .arg(bufSize));
+    m_manualRecordStartIdx = buf ? buf->getTotalFramesAdded() : 0;
+
+    QString camId = QString("Ch %1").arg(idx + 1);
+    onLogMessage(QString("[Recorder] [%1] 수동 녹화 시작 (시작 인덱스: %2)")
+                     .arg(camId)
+                     .arg(m_manualRecordStartIdx));
   } else {
-    int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
+    int idx = m_manualRecordChannelIdx;
     VideoBufferManager *targetBuffer = getBufferByIndex(idx);
     QString camId = QString("Ch %1").arg(idx + 1);
 
@@ -1893,7 +1916,7 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     }
     m_isManualRecording = false;
 
-    auto frames = targetBuffer->getFrames();
+    auto frames = targetBuffer->getFramesSince(m_manualRecordStartIdx);
     onLogMessage(QString("[Recorder] [%1] 버퍼 프레임 수: %2")
                      .arg(camId)
                      .arg(frames.size()));
@@ -1906,7 +1929,8 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     }
 
     QString fileName =
-        QString("record_%1.mp4")
+        QString("record_Ch%1_%2.mp4")
+            .arg(idx + 1)
             .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
     QString filePath = QDir(QCoreApplication::applicationDirPath())
                            .filePath("records/videos/" + fileName);
@@ -1966,7 +1990,8 @@ void MainWindowController::onContinuousRecordTimeout() {
 
     camId = QString("Ch %1").arg(i + 1);
     QString timeStr = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-    QString fileName = QString("continuous_%1_%2.mp4").arg(camId).arg(timeStr);
+    QString fileName =
+        QString("continuous_Ch%1_%2.mp4").arg(i + 1).arg(timeStr);
     QString filePath = QDir(QCoreApplication::applicationDirPath())
                            .filePath("records/videos/" + fileName);
 

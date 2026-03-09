@@ -130,6 +130,8 @@ private:
   MediaRecorderWorker *m_recorderWorker = nullptr;
   QThread *m_recorderThread = nullptr;
   bool m_isManualRecording = false;
+  int m_manualRecordChannelIdx = -1;
+  uint64_t m_manualRecordStartIdx = 0;
   QString m_currentManualRecordPath;
 
   CameraSessionService m_cameraSessionPrimary;

@@ -207,22 +207,25 @@ void RecordPanelController::refreshLogTable() {
   m_ui.recordLogTable->blockSignals(true);
   m_ui.recordLogTable->setRowCount(0);
 
+  QVector<QJsonObject> fetchedRecords;
   if (m_ui.cmbManualCamera) {
     int idx = m_ui.cmbManualCamera->currentIndex();
     // MainWindowController가 "Ch 1", "Ch 2" 형식으로 저장하므로 형식을 맞춤
     QString camId = QString("Ch %1").arg(idx + 1);
-    m_currentRecords = m_repo->getMediaRecordsByCamera(camId);
+    fetchedRecords = m_repo->getMediaRecordsByCamera(camId);
   } else {
-    m_currentRecords = m_repo->getAllMediaRecords();
+    fetchedRecords = m_repo->getAllMediaRecords();
+  }
+
+  m_currentRecords.clear();
+  for (int i = 0; i < fetchedRecords.size(); ++i) {
+    if (fetchedRecords[i]["type"].toString() != "CONTINUOUS") {
+      m_currentRecords.append(fetchedRecords[i]);
+    }
   }
 
   for (int i = 0; i < m_currentRecords.size(); ++i) {
     const QJsonObject &row = m_currentRecords[i];
-
-    // CONTINUOUS 타입은 목록에 표시하지 않음 (다수 파일 혼재 방지)
-    if (row["type"].toString() == "CONTINUOUS") {
-      continue;
-    }
 
     int r = m_ui.recordLogTable->rowCount();
     m_ui.recordLogTable->insertRow(r);
@@ -526,8 +529,8 @@ void RecordPanelController::onPlayTimerTimeout() {
   if (m_totalFrames > 0 && m_fps > 0) {
     // 글로벌 프레임 위치 계산: 현재 청크 시작점 + 청크 내 현재 위치
     double localFrame = m_playCap.get(cv::CAP_PROP_POS_FRAMES);
-    double globalFrame = 0;
-    if (m_currentChunkIdx >= 0 &&
+    double globalFrame = localFrame;
+    if (m_isContinuousMode && m_currentChunkIdx >= 0 &&
         m_currentChunkIdx < m_continuousSegments.size()) {
       globalFrame =
           m_continuousSegments[m_currentChunkIdx].startGlobalFrame + localFrame;
