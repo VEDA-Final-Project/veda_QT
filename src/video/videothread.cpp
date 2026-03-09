@@ -42,6 +42,7 @@ void VideoThread::setTargetFps(int fps) {
 void VideoThread::stop() {
   QMutexLocker locker(&m_mutex);
   m_stop = true;
+  requestInterruption();
 }
 
 double VideoThread::getActualFps() const {
@@ -59,6 +60,13 @@ void VideoThread::run() {
   constexpr qint64 kReadErrorLogIntervalMs = 3000;
   qint64 lastReadErrorLogMs = 0;
   int suppressedReadErrors = 0;
+  auto shouldStop = [this]() {
+    if (isInterruptionRequested()) {
+      return true;
+    }
+    QMutexLocker locker(&m_mutex);
+    return m_stop;
+  };
 
   // === URL 복사 및 상태 초기화 ===
   {
@@ -72,6 +80,12 @@ void VideoThread::run() {
    * - 내부 버퍼 최소화(0)
    */
   m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);
+#ifdef CV_CAP_PROP_OPEN_TIMEOUT_MSEC
+  m_cap.set(CV_CAP_PROP_OPEN_TIMEOUT_MSEC, 2000);
+#endif
+#ifdef CV_CAP_PROP_READ_TIMEOUT_MSEC
+  m_cap.set(CV_CAP_PROP_READ_TIMEOUT_MSEC, 1000);
+#endif
 
   // === RTSP 스트림 열기 ===
   if (!m_cap.open(url.toStdString(), cv::CAP_FFMPEG)) {
@@ -99,16 +113,15 @@ void VideoThread::run() {
   while (true) {
 
     // === 종료 요청 확인 ===
-    {
-      QMutexLocker locker(&m_mutex);
-      if (m_stop)
-        break;
-    }
+    if (shouldStop())
+      break;
 
     cv::Mat frame;
 
     // === 프레임 읽기 ===
     if (!m_cap.read(frame)) {
+      if (shouldStop())
+        break;
       const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
       if (lastReadErrorLogMs == 0 ||
           (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
@@ -125,6 +138,8 @@ void VideoThread::run() {
         ++suppressedReadErrors;
       }
       // 일시적 네트워크 문제 대비
+      if (shouldStop())
+        break;
       QThread::msleep(100);
       continue;
     }

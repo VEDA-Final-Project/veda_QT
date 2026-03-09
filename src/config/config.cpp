@@ -102,9 +102,10 @@ bool Config::load(const QString &path) {
 
   QFile file;
   QString loadedPath;
+  const QStringList &candidatePaths = candidates;
 
   // === 후보 경로 순회하며 설정 파일 탐색 ===
-  for (const auto &candidate : candidates) {
+  for (const QString &candidate : candidatePaths) {
     file.setFileName(candidate);
     if (file.open(QIODevice::ReadOnly)) {
       loadedPath = candidate;
@@ -185,6 +186,14 @@ QString Config::cameraProfile(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
   return (cameraObj.isEmpty() ? m_camera : cameraObj)["profile"].toString(
       "profile2/media.smp");
+}
+
+QString Config::cameraSubProfile(const QString &cameraKey) const {
+  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+  const QJsonObject selectedCamera = cameraObj.isEmpty() ? m_camera : cameraObj;
+  const QString fallbackProfile =
+      selectedCamera["profile"].toString("profile2/media.smp");
+  return selectedCamera["subProfile"].toString(fallbackProfile);
 }
 
 /**

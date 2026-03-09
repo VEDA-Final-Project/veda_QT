@@ -7,19 +7,55 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QDateTime>
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRectF>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTextEdit>
+#include <QTimeZone>
 #include <utility>
 
 namespace {
+QString formatDisplayDateTime(const QString &rawIsoText) {
+  QDateTime dt = QDateTime::fromString(rawIsoText, Qt::ISODateWithMs);
+  if (!dt.isValid()) {
+    dt = QDateTime::fromString(rawIsoText, Qt::ISODate);
+  }
+  if (!dt.isValid()) {
+    return rawIsoText;
+  }
+
+  const QTimeZone seoulTz("Asia/Seoul");
+  if (seoulTz.isValid()) {
+    dt = dt.toTimeZone(seoulTz);
+  } else {
+    dt = dt.toLocalTime();
+  }
+
+  const int hour24 = dt.time().hour();
+  const QString amPm = (hour24 < 12) ? QStringLiteral("오전")
+                                     : QStringLiteral("오후");
+  int hour12 = hour24 % 12;
+  if (hour12 == 0) {
+    hour12 = 12;
+  }
+
+  return QStringLiteral("%1년 %2월 %3일 %4 %5시 %6분")
+      .arg(dt.date().year())
+      .arg(dt.date().month())
+      .arg(dt.date().day())
+      .arg(amPm)
+      .arg(hour12)
+      .arg(dt.time().minute(), 2, 10, QLatin1Char('0'));
+}
+
 void populateParkingTable(QTableWidget *table,
                           const QVector<QJsonObject> &logs) {
   if (!table) {
@@ -522,6 +558,7 @@ void DbPanelController::refreshZoneTable() {
     return;
   }
 
+  const QSignalBlocker blocker(m_ui.zoneTable);
   m_ui.zoneTable->setRowCount(0);
   auto appendRows = [this](const QVector<QJsonObject> &records) {
     for (const QJsonObject &record : records) {
@@ -534,8 +571,14 @@ void DbPanelController::refreshZoneTable() {
           row, 1, new QTableWidgetItem(record["zone_id"].toString()));
       m_ui.zoneTable->setItem(
           row, 2, new QTableWidgetItem(record["zone_name"].toString()));
+      const bool isEmpty = record["zone_enable"].toBool(true);
       m_ui.zoneTable->setItem(
-          row, 3, new QTableWidgetItem(record["created_at"].toString()));
+          row, 3,
+          new QTableWidgetItem(isEmpty ? QStringLiteral("빈자리")
+                                       : QStringLiteral("주차중")));
+      m_ui.zoneTable->setItem(
+          row, 4, new QTableWidgetItem(
+                      formatDisplayDateTime(record["created_at"].toString())));
     }
   };
 

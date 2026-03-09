@@ -104,13 +104,12 @@ struct MainWindowUiRefs {
   QPushButton *btnDeleteRecordLog = nullptr;
   VideoWidget *recordVideoWidget = nullptr;
   QLineEdit *recordEventTypeInput = nullptr;
-  QSpinBox *recordPreSecSpin = nullptr;
-  QSpinBox *recordPostSecSpin = nullptr;
+  QSpinBox *recordIntervalSpin = nullptr;
+  QPushButton *btnApplyEventSetting = nullptr;
   QPushButton *btnTriggerEventRecord = nullptr;
   QComboBox *cmbManualCamera = nullptr;
   QPushButton *btnCaptureRecordTab = nullptr;
   QPushButton *btnRecordRecordTab = nullptr;
-  QLabel *recordStatusLabel = nullptr;
   QLabel *recordPreviewPathLabel = nullptr;
 
   // Video player controls

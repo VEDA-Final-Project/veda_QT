@@ -164,13 +164,12 @@ private:
   VideoWidget *m_recordVideoWidget = nullptr;
   // Recording search: extra test controls
   QLineEdit *m_recordEventTypeInput = nullptr;
-  QSpinBox *m_recordPreSecSpin = nullptr;
-  QSpinBox *m_recordPostSecSpin = nullptr;
+  QSpinBox *m_recordIntervalSpin = nullptr;
+  QPushButton *m_btnApplyEventSetting = nullptr;
   QPushButton *m_btnTriggerEventRecord = nullptr;
   QComboBox *m_cmbManualCamera = nullptr;
   QPushButton *m_btnCaptureRecordTab = nullptr;
   QPushButton *m_btnRecordRecordTab = nullptr;
-  QLabel *m_recordStatusLabel = nullptr;
   QLabel *m_recordPreviewPathLabel = nullptr;
 
   // Video player controls

@@ -60,13 +60,13 @@ void RecordPanelController::connectSignals() {
     connect(m_ui.btnTriggerEventRecord, &QPushButton::clicked, this,
             &RecordPanelController::onTriggerEventRecord);
 
-  if (m_ui.recordPreSecSpin) {
-    m_ui.recordPreSecSpin->setRange(1, 39);
-    m_ui.recordPreSecSpin->setValue(5);
-  }
-  if (m_ui.recordPostSecSpin) {
-    m_ui.recordPostSecSpin->setRange(1, 39);
-    m_ui.recordPostSecSpin->setValue(5);
+  if (m_ui.btnApplyEventSetting)
+    connect(m_ui.btnApplyEventSetting, &QPushButton::clicked, this,
+            &RecordPanelController::onApplyEventSettingClicked);
+
+  if (m_ui.recordIntervalSpin) {
+    m_ui.recordIntervalSpin->setRange(2, 40);
+    m_ui.recordIntervalSpin->setValue(10);
   }
 
   // ── 플레이어 컨트롤 연결 ──
@@ -720,8 +720,10 @@ bool RecordPanelController::openVideoChunk(int chunkIdx, int startFrame) {
 void RecordPanelController::onTriggerEventRecord() {
   QString desc = m_ui.recordEventTypeInput ? m_ui.recordEventTypeInput->text()
                                            : QString::fromUtf8("이벤트");
-  int preSec = m_ui.recordPreSecSpin ? m_ui.recordPreSecSpin->value() : 5;
-  int postSec = m_ui.recordPostSecSpin ? m_ui.recordPostSecSpin->value() : 5;
+  int interval =
+      m_ui.recordIntervalSpin ? m_ui.recordIntervalSpin->value() : 10;
+  int preSec = interval / 2;
+  int postSec = interval - preSec;
 
   // 전체 버퍼 크기(600프레임, 15fps 기준 약 40초)를 초과하지 않도록 검증
   const int MAX_TOTAL_SEC = 40;
@@ -738,23 +740,33 @@ void RecordPanelController::onTriggerEventRecord() {
     if (postSec < 1)
       postSec = 1; // 최소 1초
 
-    if (m_ui.recordPostSecSpin)
-      m_ui.recordPostSecSpin->setValue(postSec);
+    // Interval is unified, no need to set postSec spinbox separately
   }
 
   if (desc.trimmed().isEmpty())
     desc = QString::fromUtf8("수동 이벤트");
 
-  QString msg =
-      QString::fromUtf8("[이벤트 예약] \"%1\" | 전:%2초 / 후:%3초 (대기 중...)")
-          .arg(desc)
-          .arg(preSec)
-          .arg(postSec);
-  setStatusText(msg);
+  if (m_ui.btnTriggerEventRecord) {
+    m_ui.btnTriggerEventRecord->setText(QString::fromUtf8("⏺ 저장 중..."));
+    m_ui.btnTriggerEventRecord->setStyleSheet(
+        "background-color: #ff4d4d; color: white; font-weight: bold; "
+        "border-radius: 4px; padding: 5px;");
+
+    QTimer::singleShot(postSec * 1000, this, [this]() {
+      if (m_ui.btnTriggerEventRecord) {
+        m_ui.btnTriggerEventRecord->setText(QString::fromUtf8("▶ 저장 실행"));
+        m_ui.btnTriggerEventRecord->setStyleSheet(
+            "background: #2563eb; color: white; border-radius: 4px; "
+            "font-weight: bold;");
+      }
+    });
+  }
+
   emit eventRecordRequested(desc, preSec, postSec);
 }
 
-void RecordPanelController::setStatusText(const QString &text) {
-  if (m_ui.recordStatusLabel)
-    m_ui.recordStatusLabel->setText(text);
+void RecordPanelController::onApplyEventSettingClicked() {
+  int interval =
+      m_ui.recordIntervalSpin ? m_ui.recordIntervalSpin->value() : 10;
+  qDebug() << "[RecordPanel] 이벤트 저장 구간 설정 적용:" << interval << "초";
 }

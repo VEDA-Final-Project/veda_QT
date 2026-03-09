@@ -35,11 +35,10 @@ public:
     QPushButton *btnDeleteRecordLog = nullptr;
     VideoWidget *recordVideoWidget = nullptr;
     QLineEdit *recordEventTypeInput = nullptr;
-    QSpinBox *recordPreSecSpin = nullptr;
-    QSpinBox *recordPostSecSpin = nullptr;
+    QSpinBox *recordIntervalSpin = nullptr;
+    QPushButton *btnApplyEventSetting = nullptr;
     QPushButton *btnTriggerEventRecord = nullptr;
     QComboBox *cmbManualCamera = nullptr;
-    QLabel *recordStatusLabel = nullptr;
     QLabel *recordPreviewPathLabel = nullptr;
     // Video player controls
     QPushButton *btnVideoPlay = nullptr;
@@ -78,9 +77,9 @@ public slots:
   void onDeleteClicked();
   void onRowSelectionChanged();
   void onTriggerEventRecord();
-  void setStatusText(const QString &text);
   void updateLiveFrame(const QImage &frame);
   void onViewContinuousClicked();
+  void onApplyEventSettingClicked();
 
 private slots:
   void onPlayTimerTimeout();

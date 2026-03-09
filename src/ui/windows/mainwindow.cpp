@@ -163,10 +163,9 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnDeleteRecordLog = m_btnDeleteRecordLog;
   uiRefs.recordVideoWidget = m_recordVideoWidget;
   uiRefs.recordEventTypeInput = m_recordEventTypeInput;
-  uiRefs.recordPreSecSpin = m_recordPreSecSpin;
-  uiRefs.recordPostSecSpin = m_recordPostSecSpin;
+  uiRefs.recordIntervalSpin = m_recordIntervalSpin;
+  uiRefs.btnApplyEventSetting = m_btnApplyEventSetting;
   uiRefs.btnTriggerEventRecord = m_btnTriggerEventRecord;
-  uiRefs.recordStatusLabel = m_recordStatusLabel;
   uiRefs.recordPreviewPathLabel = m_recordPreviewPathLabel;
   uiRefs.cmbManualCamera = m_cmbManualCamera;
   uiRefs.btnCaptureRecordTab = m_btnCaptureRecordTab;
@@ -374,7 +373,7 @@ void MainWindow::setupUi() {
   headerIcon->setFixedSize(32, 32);
   headerIcon->setAlignment(Qt::AlignCenter);
 
-  m_headerTitleLabel = new QLabel("AI CCTV Dashboard", this);
+  m_headerTitleLabel = new QLabel("Veda CCTV Dashboard", this);
   m_headerTitleLabel->setObjectName("headerTitle");
 
   headerLayout->addWidget(headerIcon);
@@ -1094,10 +1093,10 @@ void MainWindow::setupUi() {
   zoneToolBar->addStretch();
 
   m_zoneTable = new QTableWidget(this);
-  m_zoneTable->setColumnCount(4);
+  m_zoneTable->setColumnCount(5);
   m_zoneTable->setHorizontalHeaderLabels(QStringList()
                                          << "카메라" << "구역 ID" << "이름"
-                                         << "생성일");
+                                         << "점유" << "생성일");
   m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_zoneTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1235,15 +1234,9 @@ void MainWindow::setupUi() {
   m_cmbManualCamera->setMinimumHeight(32);
   m_btnRecordRecordTab->setCheckable(true);
 
-  m_recordStatusLabel = new QLabel(QString::fromUtf8("대기 중"), this);
-  m_recordStatusLabel->setStyleSheet(
-      "font-weight: bold; padding: 4px; border-radius: 4px; "
-      "background: rgba(255,255,255,0.05);");
-
   manualLayout->addWidget(m_cmbManualCamera);
   manualLayout->addWidget(m_btnCaptureRecordTab);
   manualLayout->addWidget(m_btnRecordRecordTab);
-  manualLayout->addWidget(m_recordStatusLabel);
   manualLayout->addStretch();
   topControlArea->addWidget(manualGroup);
 
@@ -1256,21 +1249,19 @@ void MainWindow::setupUi() {
   m_recordEventTypeInput = new QLineEdit(this);
   m_recordEventTypeInput->hide();
 
-  eventLayout->addWidget(new QLabel(QString::fromUtf8("이전(초):"), this));
-  m_recordPreSecSpin = new QSpinBox(this);
-  m_recordPreSecSpin->setRange(0, 30);
-  m_recordPreSecSpin->setValue(5);
-  m_recordPreSecSpin->setMinimumHeight(32);
-  eventLayout->addWidget(m_recordPreSecSpin);
+  eventLayout->addWidget(new QLabel(QString::fromUtf8("저장구간(초):"), this));
+  m_recordIntervalSpin = new QSpinBox(this);
+  m_recordIntervalSpin->setRange(2, 40);
+  m_recordIntervalSpin->setValue(10);
+  m_recordIntervalSpin->setMinimumHeight(32);
+  eventLayout->addWidget(m_recordIntervalSpin);
 
-  eventLayout->addSpacing(8);
-
-  eventLayout->addWidget(new QLabel(QString::fromUtf8("이후(초):"), this));
-  m_recordPostSecSpin = new QSpinBox(this);
-  m_recordPostSecSpin->setRange(0, 30);
-  m_recordPostSecSpin->setValue(5);
-  m_recordPostSecSpin->setMinimumHeight(32);
-  eventLayout->addWidget(m_recordPostSecSpin);
+  m_btnApplyEventSetting = new QPushButton(QString::fromUtf8("적용"), this);
+  m_btnApplyEventSetting->setMinimumHeight(32);
+  m_btnApplyEventSetting->setStyleSheet(
+      "background: #4B5563; color: white; border-radius: 4px; font-weight: "
+      "bold; padding: 0 12px;");
+  eventLayout->addWidget(m_btnApplyEventSetting);
 
   eventLayout->addSpacing(8);
 
