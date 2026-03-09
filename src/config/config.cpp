@@ -188,6 +188,14 @@ QString Config::cameraProfile(const QString &cameraKey) const {
       "profile2/media.smp");
 }
 
+QString Config::cameraSubProfile(const QString &cameraKey) const {
+  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+  const QJsonObject selectedCamera = cameraObj.isEmpty() ? m_camera : cameraObj;
+  const QString fallbackProfile =
+      selectedCamera["profile"].toString("profile2/media.smp");
+  return selectedCamera["subProfile"].toString(fallbackProfile);
+}
+
 /**
  * @brief RTSP 접속 URL 생성
  */

@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QThread>
 
 struct CameraConnectionInfo {
   QString cameraId;
@@ -37,6 +38,7 @@ public:
   void stop();
   void setTargetFps(int fps);
   void restart();
+  void restartDisplayPipeline();
   bool isRunning() const;
 
   void setDisabledObjectTypes(const QSet<QString> &types) {
@@ -52,12 +54,13 @@ signals:
 
 private:
   void createThreads();
+  void startDisplayPipeline();
+  void stopThread(QThread *thread, const QString &name, bool warnOnFailure);
 
   CameraConnectionInfo m_connectionInfo;
   VideoThread *m_videoThread;
   VideoThread *m_ocrVideoThread;
   MetadataThread *m_metadataThread;
-  bool m_stopTimedOut = false;
 };
 
 #endif // CAMERAMANAGER_H
