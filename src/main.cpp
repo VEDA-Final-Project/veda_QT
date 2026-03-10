@@ -3,6 +3,8 @@
 #include "ui/windows/loginpage.h"
 #include "ui/windows/mainwindow.h"
 #include "ui/windows/mainwindowcontroller.h"
+#include "video/videothread.h"
+#include <vector>
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -46,6 +48,11 @@ int main(int argc, char *argv[]) {
 
   // 메시지 핸들러 설치
   s_defaultHandler = qInstallMessageHandler(filteredMessageHandler);
+
+  // 멀티스레드 MetaType 등록 (비디오 저장/이벤트용)
+  qRegisterMetaType<QSharedPointer<cv::Mat>>("QSharedPointer<cv::Mat>");
+  qRegisterMetaType<std::vector<QSharedPointer<cv::Mat>>>(
+      "std::vector<QSharedPointer<cv::Mat>>");
 
   QApplication a(argc, argv);
 

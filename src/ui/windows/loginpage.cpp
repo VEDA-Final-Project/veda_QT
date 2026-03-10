@@ -15,9 +15,7 @@
 #include <QSizePolicy>
 #include <QVBoxLayout>
 
-LoginPage::LoginPage(QWidget *parent)
-    : QWidget(parent)
-{
+LoginPage::LoginPage(QWidget *parent) : QWidget(parent) {
   authClient_ = new RpiAuthClient(this);
   authClient_->setTimeouts(Config::instance().authConnectTimeoutMs(),
                            Config::instance().authRequestTimeoutMs());
@@ -30,8 +28,7 @@ LoginPage::LoginPage(QWidget *parent)
   resize(920, 600);
 }
 
-void LoginPage::buildUi()
-{
+void LoginPage::buildUi() {
   setObjectName("loginPage");
 
   auto *rootLayout = new QHBoxLayout(this);
@@ -64,9 +61,9 @@ void LoginPage::buildUi()
   titleLabel->setObjectName("titleLabel");
   titleLabel->setAlignment(Qt::AlignHCenter);
 
-  auto *credentialHint =
-      new QLabel(QStringLiteral("Raspberry Pi 인증 서버와 OTP 앱으로 인증합니다."),
-                 rightPanel);
+  auto *credentialHint = new QLabel(
+      QStringLiteral("Raspberry Pi 인증 서버와 OTP 앱으로 인증합니다."),
+      rightPanel);
   credentialHint->setObjectName("credentialHint");
   credentialHint->setAlignment(Qt::AlignHCenter);
 
@@ -149,20 +146,16 @@ void LoginPage::buildUi()
   updateStepUi();
 }
 
-void LoginPage::handleLogin()
-{
+void LoginPage::handleLogin() {
   if (!idInput_ || !passwordInput_ || !otpInput_ || !loginStatusLabel_ ||
-      !authClient_)
-  {
+      !authClient_) {
     return;
   }
 
-  if (currentStep_ == LoginStep::CredentialsStep)
-  {
+  if (currentStep_ == LoginStep::CredentialsStep) {
     const QString username = idInput_->text().trimmed();
     const QString password = passwordInput_->text();
-    if (username.isEmpty() || password.isEmpty())
-    {
+    if (username.isEmpty() || password.isEmpty()) {
       showStatusMessage(QStringLiteral("아이디와 비밀번호를 모두 입력하세요."),
                         false);
       return;
@@ -177,22 +170,20 @@ void LoginPage::handleLogin()
         Config::instance().authHost(),
         static_cast<quint16>(Config::instance().authPort()), pendingUsername_,
         pendingPassword_);
-    if (!started)
-    {
+    if (!started) {
       setLoginUiBusy(false);
-      showStatusMessage(QStringLiteral("이미 인증 요청이 진행 중입니다."), false);
+      showStatusMessage(QStringLiteral("이미 인증 요청이 진행 중입니다."),
+                        false);
     }
     return;
   }
 
   const QString otp = otpInput_->text().trimmed();
-  if (otp.isEmpty())
-  {
+  if (otp.isEmpty()) {
     showStatusMessage(QStringLiteral("OTP를 입력하세요."), false);
     return;
   }
-  if (otp.size() != 6)
-  {
+  if (otp.size() != 6) {
     showStatusMessage(QStringLiteral("OTP는 6자리 숫자로 입력하세요."), false);
     return;
   }
@@ -201,60 +192,57 @@ void LoginPage::handleLogin()
   showProgressMessage(QStringLiteral("2차 인증 코드를 확인 중입니다..."));
 
   const bool started = authClient_->submitTotp(otp);
-  if (!started)
-  {
+  if (!started) {
     setLoginUiBusy(false);
     showCredentialsStep();
     showStatusMessage(
-        QStringLiteral("인증 세션이 종료되었습니다. 다시 로그인해주세요."), false);
+        QStringLiteral("인증 세션이 종료되었습니다. 다시 로그인해주세요."),
+        false);
   }
 }
 
 void LoginPage::handleLoginStepFinished(bool ok, const QString &code,
-                                        const QString &message)
-{
-  if (ok)
-  {
+                                        const QString &message) {
+  if (ok) {
     currentStep_ = LoginStep::OtpStep;
     otpInput_->clear();
     updateStepUi();
     setLoginUiBusy(false);
-    // showProgressMessage(message.isEmpty() ? QStringLiteral("2FA 코드를 입력하세요.") : message);
+
+    showProgressMessage(
+        message.isEmpty() ? QStringLiteral("2FA 코드를 입력하세요.") : message);
+    otpInput_->setFocus();
+
     showStatusMessage(QStringLiteral("개발 모드: OTP 생략"), true);
     emit loginSucceeded();
-    // otpInput_->setFocus();
+
     return;
   }
 
   setLoginUiBusy(false);
-  if (code == QStringLiteral("invalid_credentials") && passwordInput_)
-  {
+  if (code == QStringLiteral("invalid_credentials") && passwordInput_) {
     passwordInput_->clear();
   }
   showStatusMessage(messageForAuthCode(code, message), false);
 }
 
 void LoginPage::handleAuthFinished(bool ok, const QString &code,
-                                   const QString &message)
-{
+                                   const QString &message) {
   setLoginUiBusy(false);
 
-  if (ok)
-  {
+  if (ok) {
     loginSucceeded_ = true;
     showStatusMessage(QStringLiteral("인증 성공"), true);
     emit loginSucceeded();
     return;
   }
 
-  if (code == QStringLiteral("invalid_credentials"))
-  {
+  if (code == QStringLiteral("invalid_credentials")) {
     showCredentialsStep();
     showStatusMessage(messageForAuthCode(code, message), false);
     return;
   }
-  if (code == QStringLiteral("invalid_otp"))
-  {
+  if (code == QStringLiteral("invalid_otp")) {
     otpInput_->clear();
     otpInput_->setFocus();
     showStatusMessage(messageForAuthCode(code, message), false);
@@ -265,10 +253,8 @@ void LoginPage::handleAuthFinished(bool ok, const QString &code,
   showStatusMessage(messageForAuthCode(code, message), false);
 }
 
-void LoginPage::showCredentialsStep()
-{
-  if (authClient_)
-  {
+void LoginPage::showCredentialsStep() {
+  if (authClient_) {
     authClient_->cancel();
   }
 
@@ -281,29 +267,24 @@ void LoginPage::showCredentialsStep()
   setLoginUiBusy(false);
   updateStepUi();
 
-  if (idInput_)
-  {
+  if (idInput_) {
     idInput_->setVisible(true);
     idInput_->setEnabled(true);
     idInput_->setReadOnly(false);
   }
-  if (passwordInput_)
-  {
+  if (passwordInput_) {
     passwordInput_->setVisible(true);
     passwordInput_->setEnabled(true);
     passwordInput_->setReadOnly(false);
   }
-  if (otpInput_)
-  {
+  if (otpInput_) {
     otpInput_->setEnabled(false);
   }
 
   QMetaObject::invokeMethod(
       this,
-      [this]()
-      {
-        if (passwordInput_)
-        {
+      [this]() {
+        if (passwordInput_) {
           passwordInput_->setFocus(Qt::OtherFocusReason);
           passwordInput_->selectAll();
         }
@@ -311,35 +292,27 @@ void LoginPage::showCredentialsStep()
       Qt::QueuedConnection);
 }
 
-void LoginPage::setLoginUiBusy(bool busy)
-{
+void LoginPage::setLoginUiBusy(bool busy) {
   const bool credentialsStep = currentStep_ == LoginStep::CredentialsStep;
-  if (idInput_)
-  {
+  if (idInput_) {
     idInput_->setEnabled(credentialsStep && !busy);
   }
-  if (passwordInput_)
-  {
+  if (passwordInput_) {
     passwordInput_->setEnabled(credentialsStep && !busy);
   }
-  if (otpInput_)
-  {
+  if (otpInput_) {
     otpInput_->setEnabled(!credentialsStep && !busy);
   }
-  if (backButton_)
-  {
+  if (backButton_) {
     backButton_->setEnabled(!credentialsStep && !busy);
   }
-  if (loginButton_)
-  {
+  if (loginButton_) {
     loginButton_->setEnabled(!busy);
   }
 }
 
-void LoginPage::showStatusMessage(const QString &message, bool success)
-{
-  if (!loginStatusLabel_)
-  {
+void LoginPage::showStatusMessage(const QString &message, bool success) {
+  if (!loginStatusLabel_) {
     return;
   }
 
@@ -347,16 +320,13 @@ void LoginPage::showStatusMessage(const QString &message, bool success)
   loginStatusLabel_->setText(message);
   loginStatusLabel_->setStyleSheet(
       success
-          ? QStringLiteral(
-                "color: #10B981; font-size: 14px; font-weight: 700;")
+          ? QStringLiteral("color: #10B981; font-size: 14px; font-weight: 700;")
           : QStringLiteral(
                 "color: #EF4444; font-size: 14px; font-weight: 700;"));
 }
 
-void LoginPage::showProgressMessage(const QString &message)
-{
-  if (!loginStatusLabel_)
-  {
+void LoginPage::showProgressMessage(const QString &message) {
+  if (!loginStatusLabel_) {
     return;
   }
 
@@ -366,80 +336,64 @@ void LoginPage::showProgressMessage(const QString &message)
       QStringLiteral("color: #CBD5E1; font-size: 14px; font-weight: 700;"));
 }
 
-void LoginPage::updateStepUi()
-{
+void LoginPage::updateStepUi() {
   const bool otpStep = currentStep_ == LoginStep::OtpStep;
 
-  if (idInput_)
-  {
+  if (idInput_) {
     idInput_->setVisible(!otpStep);
   }
-  if (passwordInput_)
-  {
+  if (passwordInput_) {
     passwordInput_->setVisible(!otpStep);
   }
-  if (otpHintLabel_)
-  {
+  if (otpHintLabel_) {
     otpHintLabel_->setVisible(otpStep);
-    otpHintLabel_->setText(
-        otpStep
-            ? QStringLiteral("%1 계정의 OTP를 입력하세요.")
-                  .arg(maskedUserId(pendingUsername_))
-            : QString());
+    otpHintLabel_->setText(otpStep
+                               ? QStringLiteral("%1 계정의 OTP를 입력하세요.")
+                                     .arg(maskedUserId(pendingUsername_))
+                               : QString());
   }
-  if (otpInput_)
-  {
+  if (otpInput_) {
     otpInput_->setVisible(otpStep);
     otpInput_->setReadOnly(!otpStep);
   }
-  if (backButton_)
-  {
+  if (backButton_) {
     backButton_->setVisible(otpStep);
   }
-  if (loginButton_)
-  {
+  if (loginButton_) {
     loginButton_->setText(otpStep ? QStringLiteral("인증하고 시작")
                                   : QStringLiteral("다음"));
   }
 }
 
-QString LoginPage::maskedUserId(const QString &userId) const
-{
-  if (userId.size() <= 2)
-  {
+QString LoginPage::maskedUserId(const QString &userId) const {
+  if (userId.size() <= 2) {
     return QString(userId.size(), QChar('*'));
   }
   QString masked = userId;
-  for (int i = 1; i < masked.size() - 1; ++i)
-  {
+  for (int i = 1; i < masked.size() - 1; ++i) {
     masked[i] = QChar('*');
   }
   return masked;
 }
 
 QString LoginPage::messageForAuthCode(const QString &code,
-                                      const QString &fallbackMessage) const
-{
-  if (code == QStringLiteral("invalid_credentials"))
-  {
+                                      const QString &fallbackMessage) const {
+  if (code == QStringLiteral("invalid_credentials")) {
     return fallbackMessage.isEmpty()
                ? QStringLiteral("아이디 또는 비밀번호가 올바르지 않습니다.")
                : fallbackMessage;
   }
-  if (code == QStringLiteral("invalid_otp"))
-  {
+  if (code == QStringLiteral("invalid_otp")) {
     return fallbackMessage.isEmpty()
                ? QStringLiteral("OTP 코드가 올바르지 않습니다.")
                : fallbackMessage;
   }
-  if (code == QStringLiteral("service_unavailable"))
-  {
+  if (code == QStringLiteral("service_unavailable")) {
     return fallbackMessage.isEmpty()
                ? QStringLiteral("인증 서버에 연결할 수 없습니다.")
                : fallbackMessage;
   }
-  if (code == QStringLiteral("protocol_error"))
-  {
+  if (code == QStringLiteral("protocol_error")) {
     return fallbackMessage.isEmpty()
                ? QStringLiteral("인증 서버 응답이 올바르지 않습니다.")
                : fallbackMessage;
@@ -449,14 +403,11 @@ QString LoginPage::messageForAuthCode(const QString &code,
              : fallbackMessage;
 }
 
-void LoginPage::closeEvent(QCloseEvent *event)
-{
-  if (authClient_)
-  {
+void LoginPage::closeEvent(QCloseEvent *event) {
+  if (authClient_) {
     authClient_->cancel();
   }
-  if (!loginSucceeded_)
-  {
+  if (!loginSucceeded_) {
     emit loginClosed();
   }
   QWidget::closeEvent(event);

@@ -59,6 +59,8 @@ public:
 signals:
   void thumbnailFrameReady(int cardIndex, const QImage &image);
   void displayFrameReady(const QImage &image, const QList<ObjectInfo> &objects);
+  void rawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
+                     qint64 timestampMs);
   void roiDataChanged();
   void videoReady();
   void zoneStateChanged();

@@ -274,10 +274,10 @@ int Config::defaultDelayMs() const { return m_sync["defaultDelayMs"].toInt(0); }
  * ========================= */
 
 QString Config::authHost() const {
-  return m_auth["host"].toString(QStringLiteral("127.0.0.1"));
+  return m_auth["host"].toString(QStringLiteral("192.168.0.67"));
 }
 
-int Config::authPort() const { return m_auth["port"].toInt(5001); }
+int Config::authPort() const { return m_auth["port"].toInt(9000); }
 
 int Config::authConnectTimeoutMs() const {
   return m_auth["connectTimeoutMs"].toInt(3000);

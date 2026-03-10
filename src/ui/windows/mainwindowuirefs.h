@@ -4,10 +4,12 @@
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QSlider;
 class QSpinBox;
 class QTableWidget;
 class QTextEdit;
@@ -92,6 +94,36 @@ struct MainWindowUiRefs {
 
   // CCTV Event Log Panel
   QListWidget *eventListWidget = nullptr;
+
+  QPushButton *btnCaptureManual = nullptr;
+  QPushButton *btnRecordManual = nullptr;
+
+  // Recording Search Panel
+  QTableWidget *recordLogTable = nullptr;
+  QPushButton *btnRefreshRecordLogs = nullptr;
+  QPushButton *btnDeleteRecordLog = nullptr;
+  VideoWidget *recordVideoWidget = nullptr;
+  QLineEdit *recordEventTypeInput = nullptr;
+  QSpinBox *recordIntervalSpin = nullptr;
+  QPushButton *btnApplyEventSetting = nullptr;
+  QPushButton *btnTriggerEventRecord = nullptr;
+  QComboBox *cmbManualCamera = nullptr;
+  QPushButton *btnCaptureRecordTab = nullptr;
+  QPushButton *btnRecordRecordTab = nullptr;
+  QLabel *recordPreviewPathLabel = nullptr;
+
+  // Video player controls
+  QPushButton *btnVideoPlay = nullptr;
+  QPushButton *btnVideoPause = nullptr;
+  QPushButton *btnVideoStop = nullptr;
+  QSlider *videoSeekSlider = nullptr;
+  QLabel *videoTimeLabel = nullptr;
+
+  // Continuous Recording (상시 녹화)
+  QSpinBox *spinRecordRetention = nullptr;
+  QLabel *lblContinuousStatus = nullptr;
+  QPushButton *btnApplyContinuousSetting = nullptr;
+  QPushButton *btnViewContinuous = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H
