@@ -58,6 +58,16 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
           &CameraSource::onOcrResult);
   connect(m_parkingService, &ParkingService::logMessage, this,
           &CameraSource::logMessage);
+
+  // 입/출차 이벤트 발생 시 즉시 zone 점유 상태 동기화 + UI 갱신
+  connect(m_parkingService, &ParkingService::vehicleEntered, this,
+          [this](int /*roiIndex*/, const QString & /*plate*/) {
+            syncZoneOccupancyFromActiveVehicles();
+          });
+  connect(m_parkingService, &ParkingService::vehicleDeparted, this,
+          [this](int /*roiIndex*/, const QString & /*plate*/) {
+            syncZoneOccupancyFromActiveVehicles();
+          });
 }
 
 bool CameraSource::initialize(TelegramBotAPI *telegramApi) {
@@ -276,7 +286,7 @@ void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects) {
   const auto &cfg = Config::instance();
   if (m_parkingService) {
     m_parkingService->processMetadata(objects, 0, cfg.effectiveWidth(),
-                                      cfg.sourceHeight(), 5000);
+                                      cfg.sourceHeight(), 10000);
   }
 
   if (!m_zoneStatusTimer.isValid() ||
