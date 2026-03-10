@@ -1322,9 +1322,6 @@ void MainWindow::setupUi() {
   recordLayout->addLayout(topControlArea);
 
   // ── Section B: 파일 목록 + 미리보기 (하단, 스플리터) ───────
-  QSplitter *recordSplitter = new QSplitter(Qt::Horizontal, this);
-  recordSplitter->setHandleWidth(4);
-  recordSplitter->setChildrenCollapsible(false);
 
   // 기록 목록 테이블 패널
   QWidget *listPanel = new QWidget(this);
@@ -1382,8 +1379,6 @@ void MainWindow::setupUi() {
       "border-radius: 4px; color: #94A3B8;");
 
   listLayout->addWidget(m_recordPreviewPathLabel);
-
-  recordSplitter->addWidget(listPanel);
 
   // 미리보기 영역
   QWidget *previewPanel = new QWidget(this);
