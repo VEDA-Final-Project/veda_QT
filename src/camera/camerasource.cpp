@@ -2,11 +2,12 @@
 
 #include "config/config.h"
 #include "telegram/telegrambotapi.h"
-#include <QJsonArray>
-#include <QJsonValue>
 #include <QDateTime>
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonValue>
 #include <algorithm>
+
 
 namespace {
 constexpr qint64 kUiFrameStaleMs = 60;
@@ -48,12 +49,12 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
           &CameraSource::onFrameCaptured);
   connect(m_cameraManager, &CameraManager::ocrFrameCaptured, this,
           &CameraSource::onOcrFrameCaptured);
-  connect(m_cameraManager, &CameraManager::logMessage, this,
-          [this](const QString &msg) {
-            emit logMessage(QString("[CameraSource][Ch %1] %2")
-                                .arg(m_cardIndex + 1)
-                                .arg(msg));
-          });
+  connect(
+      m_cameraManager, &CameraManager::logMessage, this,
+      [this](const QString &msg) {
+        emit logMessage(
+            QString("[CameraSource][Ch %1] %2").arg(m_cardIndex + 1).arg(msg));
+      });
   connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
           &CameraSource::onOcrResult);
   connect(m_parkingService, &ParkingService::logMessage, this,
@@ -154,11 +155,12 @@ void CameraSource::updateObjectFilter(const QSet<QString> &disabledTypes) {
 }
 
 bool CameraSource::reloadRoi(bool writeLog) {
-  const Result<RoiService::RoiInitData> initResult = m_roiService.init(m_cameraKey);
+  const Result<RoiService::RoiInitData> initResult =
+      m_roiService.init(m_cameraKey);
   if (!initResult.isOk()) {
     if (writeLog) {
-      emit logMessage(
-          QString("[ROI][DB] %1 초기화 실패: %2").arg(m_cameraKey, initResult.error));
+      emit logMessage(QString("[ROI][DB] %1 초기화 실패: %2")
+                          .arg(m_cameraKey, initResult.error));
     }
     return false;
   }
@@ -194,7 +196,8 @@ void CameraSource::syncEnabledRoiPolygons() {
     polygon.reserve(points.size());
     for (const QJsonValue &value : points) {
       const QJsonObject point = value.toObject();
-      polygon << QPointF(point.value("x").toDouble(), point.value("y").toDouble());
+      polygon << QPointF(point.value("x").toDouble(),
+                         point.value("y").toDouble());
     }
     if (polygon.size() < 3) {
       continue;
@@ -221,7 +224,9 @@ QString CameraSource::ocrProfile() const { return m_ocrProfile; }
 
 CameraSource::Status CameraSource::status() const { return m_status; }
 
-qint64 CameraSource::lastFrameTimestampMs() const { return m_lastFrameTimestampMs; }
+qint64 CameraSource::lastFrameTimestampMs() const {
+  return m_lastFrameTimestampMs;
+}
 
 ParkingService *CameraSource::parkingService() { return m_parkingService; }
 
@@ -255,7 +260,8 @@ QList<QPolygonF> CameraSource::normalizedRoiPolygons() const {
     polygon.reserve(points.size());
     for (const QJsonValue &value : points) {
       const QJsonObject point = value.toObject();
-      polygon << QPointF(point.value("x").toDouble(), point.value("y").toDouble());
+      polygon << QPointF(point.value("x").toDouble(),
+                         point.value("y").toDouble());
     }
     if (polygon.size() >= 3) {
       polygons.append(polygon);
@@ -277,7 +283,8 @@ QStringList CameraSource::roiLabels() const {
 void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects) {
   m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
 
-  if ((!m_roiSyncTimer.isValid() || m_roiSyncTimer.elapsed() >= kRoiSyncIntervalMs) &&
+  if ((!m_roiSyncTimer.isValid() ||
+       m_roiSyncTimer.elapsed() >= kRoiSyncIntervalMs) &&
       m_parkingService) {
     m_roiSyncTimer.restart();
     syncEnabledRoiPolygons();
@@ -302,6 +309,8 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
     return;
   }
 
+  emit rawFrameReady(m_cardIndex, framePtr, timestampMs);
+
   m_lastFrameTimestampMs = timestampMs;
   if (m_healthTimer && !m_healthTimer->isActive()) {
     m_healthTimer->start();
@@ -317,7 +326,8 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_RGB888);
-  const QList<ObjectInfo> readyMetadata = m_cameraSession.consumeReadyMetadata(nowMs);
+  const QList<ObjectInfo> readyMetadata =
+      m_cameraSession.consumeReadyMetadata(nowMs);
   m_currentObjects = readyMetadata;
 
   if (m_frameRenderTimer.isValid() &&
@@ -427,9 +437,9 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   connectionInfo.ip = cfg.cameraIp(m_cameraKey).trimmed();
   connectionInfo.username = cfg.cameraUsername(m_cameraKey).trimmed();
   connectionInfo.password = cfg.cameraPassword(m_cameraKey);
-  connectionInfo.profile =
-      displayProfile.trimmed().isEmpty() ? cfg.cameraProfile(m_cameraKey).trimmed()
-                                         : displayProfile.trimmed();
+  connectionInfo.profile = displayProfile.trimmed().isEmpty()
+                               ? cfg.cameraProfile(m_cameraKey).trimmed()
+                               : displayProfile.trimmed();
   if (connectionInfo.profile.isEmpty()) {
     connectionInfo.profile = QStringLiteral("profile2/media.smp");
   }
@@ -440,8 +450,8 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   }
 
   if (!connectionInfo.isValid()) {
-    emit logMessage(
-        QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)").arg(m_cameraKey));
+    emit logMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
+                        .arg(m_cameraKey));
     return false;
   }
 
@@ -458,8 +468,9 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
 
 QString CameraSource::desiredProfile() const {
   if (m_consumerSizes.isEmpty()) {
-    return m_idleProfile.isEmpty() ? Config::instance().cameraSubProfile(m_cameraKey)
-                                   : m_idleProfile;
+    return m_idleProfile.isEmpty()
+               ? Config::instance().cameraSubProfile(m_cameraKey)
+               : m_idleProfile;
   }
 
   QSize bestSize;
@@ -492,7 +503,8 @@ void CameraSource::updateDisplayProfileForConsumers() {
   if (profileChanged) {
     startDisplayStream(true, false, QStringLiteral("profile change"));
   } else {
-    m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps : 0);
+    m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps
+                                                            : 0);
   }
 }
 
@@ -550,9 +562,9 @@ void CameraSource::syncZoneOccupancyFromActiveVehicles() {
     const Result<QJsonObject> updateResult =
         m_roiService.setZoneEnabled(zoneId, shouldBeEmpty);
     if (!updateResult.isOk()) {
-      emit logMessage(QString("[ROI] 점유 상태 저장 실패 (%1 / %2): %3")
-                          .arg(m_roiService.cameraKey(), zoneId,
-                               updateResult.error));
+      emit logMessage(
+          QString("[ROI] 점유 상태 저장 실패 (%1 / %2): %3")
+              .arg(m_roiService.cameraKey(), zoneId, updateResult.error));
       continue;
     }
     changed = true;

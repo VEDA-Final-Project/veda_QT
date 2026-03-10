@@ -25,6 +25,8 @@ qt_add_executable(rtsp_test
     src/ui/windows/dbpanelcontroller.h
     src/ui/windows/rpipanelcontroller.cpp
     src/ui/windows/rpipanelcontroller.h
+    src/ui/windows/recordpanelcontroller.cpp
+    src/ui/windows/recordpanelcontroller.h
     src/ui/video/videowidget.cpp
     src/ui/video/videowidget.h
     src/ui/roi/roiinteractionstate.cpp
@@ -34,6 +36,10 @@ qt_add_executable(rtsp_test
     # Video
     src/video/videothread.cpp
     src/video/videothread.h
+    src/video/videobuffermanager.cpp
+    src/video/videobuffermanager.h
+    src/video/mediarecorderworker.cpp
+    src/video/mediarecorderworker.h
     # Metadata
     src/metadata/metadatathread.cpp
     src/metadata/metadatathread.h
@@ -93,6 +99,8 @@ qt_add_executable(rtsp_test
     src/database/hardwarelogrepository.cpp
     src/database/hardwarelogrepository.h
     src/database/vehiclerepository.cpp
+    src/database/mediarepository.cpp
+    src/database/mediarepository.h
     resources.qrc
 )
 

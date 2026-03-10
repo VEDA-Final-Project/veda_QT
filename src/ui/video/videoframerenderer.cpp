@@ -264,11 +264,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     painter.setPen(pen);
   }
 
-  if (objects.isEmpty()) {
-    painter.setPen(Qt::yellow);
-    painter.drawText(10, 30, "Waiting for AI Data...");
-  }
-
   if (showFps) {
     // === 우측 상단 정보 오버레이 강화 (프로파일 + 해상도 + FPS) ===
     QString shortProfileName = profileName;

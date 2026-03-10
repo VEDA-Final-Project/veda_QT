@@ -17,6 +17,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QSlider>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QTableWidget>
@@ -152,6 +153,38 @@ private:
   QLabel *m_footerRecordingLabel = nullptr;
   QLabel *m_recordingDot = nullptr;
   QListWidget *m_eventListWidget = nullptr;
+
+  QPushButton *m_btnCaptureManual = nullptr;
+  QPushButton *m_btnRecordManual = nullptr;
+
+  // Recording Search Widgets
+  QTableWidget *m_recordLogTable = nullptr;
+  QPushButton *m_btnRefreshRecordLogs = nullptr;
+  QPushButton *m_btnDeleteRecordLog = nullptr;
+  VideoWidget *m_recordVideoWidget = nullptr;
+  // Recording search: extra test controls
+  QLineEdit *m_recordEventTypeInput = nullptr;
+  QSpinBox *m_recordIntervalSpin = nullptr;
+  QPushButton *m_btnApplyEventSetting = nullptr;
+  QPushButton *m_btnTriggerEventRecord = nullptr;
+  QComboBox *m_cmbManualCamera = nullptr;
+  QPushButton *m_btnCaptureRecordTab = nullptr;
+  QPushButton *m_btnRecordRecordTab = nullptr;
+  QLabel *m_recordPreviewPathLabel = nullptr;
+
+  // Video player controls
+  QPushButton *m_btnVideoPlay = nullptr;
+  QPushButton *m_btnVideoPause = nullptr;
+  QPushButton *m_btnVideoStop = nullptr;
+  QSlider *m_videoSeekSlider = nullptr;
+  QLabel *m_videoTimeLabel = nullptr;
+
+  // Continuous Recording (상시 녹화)
+  QSpinBox *m_spinRecordRetention = nullptr;
+  QLabel *m_lblContinuousStatus = nullptr;
+  QPushButton *m_btnApplyContinuousSetting = nullptr;
+  QPushButton *m_btnViewContinuous = nullptr;
+
   QTimer *m_clockTimer = nullptr;
   QToolButton *m_menuButton = nullptr;
   QMenu *m_navMenu = nullptr;

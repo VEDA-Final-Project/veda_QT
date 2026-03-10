@@ -1,8 +1,6 @@
 #ifndef MAINWINDOWCONTROLLER_H
 #define MAINWINDOWCONTROLLER_H
 
-#include "logging/logdeduplicator.h"
-#include "mainwindowuirefs.h"
 #include <QElapsedTimer>
 #include <QImage>
 #include <QJsonObject>
@@ -10,20 +8,33 @@
 #include <QPolygon>
 #include <QRect>
 #include <QSet>
+#include <QSharedPointer>
 #include <QSize>
+#include <QString>
+#include <QTimer>
 #include <array>
+#include <opencv2/core.hpp>
+#include <vector>
 
+
+#include "logging/logdeduplicator.h"
+#include "mainwindowuirefs.h"
 #include "telegram/telegrambotapi.h"
+
 
 class CameraChannelRuntime;
 class CameraSource;
 class DbPanelController;
+class RecordPanelController;
+class MediaRepository;
+class VideoBufferManager;
+class MediaRecorderWorker;
+class QThread;
 class ParkingService;
 class RoiService;
 class RpiPanelController;
 class VideoWidget;
 class QEvent;
-class QTimer;
 
 class MainWindowController : public QObject {
   Q_OBJECT
@@ -53,7 +64,19 @@ public slots:
   void onRoiPolygonChanged(const QPolygon &polygon, const QSize &frameSize);
   void onRoiTargetChanged(int index);
   void onChannelCardClicked(int index);
+  void onSystemConfigChanged();
   void onReidTableCellClicked(int row, int column);
+  void onCaptureManual();
+  void onRecordManualToggled(bool checked);
+  void onMediaSaveFinished(bool success, const QString &filePath,
+                           const QString &type, const QString &description,
+                           const QString &cameraId);
+  void onContinuousRecordTimeout();
+  void onCleanupTimeout();
+  void onContinuousSettingChanged();
+  void onApplyContinuousSettingClicked();
+  void onRawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
+                       qint64 timestampMs);
 
   void onSendEntry();
   void onSendExit();
@@ -87,12 +110,36 @@ private:
   TelegramBotAPI *m_telegramApi = nullptr;
   RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
+  RecordPanelController *m_recordPanelController = nullptr;
+  MediaRepository *m_mediaRepo = nullptr;
+  VideoBufferManager *m_primaryBuffer = nullptr;
+  VideoBufferManager *m_secondaryBuffer = nullptr;
+  VideoBufferManager *m_buffer3 = nullptr;
+  VideoBufferManager *m_buffer4 = nullptr;
+
+  VideoBufferManager *getBufferByIndex(int index) const;
+
+  MediaRecorderWorker *m_recorderWorker = nullptr;
+  QThread *m_recorderThread = nullptr;
+  bool m_isManualRecording = false;
+  int m_manualRecordChannelIdx = -1;
+  uint64_t m_manualRecordStartIdx = 0;
+  QString m_currentManualRecordPath;
+
   std::array<CameraChannelRuntime *, 2> m_channels{{nullptr, nullptr}};
-  std::array<CameraSource *, 4> m_cameraSources{{nullptr, nullptr, nullptr,
-                                                 nullptr}};
+  std::array<CameraSource *, 4> m_cameraSources{
+      {nullptr, nullptr, nullptr, nullptr}};
+  int m_selectedChannelIndex = 0;
+  int m_secondaryChannelIndex = 1;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
   QTimer *m_resizeDebounceTimer = nullptr;
+  // Continuous Recording
+  VideoBufferManager *m_continuousBuffers[4] = {nullptr, nullptr, nullptr,
+                                                nullptr};
+  QElapsedTimer m_continuousThrottleTimers[4];
+  QTimer *m_continuousRecordTimer = nullptr;
+  QTimer *m_cleanupTimer = nullptr;
 };
 
 #endif // MAINWINDOWCONTROLLER_H
