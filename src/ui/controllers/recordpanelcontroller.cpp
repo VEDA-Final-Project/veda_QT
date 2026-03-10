@@ -1,4 +1,4 @@
-#include "ui/windows/recordpanelcontroller.h"
+#include "recordpanelcontroller.h"
 #include "config/config.h"
 #include "video/videobuffermanager.h"
 #include <QDebug>

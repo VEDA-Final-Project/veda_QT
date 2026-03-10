@@ -1,8 +1,7 @@
 #include "mainwindow.h"
 #include "config/logfilterconfig.h"
-#include "mainwindowcontroller.h"
+#include "ui/controllers/mainwindowcontroller.h"
 #include <QDialog>
-
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <windowsx.h>

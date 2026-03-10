@@ -17,16 +17,22 @@ qt_add_executable(rtsp_test
     src/ui/windows/mainwindowuirefs.h
     src/ui/windows/loginpage.cpp
     src/ui/windows/loginpage.h
-    src/ui/windows/camerachannelruntime.cpp
-    src/ui/windows/camerachannelruntime.h
-    src/ui/windows/mainwindowcontroller.cpp
-    src/ui/windows/mainwindowcontroller.h
-    src/ui/windows/dbpanelcontroller.cpp
-    src/ui/windows/dbpanelcontroller.h
-    src/ui/windows/rpipanelcontroller.cpp
-    src/ui/windows/rpipanelcontroller.h
-    src/ui/windows/recordpanelcontroller.cpp
-    src/ui/windows/recordpanelcontroller.h
+    src/ui/controllers/camerachannelruntime.cpp
+    src/ui/controllers/camerachannelruntime.h
+    src/ui/controllers/mainwindowcontroller.cpp
+    src/ui/controllers/mainwindowcontroller.h
+    src/ui/controllers/dbpanelcontroller.cpp
+    src/ui/controllers/dbpanelcontroller.h
+    src/ui/controllers/rpipanelcontroller.cpp
+    src/ui/controllers/rpipanelcontroller.h
+    src/ui/controllers/roipanelcontroller.cpp
+    src/ui/controllers/roipanelcontroller.h
+    src/ui/controllers/telegrampanelcontroller.cpp
+    src/ui/controllers/telegrampanelcontroller.h
+    src/ui/controllers/mediacapturecontroller.cpp
+    src/ui/controllers/mediacapturecontroller.h
+    src/ui/controllers/recordpanelcontroller.cpp
+    src/ui/controllers/recordpanelcontroller.h
     src/ui/video/videowidget.cpp
     src/ui/video/videowidget.h
     src/ui/roi/roiinteractionstate.cpp

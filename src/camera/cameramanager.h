@@ -56,7 +56,6 @@ signals:
 private:
   void createDisplayThread();
   void createAnalyticsThreads();
-  void startDisplayPipeline();
   void startAnalyticsPipeline();
   void stopThread(QThread *thread, const QString &name, bool warnOnFailure);
 

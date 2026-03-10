@@ -1,10 +1,11 @@
 #include "config/config.h"
 #include "config/logfilterconfig.h"
+#include "ui/controllers/mainwindowcontroller.h"
 #include "ui/windows/loginpage.h"
 #include "ui/windows/mainwindow.h"
-#include "ui/windows/mainwindowcontroller.h"
 #include "video/videothread.h"
 #include <vector>
+
 
 #include <QApplication>
 #include <QCoreApplication>

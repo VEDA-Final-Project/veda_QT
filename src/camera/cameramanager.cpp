@@ -52,26 +52,6 @@ void CameraManager::setConnectionInfo(
   m_connectionInfo = connectionInfo;
 }
 
-void CameraManager::startDisplayPipeline() {
-  createDisplayThread();
-
-  if (!m_connectionInfo.isValid()) {
-    emit logMessage("Error: camera connection info is not configured.");
-    return;
-  }
-
-  const QString url =
-      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
-                   m_connectionInfo.password, m_connectionInfo.profile);
-  emit logMessage(
-      QString("Starting camera[%1] display pipeline with IP=%2, profile=%3")
-          .arg(m_connectionInfo.cameraId.isEmpty() ? QStringLiteral("camera-1")
-                                                   : m_connectionInfo.cameraId,
-               m_connectionInfo.ip, m_connectionInfo.profile));
-
-  m_videoThread->setUrl(url);
-  m_videoThread->start();
-}
 
 void CameraManager::startAnalyticsPipeline() {
   createAnalyticsThreads();

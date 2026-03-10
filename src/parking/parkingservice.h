@@ -45,7 +45,7 @@ public:
    */
   void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
                        int effectiveWidth, int sourceHeight,
-                       qint64 pruneTimeoutMs = 5000);
+                       qint64 pruneTimeoutMs = 10000);
 
   /**
    * @brief OCR 결과 수신 처리
