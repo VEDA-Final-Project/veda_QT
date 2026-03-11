@@ -103,6 +103,8 @@ private:
   QLineEdit *m_plateSearchInput = nullptr;
   QPushButton *m_btnSearchPlate = nullptr;
   QPushButton *m_btnRefreshLogs = nullptr;
+  QPushButton *m_btnAddLog = nullptr;
+  QPushButton *m_btnDeleteLog = nullptr;
   QLineEdit *m_forcePlateInput = nullptr;
   QSpinBox *m_forceObjectIdInput = nullptr;
   QLineEdit *m_forceTypeInput = nullptr;

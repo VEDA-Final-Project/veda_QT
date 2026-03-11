@@ -72,6 +72,7 @@ public:
    */
   bool updatePlate(int recordId, const QString &newPlate);
   bool deleteLog(int recordId, QString *errorMessage = nullptr);
+  bool manualInsert(const QString &plate, const QString &roiIndex, QString *errorMessage = nullptr);
 
   /**
    * @brief 수동 번호판 및 객체 정보 강제 지정 (실험용 상세 제어)
@@ -104,6 +105,12 @@ signals:
    * @brief 로그 메시지 (UI 로그 창에 표시)
    */
   void logMessage(const QString &msg);
+
+  /**
+   * @brief 주차 기록 데이터가 변경되었을 때 (입차, 출차 등) 발생
+   */
+  void parkingLogsUpdated();
+
 
 private:
   void handleNewEntry(const VehicleState &vs);

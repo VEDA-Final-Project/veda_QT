@@ -34,12 +34,13 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   const QList<VehicleState> newEntries = m_tracker.update(
       objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
 
-  // 2. 새로 진입한 차량 이벤트 로깅
+  // 2. 새로 진입한 차량 이벤트 로깅 및 DB 등록
   for (const VehicleState &vs : newEntries) {
     if (!vs.ocrRequested) {
       emit logMessage(QString("[Parking] Vehicle ID:%1 entered ROI #%2")
                           .arg(vs.objectId)
                           .arg(vs.occupiedRoiIndex + 1));
+      handleNewEntry(vs); // 번호판이 없어도 일단 DB에 세션 생성
     }
   }
 
@@ -53,17 +54,30 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
 
 void ParkingService::processOcrResult(int objectId,
                                       const QString &plateNumber) {
-  m_tracker.setPlateNumber(objectId, plateNumber);
+  int vehicleId = m_tracker.setPlateNumber(objectId, plateNumber);
 
   const auto &vehicles = m_tracker.vehicles();
-  if (!vehicles.contains(objectId)) {
+  if (!vehicles.contains(vehicleId)) {
     return;
   }
 
-  const VehicleState &vs = vehicles[objectId];
+  const VehicleState &vs = vehicles[vehicleId];
 
   if (vs.occupiedRoiIndex >= 0 && !plateNumber.isEmpty()) {
-    handleNewEntry(vs);
+    qDebug() << "[Parking] 번호판 인식 | ID:" << vehicleId << "->"
+             << plateNumber;
+    
+    // 이미 DB에 이 ID로 들어온 기록이 있는지 확인
+    QJsonObject active = m_repository.findActiveByObjectId(m_cameraKey, vehicleId);
+    if (!active.isEmpty()) {
+        // 있으면 번호판 정보만 업데이트
+        int recordId = active["id"].toInt();
+        m_repository.updatePlate(m_cameraKey, recordId, plateNumber);
+        emit parkingLogsUpdated();
+    } else {
+        // 없으면 새로 생성 (handleNewEntry 내부에서 중복 체크함)
+        handleNewEntry(vs);
+    }
   }
 }
 
@@ -76,11 +90,37 @@ QVector<QJsonObject> ParkingService::searchByPlate(const QString &plate) const {
 }
 
 bool ParkingService::updatePlate(int recordId, const QString &newPlate) {
-  return m_repository.updatePlate(m_cameraKey, recordId, newPlate);
+  if (m_repository.updatePlate(m_cameraKey, recordId, newPlate)) {
+    emit parkingLogsUpdated();
+    return true;
+  }
+  return false;
 }
 
 bool ParkingService::deleteLog(int recordId, QString *errorMessage) {
-  return m_repository.deleteLog(m_cameraKey, recordId, errorMessage);
+  if (m_repository.deleteLog(m_cameraKey, recordId, errorMessage)) {
+    emit parkingLogsUpdated();
+    return true;
+  }
+  return false;
+}
+
+bool ParkingService::manualInsert(const QString &plate, const QString &roiIndex, QString *errorMessage) {
+  const QDateTime now = QDateTime::currentDateTime();
+  // ROI 인덱스가 숫자인 경우 이름을 찾아보고, 아니면 그대로 사용
+  bool ok = false;
+  int idx = roiIndex.toInt(&ok);
+  QString zoneName = roiIndex;
+  if (ok && idx >= 0 && idx < m_roiNames.size()) {
+      zoneName = m_roiNames[idx];
+  }
+
+  int recordId = m_repository.insertEntry(m_cameraKey, plate, now, -1, zoneName, errorMessage);
+  if (recordId >= 0) {
+      emit parkingLogsUpdated();
+      return true;
+  }
+  return false;
 }
 
 void ParkingService::forceObjectData(int objectId, const QString &type,
@@ -120,12 +160,10 @@ QList<VehicleState> ParkingService::activeVehicles() const {
 void ParkingService::handleNewEntry(const VehicleState &vs) {
   const QDateTime now = QDateTime::currentDateTime();
 
-  // DB에 이미 활성 레코드가 있는지 확인 (중복 입차 방지)
+  // DB에 이미 활성 레코드가 있는지 확인 (중복 입차 방지 - ID 기준)
   QJsonObject existing =
-      m_repository.findActiveByPlate(m_cameraKey, vs.plateNumber);
+      m_repository.findActiveByObjectId(m_cameraKey, vs.objectId);
   if (!existing.isEmpty()) {
-    emit logMessage(QString("[Parking] %1 — already has active entry, skipping")
-                        .arg(vs.plateNumber));
     return;
   }
 
@@ -140,8 +178,10 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
           : QString();
 
   int recordId = m_repository.insertEntry(m_cameraKey, vs.plateNumber,
-                                          vs.occupiedRoiIndex, entryTime,
-                                          vs.objectId, roiName);
+                                          entryTime, vs.objectId, roiName);
+
+  qDebug() << "[Parking] 입차 감지 | ID:" << vs.objectId
+           << "| 번호판:" << vs.plateNumber << "| 구역:" << roiName;
   if (recordId >= 0) {
     emit logMessage(
         QString("[Parking] Entry recorded: %1 at ROI #%2 (DB ID: %3)")
@@ -149,6 +189,7 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
             .arg(vs.occupiedRoiIndex + 1)
             .arg(recordId));
     emit vehicleEntered(vs.occupiedRoiIndex, vs.plateNumber);
+    emit parkingLogsUpdated();
 
     // TODO: 텔레그램 입차 알림 전송
     // if (m_telegram) {
@@ -160,23 +201,24 @@ void ParkingService::handleNewEntry(const VehicleState &vs) {
 }
 
 void ParkingService::handleDeparture(const VehicleState &vs) {
-  if (vs.plateNumber.isEmpty()) {
-    return; // 번호판 미인식 차량은 출차 기록 안 남김
-  }
-
   const QDateTime now = QDateTime::currentDateTime();
 
-  // DB에서 활성 레코드 찾아 출차 시각 업데이트
+  // DB에서 활성 레코드 찾아 출차 시각 업데이트 (ID 기준)
   QJsonObject active =
-      m_repository.findActiveByPlate(m_cameraKey, vs.plateNumber);
+      m_repository.findActiveByObjectId(m_cameraKey, vs.objectId);
   if (!active.isEmpty()) {
     int recordId = active["id"].toInt();
     m_repository.updateExit(recordId, now);
+
+    qDebug() << "[Parking] 🔴 출차 감지 | ID:" << vs.objectId
+             << "| 번호판:" << vs.plateNumber
+             << "| 구역:" << active["zone_name"].toString();
 
     emit logMessage(QString("[Parking] Exit recorded: %1 from ROI #%2")
                         .arg(vs.plateNumber)
                         .arg(vs.occupiedRoiIndex + 1));
     emit vehicleDeparted(vs.occupiedRoiIndex, vs.plateNumber);
+    emit parkingLogsUpdated();
 
     // TODO: 텔레그램 출차 알림 + 요금 정보 전송
     // if (m_telegram) {

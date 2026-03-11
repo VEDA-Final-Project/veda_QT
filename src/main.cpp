@@ -43,6 +43,7 @@ static void filteredMessageHandler(QtMsgType type,
 }
 
 int main(int argc, char *argv[]) {
+
   // 싱글턴 강제 초기화 (메시지 핸들러 내 재귀 초기화 방지)
   LogFilterConfig::instance();
 

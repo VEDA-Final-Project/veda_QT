@@ -25,8 +25,8 @@ public:
    * @return 생성된 레코드의 ID (실패 시 -1)
    */
   int insertEntry(const QString &cameraKey, const QString &plateNumber,
-                  int roiIndex, const QDateTime &entryTime,
-                  int objectId = -1, const QString &roiName = QString(),
+                  const QDateTime &entryTime, int objectId = -1,
+                  const QString &roiName = QString(),
                   QString *errorMessage = nullptr);
 
   /**
@@ -35,13 +35,15 @@ public:
   bool updateExit(int recordId, const QDateTime &exitTime,
                   QString *errorMessage = nullptr);
 
-  /**
-   * @brief 번호판으로 현재 입차 중인 레코드 조회
-   * @return 입차 중인 레코드 (없으면 빈 QJsonObject)
-   */
   QJsonObject findActiveByPlate(const QString &cameraKey,
                                 const QString &plateNumber,
                                 QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 객체 ID로 현재 입차 중인 레코드 조회
+   */
+  QJsonObject findActiveByObjectId(const QString &cameraKey, int objectId,
+                                   QString *errorMessage = nullptr) const;
 
   /**
    * @brief 최근 N건의 입출차 기록 조회

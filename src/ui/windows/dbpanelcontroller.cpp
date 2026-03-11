@@ -4,11 +4,12 @@
 #include "database/userrepository.h"
 #include "database/vehiclerepository.h"
 #include "parking/parkingservice.h"
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
-#include <QDateTime>
 #include <QFormLayout>
+#include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
@@ -21,6 +22,7 @@
 #include <QTextEdit>
 #include <QTimeZone>
 #include <utility>
+
 
 namespace {
 QString formatDisplayDateTime(const QString &rawIsoText) {
@@ -40,8 +42,8 @@ QString formatDisplayDateTime(const QString &rawIsoText) {
   }
 
   const int hour24 = dt.time().hour();
-  const QString amPm = (hour24 < 12) ? QStringLiteral("오전")
-                                     : QStringLiteral("오후");
+  const QString amPm =
+      (hour24 < 12) ? QStringLiteral("오전") : QStringLiteral("오후");
   int hour12 = hour24 % 12;
   if (hour12 == 0) {
     hour12 = 12;
@@ -63,6 +65,8 @@ void populateParkingTable(QTableWidget *table,
   }
 
   table->setRowCount(0);
+  table->setColumnWidth(0, 60); // ID 컬럼 너비를 좁게 설정
+  table->setColumnWidth(1, 80); // Obj ID 컬럼도 약간 좁게 설정
 
   for (int i = 0; i < logs.size(); ++i) {
     const QJsonObject &row = logs[i];
@@ -70,15 +74,65 @@ void populateParkingTable(QTableWidget *table,
     table->setItem(i, 0,
                    new QTableWidgetItem(QString::number(row["id"].toInt())));
     table->setItem(
-        i, 1,
-        new QTableWidgetItem(QString::number(row["object_id"].toInt())));
+        i, 1, new QTableWidgetItem(QString::number(row["object_id"].toInt())));
     table->setItem(i, 2, new QTableWidgetItem(row["plate_number"].toString()));
-    const QString roiDisplay = row["roi_name"].toString().isEmpty()
-                                   ? QString::number(row["roi_index"].toInt())
-                                   : row["roi_name"].toString();
-    table->setItem(i, 3, new QTableWidgetItem(roiDisplay));
-    table->setItem(i, 4, new QTableWidgetItem(row["entry_time"].toString()));
-    table->setItem(i, 5, new QTableWidgetItem(row["exit_time"].toString()));
+    table->setItem(i, 3, new QTableWidgetItem(row["zone_name"].toString()));
+    // 시간 파싱 및 계산
+    QString entryStr = row["entry_time"].toString();
+    QString exitStr = row["exit_time"].toString();
+    
+    QDateTime entryTime = QDateTime::fromString(entryStr, Qt::ISODate);
+    if (!entryTime.isValid()) {
+      entryTime = QDateTime::fromString(entryStr, Qt::ISODateWithMs);
+    }
+    
+    QDateTime exitTime;
+    if (!exitStr.isEmpty()) {
+      exitTime = QDateTime::fromString(exitStr, Qt::ISODate);
+      if (!exitTime.isValid()) {
+        exitTime = QDateTime::fromString(exitStr, Qt::ISODateWithMs);
+      }
+    }
+
+    auto formatTime = [](const QDateTime &dt) -> QString {
+      if (!dt.isValid()) return "";
+      QString ampm = dt.time().hour() < 12 ? "오전" : "오후";
+      int h = dt.time().hour() % 12;
+      if (h == 0) h = 12;
+      return QString("%1/%2/%3 %4 %5:%6")
+          .arg(dt.date().year(), 4, 10, QLatin1Char('0'))
+          .arg(dt.date().month(), 2, 10, QLatin1Char('0'))
+          .arg(dt.date().day(), 2, 10, QLatin1Char('0'))
+          .arg(ampm)
+          .arg(h, 2, 10, QLatin1Char('0'))
+          .arg(dt.time().minute(), 2, 10, QLatin1Char('0'));
+    };
+
+    table->setItem(i, 4, new QTableWidgetItem(formatTime(entryTime)));
+    table->setItem(i, 5, new QTableWidgetItem(formatTime(exitTime)));
+
+    // 시간 계산
+    QDateTime exitTimeForCalc = exitTime.isValid() ? exitTime : QDateTime::currentDateTime();
+    qint64 secs = entryTime.isValid() ? entryTime.secsTo(exitTimeForCalc) : 0;
+    if (secs < 0)
+      secs = 0;
+
+    qint64 hours = secs / 3600;
+    qint64 mins = (secs % 3600) / 60;
+    QString totalTimeStr =
+        QString("%1시간 %2분").arg(hours).arg(mins, 2, 10, QLatin1Char('0'));
+    table->setItem(i, 6, new QTableWidgetItem(totalTimeStr));
+
+    // 요금 계산 (10분당 1000원)
+    qint64 cost = (secs / 600) * 1000;
+    QString costStr = QString("%1 원").arg(cost);
+    table->setItem(i, 7, new QTableWidgetItem(costStr));
+
+    // 지불여부
+    QString payStatus = row["pay_status"].toString();
+    if (payStatus.isEmpty())
+      payStatus = "미결제";
+    table->setItem(i, 8, new QTableWidgetItem(payStatus));
   }
 }
 } // namespace
@@ -108,6 +162,14 @@ void DbPanelController::connectSignals() {
   if (m_ui.btnEditPlate) {
     connect(m_ui.btnEditPlate, &QPushButton::clicked, this,
             &DbPanelController::onEditPlate);
+  }
+  if (m_ui.btnAddLog) {
+    connect(m_ui.btnAddLog, &QPushButton::clicked, this,
+            &DbPanelController::onAddLog);
+  }
+  if (m_ui.btnDeleteLog) {
+    connect(m_ui.btnDeleteLog, &QPushButton::clicked, this,
+            &DbPanelController::deleteParkingLog);
   }
   if (m_ui.btnRefreshUsers) {
     connect(m_ui.btnRefreshUsers, &QPushButton::clicked, this,
@@ -144,6 +206,15 @@ void DbPanelController::connectSignals() {
   if (m_ui.btnRefreshZone) {
     connect(m_ui.btnRefreshZone, &QPushButton::clicked, this,
             &DbPanelController::refreshZoneTable);
+  }
+
+  // ParkingService의 로그 업데이트 시그널 연결 (자동 새로고침)
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
+  if (service) {
+    connect(service, &ParkingService::parkingLogsUpdated, this,
+            &DbPanelController::onRefreshParkingLogs);
   }
 }
 
@@ -240,6 +311,36 @@ void DbPanelController::onForcePlate() {
   }
   service->forceObjectData(objectId, type, plate, score, bbox);
   appendLog(QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId));
+}
+
+void DbPanelController::onAddLog() {
+  ParkingService *service = m_context.parkingServiceProvider
+                                ? m_context.parkingServiceProvider()
+                                : nullptr;
+  if (!service) {
+    return;
+  }
+
+  bool ok;
+  QString plate = QInputDialog::getText(
+      nullptr, "수동 입차 등록", "차량 번호판:", QLineEdit::Normal, "", &ok);
+  if (!ok || plate.isEmpty())
+    return;
+
+  QString roi = QInputDialog::getText(
+      nullptr, "수동 입차 등록",
+      "ROI 지점 (이름 또는 인덱스):", QLineEdit::Normal, "0", &ok);
+  if (!ok)
+    return;
+
+  QString error;
+  if (service->manualInsert(plate, roi, &error)) {
+    appendLog(
+        QString("[DB] 수동 입차 기록 추가 완료: %1 (%2)").arg(plate, roi));
+    onRefreshParkingLogs();
+  } else {
+    appendLog(QString("[DB] 수동 입차 기록 추가 실패: %1").arg(error));
+  }
 }
 
 void DbPanelController::onEditPlate() {
@@ -581,9 +682,9 @@ void DbPanelController::refreshZoneTable() {
           row, 3,
           new QTableWidgetItem(isEmpty ? QStringLiteral("빈자리")
                                        : QStringLiteral("주차중")));
-      m_ui.zoneTable->setItem(
-          row, 4, new QTableWidgetItem(
-                      formatDisplayDateTime(record["created_at"].toString())));
+      m_ui.zoneTable->setItem(row, 4,
+                              new QTableWidgetItem(formatDisplayDateTime(
+                                  record["created_at"].toString())));
     }
   };
 

@@ -25,6 +25,20 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
       continue;
     }
 
+    // 번호판 객체인 경우 (WiseAI: "LicensePlate") - 별도 객체로 등록하지 않고 차량에 연결만 함
+    if (obj.type == "LicensePlate") {
+      int vehicleId = findParentVehicleId(obj.rect);
+      if (vehicleId != -1) {
+        m_plateToVehicleMap[obj.id] = vehicleId;
+        // 번호판 객체가 이미 텍스트 정보를 가지고 있다면 즉시 차량에 반영
+        QString plate = obj.plate.isEmpty() ? obj.extraInfo : obj.plate;
+        if (!plate.isEmpty()) {
+            m_vehicles[vehicleId].plateNumber = plate;
+        }
+      }
+      continue; // 번호판 객체 자체를 추적 대상(m_vehicles)에 넣지 않음
+    }
+
     // 기존 차량인지 확인, 없으면 새로 등록
     VehicleState &vs = m_vehicles[obj.id];
     if (vs.objectId < 0) {
@@ -109,10 +123,18 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
   return newEntries;
 }
 
-void VehicleTracker::setPlateNumber(int objectId, const QString &plate) {
-  if (m_vehicles.contains(objectId)) {
-    m_vehicles[objectId].plateNumber = plate;
+int VehicleTracker::setPlateNumber(int objectId, const QString &plate) {
+  int targetId = objectId;
+  // 만약 들어온 ID가 번호판 ID라면 매핑된 차량 ID로 변경
+  if (m_plateToVehicleMap.contains(objectId)) {
+    targetId = m_plateToVehicleMap[objectId];
   }
+
+  if (m_vehicles.contains(targetId)) {
+    m_vehicles[targetId].plateNumber = plate;
+    return targetId;
+  }
+  return -1;
 }
 
 void VehicleTracker::forceTrackState(int objectId, const ObjectInfo &info) {
@@ -154,6 +176,16 @@ QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs) {
       ++it;
     }
   }
+  // 매핑 정보 정리 (사라진 차량에 대한 매핑 제거)
+  auto itMap = m_plateToVehicleMap.begin();
+  while (itMap != m_plateToVehicleMap.end()) {
+    if (!m_vehicles.contains(itMap.value())) {
+      itMap = m_plateToVehicleMap.erase(itMap);
+    } else {
+      ++itMap;
+    }
+  }
+
   return departed;
 }
 
@@ -214,4 +246,26 @@ double VehicleTracker::computeOccupancyRatio(const QRectF &vehicleRect,
 
   // 차량 하단부가 주차 구역에 포함된 비율 반환
   return interArea / triangleArea;
+}
+
+int VehicleTracker::findParentVehicleId(const QRectF &plateRect) {
+  int bestVehicleId = -1;
+  double maxOverlap = 0.0;
+
+  // 현재 추적 중인 모든 차량 객체 중 번호판 영역을 가장 많이 포함하는 것을 찾음
+  auto it = m_vehicles.constBegin();
+  while (it != m_vehicles.constEnd()) {
+    const VehicleState &vs = it.value();
+    if (vs.type == "Vehicle" && vs.boundingBox.intersects(plateRect)) {
+      QRectF overlap = vs.boundingBox.intersected(plateRect);
+      double overlapArea = overlap.width() * overlap.height();
+      if (overlapArea > maxOverlap) {
+        maxOverlap = overlapArea;
+        bestVehicleId = vs.objectId;
+      }
+    }
+    ++it;
+  }
+
+  return bestVehicleId;
 }

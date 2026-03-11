@@ -127,6 +127,8 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.plateSearchInput = m_plateSearchInput;
   uiRefs.btnSearchPlate = m_btnSearchPlate;
   uiRefs.btnRefreshLogs = m_btnRefreshLogs;
+  uiRefs.btnAddLog = m_btnAddLog;
+  uiRefs.btnDeleteLog = m_btnDeleteLog;
   uiRefs.forcePlateInput = m_forcePlateInput;
   uiRefs.forceObjectIdInput = m_forceObjectIdInput;
   uiRefs.forceTypeInput = m_forceTypeInput;
@@ -994,15 +996,26 @@ void MainWindow::setupUi() {
   m_plateSearchInput->setPlaceholderText("번호판 검색...");
   m_btnSearchPlate = new QPushButton("검색", this);
   m_btnRefreshLogs = new QPushButton("새로고침", this);
+  m_btnAddLog = new QPushButton("추가", this);
+  m_editPlateInput = new QLineEdit(this);
+  m_editPlateInput->setPlaceholderText("새 번호판 입력...");
+  m_btnEditPlate = new QPushButton("수정", this);
+  m_btnDeleteLog = new QPushButton("삭제", this);
+
   logsToolBar->addWidget(m_plateSearchInput);
   logsToolBar->addWidget(m_btnSearchPlate);
   logsToolBar->addWidget(m_btnRefreshLogs);
+  logsToolBar->addWidget(m_btnAddLog);
+  logsToolBar->addWidget(m_editPlateInput);
+  logsToolBar->addWidget(m_btnEditPlate);
+  logsToolBar->addWidget(m_btnDeleteLog);
   logsToolBar->addStretch();
 
   m_parkingLogTable = new QTableWidget(this);
-  m_parkingLogTable->setColumnCount(6);
+  m_parkingLogTable->setColumnCount(9);
   m_parkingLogTable->setHorizontalHeaderLabels(
-      QStringList() << "ID" << "Obj ID" << "번호판" << "ROI" << "입차시간" << "출차시간");
+      QStringList() << "ID" << "Obj ID" << "번호판" << "ROI" << "입차시간" << "출차시간" << "총시간" << "예상 금액" << "지불여부");
+  m_parkingLogTable->verticalHeader()->setVisible(false);
   m_parkingLogTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::Stretch);
   m_parkingLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

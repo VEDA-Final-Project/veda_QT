@@ -43,6 +43,9 @@ void MediaRecorderWorker::saveVideo(
     if (framePtr && !framePtr->empty()) {
       cv::Mat bgrFrame;
       cv::cvtColor(*framePtr, bgrFrame, cv::COLOR_RGB2BGR);
+      if (bgrFrame.size() != frameSize) {
+        cv::resize(bgrFrame, bgrFrame, frameSize);
+      }
       writer.write(bgrFrame);
     }
   }

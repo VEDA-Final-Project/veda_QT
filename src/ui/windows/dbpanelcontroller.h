@@ -23,6 +23,8 @@ public:
     QLineEdit *plateSearchInput = nullptr;
     QPushButton *btnSearchPlate = nullptr;
     QPushButton *btnRefreshLogs = nullptr;
+    QPushButton *btnAddLog = nullptr;
+    QPushButton *btnDeleteLog = nullptr;
     QLineEdit *forcePlateInput = nullptr;
     QSpinBox *forceObjectIdInput = nullptr;
     QLineEdit *forceTypeInput = nullptr;
@@ -71,6 +73,7 @@ public slots:
   void onRefreshParkingLogs();
   void onSearchParkingLogs();
   void onForcePlate();
+  void onAddLog();
   void onEditPlate();
   void deleteParkingLog();
   void refreshUserTable();

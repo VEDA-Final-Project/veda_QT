@@ -56,7 +56,7 @@ public:
   /**
    * @brief 특정 차량의 OCR 결과를 반영합니다.
    */
-  void setPlateNumber(int objectId, const QString &plate);
+  int setPlateNumber(int objectId, const QString &plate);
 
   /**
    * @brief 특정 차량의 상태(메타데이터)를 강제로 업데이트합니다.
@@ -86,9 +86,16 @@ private:
   double computeOccupancyRatio(const QRectF &vehicleRect,
                                const QPolygonF &roiPolygon,
                                double *dynamicThreshold = nullptr) const;
+  /**
+   * @brief 주어진 번호판 박스를 포함하는 가장 적합한 차량 객체의 ID를 찾습니다.
+   */
+  int findParentVehicleId(const QRectF &plateRect);
 
   QHash<int, VehicleState> m_vehicles;
   QList<QPolygonF> m_roiPolygons;
+
+  // 번호판 ID -> 차량 ID 매핑 (OCR 결과 전송 시 올바른 객체에 전달하기 위함)
+  QHash<int, int> m_plateToVehicleMap;
 };
 
 #endif // VEHICLETRACKER_H

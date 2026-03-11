@@ -120,7 +120,7 @@ Result<QJsonObject> RoiService::createFromPolygon(const QPolygon &polygon,
   }
 
   const int nextSequence = nextAvailableSequence();
-  const QString zoneId = QString("%1-%2")
+  const QString zoneId = QString("zone-%1-%2")
                              .arg(m_cameraKey)
                              .arg(nextSequence, 3, 10, QLatin1Char('0'));
   const QRect bbox = polygon.boundingRect();
