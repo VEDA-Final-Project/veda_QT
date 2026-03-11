@@ -8,7 +8,6 @@
 #include <QJsonValue>
 #include <algorithm>
 
-
 namespace {
 constexpr qint64 kUiFrameStaleMs = 60;
 constexpr qint64 kThumbnailFrameStaleMs = 120;
@@ -184,8 +183,10 @@ void CameraSource::syncEnabledRoiPolygons() {
   const QVector<QJsonObject> &records = m_roiService.records();
   QList<QPolygonF> enabledPolygons;
   QVector<QString> enabledZoneIds;
+  QStringList enabledRoiNames;
   enabledPolygons.reserve(records.size());
   enabledZoneIds.reserve(records.size());
+  enabledRoiNames.reserve(records.size());
 
   for (const QJsonObject &record : records) {
     const QJsonArray points = record.value("zone_points").toArray();
@@ -204,10 +205,12 @@ void CameraSource::syncEnabledRoiPolygons() {
     }
     enabledPolygons.append(polygon);
     enabledZoneIds.append(record.value("zone_id").toString());
+    enabledRoiNames.append(record.value("zone_name").toString());
   }
 
   m_enabledZoneIds = enabledZoneIds;
   m_parkingService->updateRoiPolygons(enabledPolygons);
+  m_parkingService->setRoiNames(enabledRoiNames);
 }
 
 bool CameraSource::isRunning() const {

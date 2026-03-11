@@ -69,11 +69,16 @@ void populateParkingTable(QTableWidget *table,
     table->insertRow(i);
     table->setItem(i, 0,
                    new QTableWidgetItem(QString::number(row["id"].toInt())));
-    table->setItem(i, 1, new QTableWidgetItem(row["plate_number"].toString()));
     table->setItem(
-        i, 2, new QTableWidgetItem(QString::number(row["roi_index"].toInt())));
-    table->setItem(i, 3, new QTableWidgetItem(row["entry_time"].toString()));
-    table->setItem(i, 4, new QTableWidgetItem(row["exit_time"].toString()));
+        i, 1,
+        new QTableWidgetItem(QString::number(row["object_id"].toInt())));
+    table->setItem(i, 2, new QTableWidgetItem(row["plate_number"].toString()));
+    const QString roiDisplay = row["roi_name"].toString().isEmpty()
+                                   ? QString::number(row["roi_index"].toInt())
+                                   : row["roi_name"].toString();
+    table->setItem(i, 3, new QTableWidgetItem(roiDisplay));
+    table->setItem(i, 4, new QTableWidgetItem(row["entry_time"].toString()));
+    table->setItem(i, 5, new QTableWidgetItem(row["exit_time"].toString()));
   }
 }
 } // namespace

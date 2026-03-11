@@ -41,6 +41,11 @@ public:
   void updateRoiPolygons(const QList<QPolygonF> &polygons);
 
   /**
+   * @brief ROI 이름 목록 갱신 (인덱스 → 이름 매핑용)
+   */
+  void setRoiNames(const QStringList &names);
+
+  /**
    * @brief 새 메타데이터 프레임 처리 (입출차 판단의 진입점)
    */
   void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
@@ -107,6 +112,7 @@ private:
   VehicleTracker m_tracker;
   ParkingRepository m_repository;
   QString m_cameraKey = QStringLiteral("camera");
+  QStringList m_roiNames;
   TelegramBotAPI *m_telegram = nullptr;
 };
 

@@ -26,6 +26,7 @@ public:
    */
   int insertEntry(const QString &cameraKey, const QString &plateNumber,
                   int roiIndex, const QDateTime &entryTime,
+                  int objectId = -1, const QString &roiName = QString(),
                   QString *errorMessage = nullptr);
 
   /**

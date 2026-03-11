@@ -1000,9 +1000,9 @@ void MainWindow::setupUi() {
   logsToolBar->addStretch();
 
   m_parkingLogTable = new QTableWidget(this);
-  m_parkingLogTable->setColumnCount(5);
+  m_parkingLogTable->setColumnCount(6);
   m_parkingLogTable->setHorizontalHeaderLabels(
-      QStringList() << "ID" << "번호판" << "ROI" << "입차시간" << "출차시간");
+      QStringList() << "ID" << "Obj ID" << "번호판" << "ROI" << "입차시간" << "출차시간");
   m_parkingLogTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::Stretch);
   m_parkingLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

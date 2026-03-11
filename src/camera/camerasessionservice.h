@@ -5,8 +5,7 @@
 #include "metadata/metadatasynchronizer.h"
 #include <QList>
 
-class CameraSessionService
-{
+class CameraSessionService {
 public:
   void setCameraManager(CameraManager *cameraManager);
   void setDelayMs(int delayMs);
