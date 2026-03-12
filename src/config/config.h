@@ -25,6 +25,8 @@ public:
   QString cameraIp(const QString &cameraKey = QString()) const;
   QString cameraUsername(const QString &cameraKey = QString()) const;
   QString cameraPassword(const QString &cameraKey = QString()) const;
+  QString defaultCameraProfile() const;
+  QString defaultCameraSubProfile() const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
   QString cameraSubProfile(const QString &cameraKey = QString()) const;
   QString rtspUrl(const QString &cameraKey = QString()) const;
@@ -57,6 +59,7 @@ private:
 
   QJsonObject m_root;
   QJsonObject m_camera;
+  QJsonObject m_cameraDefaults;
   QJsonObject m_video;
   QJsonObject m_ocr;
   QJsonObject m_sync;

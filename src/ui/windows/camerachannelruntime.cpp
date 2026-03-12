@@ -59,7 +59,6 @@ bool CameraChannelRuntime::activate(CameraSource *source, int cardIndex) {
   }
   source->attachDisplayConsumer(slotId(), m_videoWidget ? m_videoWidget->size()
                                                         : QSize());
-  source->setAnalyticsActive(slotId(), true);
   applyRoiDataToWidget();
   refreshReidTable();
   return true;
@@ -69,7 +68,6 @@ void CameraChannelRuntime::deactivate() {
   m_selectedCardIndex = -1;
   m_videoReadyNotified = false;
   if (m_source) {
-    m_source->setAnalyticsActive(slotId(), false);
     m_source->detachDisplayConsumer(slotId());
     disconnect(m_source, nullptr, this, nullptr);
     m_source = nullptr;
@@ -275,7 +273,6 @@ void CameraChannelRuntime::bindSource(CameraSource *source) {
   }
 
   if (m_source) {
-    m_source->setAnalyticsActive(slotId(), false);
     m_source->detachDisplayConsumer(slotId());
     disconnect(m_source, nullptr, this, nullptr);
   }

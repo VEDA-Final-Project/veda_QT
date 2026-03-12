@@ -26,6 +26,7 @@
 #include <QMap>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPointer>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -36,6 +37,10 @@
 #include <QThread>
 #include <QTimer>
 #include <algorithm>
+
+namespace {
+constexpr int kCameraStartStaggerMs = 350;
+}
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
                                            QObject *parent)
@@ -178,20 +183,12 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       new RecordPanelController(recordUiRefs, m_mediaRepo, this);
   m_recordPanelController->connectSignals();
   m_recordPanelController->refreshLogTable();
-  // Ch1~Ch4에 대응하는 카메라 키 전달 (RTSP 독립 미리보기용)
-  m_recordPanelController->setChannelKeys(
-      QStringList{QStringLiteral("camera"), QStringLiteral("camera2"),
-                  QStringLiteral("camera3"), QStringLiteral("camera4")});
-  // 5. 녹화 시스템 초기화 (setVideoBuffers 전에 생성해야 함)
+  // 5. 녹화 시스템 초기화
   // 버퍼 크기를 600으로 확장 (15fps 기준 약 40초 분량 저장 가능)
   m_primaryBuffer = new VideoBufferManager(600, this);
   m_secondaryBuffer = new VideoBufferManager(600, this);
   m_buffer3 = new VideoBufferManager(600, this);
   m_buffer4 = new VideoBufferManager(600, this);
-
-  // 캡처/녹화용 버퍼 연결 (미리보기 스트림 프레임 → 버퍼 동시 누적)
-  m_recordPanelController->setVideoBuffers(m_primaryBuffer, m_secondaryBuffer,
-                                           m_buffer3, m_buffer4);
 
   // 이벤트 구간 저장: RecordPanel -> MainWindowController 연결
   // 클릭 시점 기준으로 '과거(preSec) + 미래(postSec)' 프레임을 모두 포함하기
@@ -303,6 +300,9 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       videoWidget->installEventFilter(this);
     }
   }
+  if (m_ui.recordVideoWidget) {
+    m_ui.recordVideoWidget->installEventFilter(this);
+  }
   for (int i = 0; i < 4; ++i) {
     if (m_ui.channelCards[i]) {
       m_ui.channelCards[i]->installEventFilter(this);
@@ -325,6 +325,9 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   refreshRoiSelectorForTarget();
   updateChannelCardSelection();
   connectSignals();
+  bindRecordPreviewSource(m_ui.cmbManualCamera
+                              ? m_ui.cmbManualCamera->currentIndex()
+                              : 0);
   // 상시 녹화 초기화
   for (int i = 0; i < 4; ++i) {
     // 5 FPS 기준 1분(60초) = 300프레임. 넉넉하게 600으로 설정
@@ -350,7 +353,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &MainWindowController::onApplyContinuousSettingClicked);
   }
 
-  startCameraSources();
 }
 
 void MainWindowController::startInitialCctv() {
@@ -387,6 +389,9 @@ bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
         break;
       }
     }
+    if (obj == m_ui.recordVideoWidget) {
+      m_resizeDebounceTimer->start(150);
+    }
   }
 
   if (event->type() == QEvent::MouseButtonPress) {
@@ -408,6 +413,7 @@ void MainWindowController::onVideoWidgetResizedSlot() {
       channel->handleResizeProfileChange();
     }
   }
+  updateRecordPreviewSourceSize();
 }
 
 void MainWindowController::shutdown() {
@@ -424,6 +430,7 @@ void MainWindowController::shutdown() {
       channel->shutdown();
     }
   }
+  bindRecordPreviewSource(-1);
   for (CameraSource *source : m_cameraSources) {
     if (source) {
       source->stop();
@@ -559,6 +566,11 @@ void MainWindowController::connectSignals() {
   if (m_ui.btnRecordRecordTab) {
     connect(m_ui.btnRecordRecordTab, &QPushButton::toggled, this,
             &MainWindowController::onRecordManualToggled);
+  }
+  if (m_ui.cmbManualCamera) {
+    connect(m_ui.cmbManualCamera,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindowController::bindRecordPreviewSource);
   }
 }
 
@@ -743,8 +755,63 @@ void MainWindowController::startCameraSources() {
     connect(source, &CameraSource::logMessage, this,
             &MainWindowController::onLogMessage);
     m_cameraSources[static_cast<size_t>(i)] = source;
-    source->start();
+
+    QPointer<CameraSource> deferredSource(source);
+    const int startDelayMs = i * kCameraStartStaggerMs;
+    QTimer::singleShot(startDelayMs, this,
+                       [this, deferredSource, i, startDelayMs]() {
+      if (!deferredSource) {
+        return;
+      }
+      onLogMessage(QString("[Camera] Ch %1 시작 예약 실행 (%2 ms)")
+                       .arg(i + 1)
+                       .arg(startDelayMs));
+      deferredSource->start();
+    });
   }
+}
+
+void MainWindowController::bindRecordPreviewSource(int index) {
+  if (m_recordPreviewConnection) {
+    disconnect(m_recordPreviewConnection);
+    m_recordPreviewConnection = {};
+  }
+
+  if (m_recordPreviewSource) {
+    m_recordPreviewSource->detachDisplayConsumer(kRecordPreviewConsumerId);
+    m_recordPreviewSource = nullptr;
+  }
+
+  if (!m_recordPanelController) {
+    return;
+  }
+
+  CameraSource *source = sourceAt(index);
+  if (!source) {
+    return;
+  }
+
+  m_recordPreviewSource = source;
+  m_recordPreviewConnection = connect(
+      source, &CameraSource::displayFrameReady, this,
+      [this](const QImage &image, const QList<ObjectInfo> &) {
+        if (m_recordPanelController) {
+          m_recordPanelController->updateLiveFrame(image);
+        }
+      });
+  source->attachDisplayConsumer(kRecordPreviewConsumerId,
+                                m_ui.recordVideoWidget
+                                    ? m_ui.recordVideoWidget->size()
+                                    : QSize());
+}
+
+void MainWindowController::updateRecordPreviewSourceSize() {
+  if (!m_recordPreviewSource || !m_ui.recordVideoWidget) {
+    return;
+  }
+
+  m_recordPreviewSource->updateConsumerSize(kRecordPreviewConsumerId,
+                                            m_ui.recordVideoWidget->size());
 }
 
 void MainWindowController::onRoiTargetChanged(int index) {

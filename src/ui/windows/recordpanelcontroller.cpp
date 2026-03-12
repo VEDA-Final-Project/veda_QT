@@ -1,6 +1,4 @@
 #include "ui/windows/recordpanelcontroller.h"
-#include "config/config.h"
-#include "video/videobuffermanager.h"
 #include <QDebug>
 #include <QFile>
 #include <QHeaderView>
@@ -35,7 +33,6 @@ RecordPanelController::RecordPanelController(const UiRefs &uiRefs,
 }
 
 RecordPanelController::~RecordPanelController() {
-  stopLivePreview();
   if (m_playCap.isOpened())
     m_playCap.release();
 }
@@ -91,16 +88,12 @@ void RecordPanelController::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int idx) {
               m_currentChannelIdx = idx;
+              m_liveFpsTimer.invalidate();
+              m_liveFramesSinceSample = 0;
+              m_liveFpsEstimate = 15.0;
               // 채널 변경 시 기존 미디어 정지 → 라이브 모드
               onStopClicked();
               refreshLogTable();
-              // 선택된 채널의 RTSP 라이브 프리뷰 시작
-              if (idx >= 0 && idx < m_channelKeys.size()) {
-                startLivePreview(
-                    Config::instance().rtspUrl(m_channelKeys[idx]));
-              } else {
-                stopLivePreview();
-              }
             });
   }
 
@@ -111,89 +104,10 @@ void RecordPanelController::connectSignals() {
 }
 
 // ──────────────────────────────────────────────────────────────
-// RTSP 라이브 미리보기 관리
+// 라이브 프리뷰 상태 관리
 // ──────────────────────────────────────────────────────────────
-void RecordPanelController::setChannelKeys(const QStringList &keys) {
-  m_channelKeys = keys;
-  int idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
-  m_currentChannelIdx = idx;
-  if (idx >= 0 && idx < m_channelKeys.size()) {
-    startLivePreview(Config::instance().rtspUrl(m_channelKeys[idx]));
-  }
-}
-
-void RecordPanelController::setVideoBuffers(VideoBufferManager *primary,
-                                            VideoBufferManager *secondary,
-                                            VideoBufferManager *buf3,
-                                            VideoBufferManager *buf4) {
-  m_primaryBuffer = primary;
-  m_secondaryBuffer = secondary;
-  m_buffer3 = buf3;
-  m_buffer4 = buf4;
-}
-
 double RecordPanelController::getLiveFps() const {
-  if (m_liveThread) {
-    return m_liveThread->getActualFps();
-  }
-  return 15.0; // 기본값
-}
-
-VideoBufferManager *RecordPanelController::currentBuffer() const {
-  switch (m_currentChannelIdx) {
-  case 0:
-    return m_primaryBuffer;
-  case 1:
-    return m_secondaryBuffer;
-  case 2:
-    return m_buffer3;
-  case 3:
-    return m_buffer4;
-  default:
-    return nullptr;
-  }
-}
-
-void RecordPanelController::startLivePreview(const QString &rtspUrl) {
-  if (rtspUrl.isEmpty())
-    return;
-  stopLivePreview();
-
-  m_liveThread = new VideoThread(this);
-  m_liveThread->setUrl(rtspUrl);
-  m_liveThread->setTargetFps(15);
-  connect(m_liveThread, &VideoThread::frameCaptured, this,
-          [this](QSharedPointer<cv::Mat> frame, qint64) {
-            if (!frame || frame->empty())
-              return;
-
-            // 선택된 채널에 맞는 버퍼에 프레임 누적 (캡처/녹화용)
-            VideoBufferManager *buf = currentBuffer();
-            if (buf)
-              buf->addFrame(frame);
-
-            // 미리보기 표시 (미디어 파일 미로드 + 동영상 재생 중 아닐 때)
-            if (!m_hasMediaLoaded && !m_playCap.isOpened()) {
-              QImage qimg(frame->data, frame->cols, frame->rows, frame->step,
-                          QImage::Format_RGB888);
-              if (m_ui.recordVideoWidget)
-                m_ui.recordVideoWidget->updateFrame(qimg.copy());
-            }
-          });
-  m_liveThread->start();
-  qDebug() << "[RecordPanel] Live preview started for channel"
-           << m_currentChannelIdx;
-}
-
-void RecordPanelController::stopLivePreview() {
-  if (m_liveThread) {
-    m_liveThread->disconnect(); // 시그널 연결 해제
-    m_liveThread->stop();       // 스레드 루프 중지 요청
-    // 스레드가 종료되면 메모리 해제하도록 예약 (비동기, 안전)
-    connect(m_liveThread, &QThread::finished, m_liveThread,
-            &QObject::deleteLater);
-    m_liveThread = nullptr;
-  }
+  return m_liveFpsEstimate > 0 ? m_liveFpsEstimate : 15.0;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -397,10 +311,26 @@ void RecordPanelController::onRowSelectionChanged() {
 }
 
 void RecordPanelController::updateLiveFrame(const QImage &frame) {
-  // 독립 RTSP 스레드를 사용하므로, 대시보드(MainWindowController)에서 보내주는
-  // 프레임은 무시합니다. 이로써 두 소스가 widget을 번갈아 그리는 현상(깜빡임)을
-  // 방지합니다.
-  Q_UNUSED(frame);
+  if (frame.isNull() || !m_ui.recordVideoWidget) {
+    return;
+  }
+
+  if (!m_liveFpsTimer.isValid()) {
+    m_liveFpsTimer.start();
+    m_liveFramesSinceSample = 0;
+  }
+  ++m_liveFramesSinceSample;
+  const qint64 elapsedMs = m_liveFpsTimer.elapsed();
+  if (elapsedMs >= 1000) {
+    m_liveFpsEstimate =
+        (m_liveFramesSinceSample * 1000.0) / static_cast<double>(elapsedMs);
+    m_liveFramesSinceSample = 0;
+    m_liveFpsTimer.restart();
+  }
+
+  if (!m_hasMediaLoaded && !m_playCap.isOpened()) {
+    m_ui.recordVideoWidget->updateFrame(frame);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────

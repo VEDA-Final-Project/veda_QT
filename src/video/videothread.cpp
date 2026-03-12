@@ -4,7 +4,6 @@
 #include <QTcpSocket>
 #include <QUrl>
 #include <QtGlobal>
-#include <opencv2/imgproc.hpp>
 
 /**
  * @brief VideoThread 생성자
@@ -219,12 +218,8 @@ void VideoThread::run() {
       continue;
     }
 
-    // === BGR→RGB 변환 + 독립 복사본 생성 (워커 스레드에서 수행) ===
-    // 메인 UI 표시 및 OCR 처리가 RGB를 기준으로 하므로 여기서 변환을
-    // 수행합니다.
-    cv::Mat rgbFrame;
-    cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
-    auto sharedFrame = QSharedPointer<cv::Mat>::create(std::move(rgbFrame));
+    // 내부 파이프라인은 BGR 원본을 유지하고, UI/OCR 직전에만 QImage 변환한다.
+    auto sharedFrame = QSharedPointer<cv::Mat>::create(std::move(frame));
 
     // === 프레임 전달 (UI 등 외부로) ===
     emit frameCaptured(sharedFrame, QDateTime::currentMSecsSinceEpoch());

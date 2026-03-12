@@ -1,31 +1,27 @@
 {
+  "cameraDefaults": {
+    "profile": "profile6/media.smp",
+    "subProfile": "profile7/media.smp"
+  },
   "camera": {
     "ip": "192.168.0.23",
     "username": "admin",
-    "password": "1team@@@",
-    "profile": "profile6/media.smp",
-    "subProfile": "profile7/media.smp"
+    "password": "1team@@@"
   },
   "camera2": {
     "ip": "192.168.0.34",
     "username": "admin",
-    "password": "1team@@@",
-    "profile": "profile6/media.smp",
-    "subProfile": "profile7/media.smp"
+    "password": "1team@@@"
   },
   "camera3": {
     "ip": "192.168.0.76",
     "username": "admin",
-    "password": "1team@@@",
-    "profile": "profile6/media.smp",
-    "subProfile": "profile7/media.smp"
+    "password": "1team@@@"
   },
   "camera4": {
     "ip": "192.168.0.78",
     "username": "admin",
-    "password": "1team@@@",
-    "profile": "profile6/media.smp",
-    "subProfile": "profile7/media.smp"
+    "password": "1team@@@"
   },
   "video": {
     "sourceWidth": 3840,

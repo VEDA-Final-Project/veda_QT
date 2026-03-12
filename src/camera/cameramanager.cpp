@@ -11,8 +11,7 @@ constexpr unsigned long kForceStopWaitMs = 500;
  * @brief CameraManager 생성자
  */
 CameraManager::CameraManager(QObject *parent)
-    : QObject(parent), m_videoThread(nullptr), m_ocrVideoThread(nullptr),
-      m_metadataThread(nullptr) {
+    : QObject(parent), m_videoThread(nullptr), m_metadataThread(nullptr) {
   createDisplayThread();
 }
 
@@ -29,14 +28,6 @@ void CameraManager::createDisplayThread() {
 }
 
 void CameraManager::createAnalyticsThreads() {
-  if (!m_ocrVideoThread) {
-    m_ocrVideoThread = new VideoThread(this);
-    connect(m_ocrVideoThread, &VideoThread::frameCaptured, this,
-            &CameraManager::ocrFrameCaptured);
-    connect(m_ocrVideoThread, &VideoThread::logMessage, this,
-            &CameraManager::logMessage);
-  }
-
   if (!m_metadataThread) {
     m_metadataThread = new MetadataThread(this);
     m_metadataThread->setDisabledTypes(m_disabledTypes);
@@ -84,22 +75,12 @@ void CameraManager::startAnalyticsPipeline() {
   const QString ocrProfile = m_connectionInfo.subProfile.trimmed().isEmpty()
                                  ? m_connectionInfo.profile
                                  : m_connectionInfo.subProfile.trimmed();
-  const QString ocrUrl =
-      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
-                   m_connectionInfo.password, ocrProfile);
 
   m_metadataThread->setConnectionInfo(
       m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
       ocrProfile);
   if (m_metadataThread && !m_metadataThread->isRunning()) {
     m_metadataThread->start();
-  }
-  if (m_ocrVideoThread) {
-    m_ocrVideoThread->setUrl(ocrUrl);
-    m_ocrVideoThread->setTargetFps(2);
-    if (!m_ocrVideoThread->isRunning()) {
-      m_ocrVideoThread->start();
-    }
   }
 }
 
@@ -143,13 +124,7 @@ void CameraManager::startAnalytics() {
 }
 
 void CameraManager::stopAnalytics() {
-  stopThread(m_ocrVideoThread, QStringLiteral("OCR video thread"), true);
   stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
-
-  if (m_ocrVideoThread) {
-    m_ocrVideoThread->deleteLater();
-    m_ocrVideoThread = nullptr;
-  }
 
   if (m_metadataThread) {
     m_metadataThread->deleteLater();
@@ -226,17 +201,11 @@ void CameraManager::stop() {
   shutdownTimer.start();
 
   stopThread(m_videoThread, QStringLiteral("display video thread"), false);
-  stopThread(m_ocrVideoThread, QStringLiteral("OCR video thread"), true);
   stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
 
   if (m_videoThread) {
     m_videoThread->deleteLater();
     m_videoThread = nullptr;
-  }
-
-  if (m_ocrVideoThread) {
-    m_ocrVideoThread->deleteLater();
-    m_ocrVideoThread = nullptr;
   }
 
   if (m_metadataThread) {
@@ -250,9 +219,8 @@ void CameraManager::stop() {
 
 bool CameraManager::isRunning() const {
   bool videoRunning = m_videoThread && m_videoThread->isRunning();
-  bool ocrVideoRunning = m_ocrVideoThread && m_ocrVideoThread->isRunning();
   bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
-  return videoRunning || ocrVideoRunning || metaRunning;
+  return videoRunning || metaRunning;
 }
 
 bool CameraManager::isDisplayRunning() const {
@@ -260,7 +228,5 @@ bool CameraManager::isDisplayRunning() const {
 }
 
 bool CameraManager::isAnalyticsRunning() const {
-  bool ocrVideoRunning = m_ocrVideoThread && m_ocrVideoThread->isRunning();
-  bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
-  return ocrVideoRunning || metaRunning;
+  return m_metadataThread && m_metadataThread->isRunning();
 }

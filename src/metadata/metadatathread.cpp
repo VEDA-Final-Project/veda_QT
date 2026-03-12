@@ -1,4 +1,5 @@
 #include "metadatathread.h"
+#include "config/config.h"
 #include "util/rtspurl.h"
 #include <QCoreApplication>
 #include <QDebug>
@@ -43,7 +44,7 @@ void MetadataThread::setConnectionInfo(const QString &ip, const QString &user,
   // profile이 비어있으면 기본값 사용
   if (m_profile.isEmpty())
   {
-    m_profile = "profile6/media.smp";
+    m_profile = Config::instance().defaultCameraProfile();
   }
 }
 

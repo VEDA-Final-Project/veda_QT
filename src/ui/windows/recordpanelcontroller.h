@@ -3,7 +3,7 @@
 
 #include "database/mediarepository.h"
 #include "ui/video/videowidget.h"
-#include "video/videothread.h"
+#include <QElapsedTimer>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFileInfo>
@@ -13,7 +13,6 @@
 #include <QLineEdit>
 #include <QObject>
 #include <QPushButton>
-#include <QSharedPointer>
 #include <QSlider>
 #include <QSpinBox>
 #include <QString>
@@ -22,8 +21,6 @@
 #include <QTimer>
 #include <QVector>
 #include <opencv2/opencv.hpp>
-
-class VideoBufferManager;
 
 class RecordPanelController : public QObject {
   Q_OBJECT
@@ -66,10 +63,6 @@ public:
 
   void connectSignals();
   void refreshLogTable();
-  void setChannelKeys(const QStringList &keys);
-  void setVideoBuffers(VideoBufferManager *primary,
-                       VideoBufferManager *secondary, VideoBufferManager *buf3,
-                       VideoBufferManager *buf4);
   double getLiveFps() const;
 
 public slots:
@@ -105,9 +98,6 @@ private:
 
   void updatePlayerControls(bool hasVideo);
   void updateTimeLabel();
-  void startLivePreview(const QString &rtspUrl);
-  void stopLivePreview();
-  VideoBufferManager *currentBuffer() const;
   bool openVideoChunk(int chunkIdx, int startFrame = 0);
   void updateContinuousSeekSlider();
 
@@ -116,16 +106,10 @@ private:
   QVector<VideoSegment> m_continuousSegments;
   int m_currentChunkIdx = -1;
 
-  // 독립 RTSP 미리보기 스레드
-  VideoThread *m_liveThread = nullptr;
-  QStringList m_channelKeys;
   int m_currentChannelIdx = 0;
-
-  // 캡처/녹화용 버퍼 (Ch1~Ch4)
-  VideoBufferManager *m_primaryBuffer = nullptr;
-  VideoBufferManager *m_secondaryBuffer = nullptr;
-  VideoBufferManager *m_buffer3 = nullptr;
-  VideoBufferManager *m_buffer4 = nullptr;
+  QElapsedTimer m_liveFpsTimer;
+  int m_liveFramesSinceSample = 0;
+  double m_liveFpsEstimate = 15.0;
 };
 
 #endif // RECORDPANELCONTROLLER_H

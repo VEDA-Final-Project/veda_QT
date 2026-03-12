@@ -11,6 +11,8 @@
 
 namespace {
 const QString kDefaultCameraKey = QStringLiteral("camera");
+const QString kFallbackCameraProfile = QStringLiteral("profile6/media.smp");
+const QString kFallbackCameraSubProfile = QStringLiteral("profile7/media.smp");
 
 QString normalizedCameraKey(const QString &cameraKey) {
   const QString trimmed = cameraKey.trimmed();
@@ -19,6 +21,17 @@ QString normalizedCameraKey(const QString &cameraKey) {
 
 bool isCameraObject(const QJsonObject &root, const QString &key) {
   return key.startsWith(QStringLiteral("camera")) && root.value(key).isObject();
+}
+
+QString profileValue(const QJsonObject &cameraObj, const QJsonObject &defaults,
+                     const char *key, const QString &fallback) {
+  const QString cameraValue = cameraObj.value(QLatin1String(key)).toString().trimmed();
+  if (!cameraValue.isEmpty()) {
+    return cameraValue;
+  }
+  const QString defaultValue =
+      defaults.value(QLatin1String(key)).toString().trimmed();
+  return defaultValue.isEmpty() ? fallback : defaultValue;
 }
 
 QJsonObject cameraObjectForKey(const QJsonObject &root,
@@ -135,6 +148,7 @@ bool Config::load(const QString &path) {
   QJsonObject root = doc.object();
   m_root = root;
   m_camera = cameraObjectForKey(root, kDefaultCameraKey);
+  m_cameraDefaults = root["cameraDefaults"].toObject();
   m_video = root["video"].toObject();
   m_ocr = root["ocr"].toObject();
   m_sync = root["sync"].toObject();
@@ -180,21 +194,33 @@ QString Config::cameraPassword(const QString &cameraKey) const {
   return (cameraObj.isEmpty() ? m_camera : cameraObj)["password"].toString("");
 }
 
+QString Config::defaultCameraProfile() const {
+  return profileValue(QJsonObject(), m_cameraDefaults, "profile",
+                      kFallbackCameraProfile);
+}
+
+QString Config::defaultCameraSubProfile() const {
+  return profileValue(QJsonObject(), m_cameraDefaults, "subProfile",
+                      defaultCameraProfile().trimmed().isEmpty()
+                          ? kFallbackCameraSubProfile
+                          : defaultCameraProfile().trimmed());
+}
+
 /**
  * @brief RTSP 프로파일 경로
  */
 QString Config::cameraProfile(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
-  return (cameraObj.isEmpty() ? m_camera : cameraObj)["profile"].toString(
-      "profile2/media.smp");
+  return profileValue(cameraObj.isEmpty() ? m_camera : cameraObj,
+                      m_cameraDefaults, "profile", defaultCameraProfile());
 }
 
 QString Config::cameraSubProfile(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
   const QJsonObject selectedCamera = cameraObj.isEmpty() ? m_camera : cameraObj;
-  const QString fallbackProfile =
-      selectedCamera["profile"].toString("profile2/media.smp");
-  return selectedCamera["subProfile"].toString(fallbackProfile);
+  const QString fallbackProfile = cameraProfile(cameraKey);
+  return profileValue(selectedCamera, m_cameraDefaults, "subProfile",
+                      fallbackProfile);
 }
 
 /**

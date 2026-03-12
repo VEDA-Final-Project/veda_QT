@@ -34,7 +34,6 @@ public:
   void attachDisplayConsumer(int slotId, const QSize &size);
   void detachDisplayConsumer(int slotId);
   void updateConsumerSize(int slotId, const QSize &size);
-  void setAnalyticsActive(int slotId, bool active);
   void updateObjectFilter(const QSet<QString> &disabledTypes);
 
   bool reloadRoi(bool writeLog = true);
@@ -71,19 +70,23 @@ signals:
 private slots:
   void onMetadataReceived(const QList<ObjectInfo> &objects);
   void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
-  void onOcrFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void onOcrResult(int objectId, const OcrFullResult &result);
+  void onDisplayRenderTick();
+  void onThumbnailRenderTick();
+  void onOcrDispatchTick();
   void onHealthCheck();
   void onReconnectTimeout();
 
 private:
   static QString bestProfileForSize(const QSize &size);
+  static QString ocrMasterProfile();
+  static int profileRank(const QString &profile);
+  static QString higherQualityProfile(const QString &a, const QString &b);
 
   bool refreshConnectionFromConfig(const QString &displayProfile,
                                    bool reloadConfig);
   QString desiredProfile() const;
   void updateDisplayProfileForConsumers();
-  void updateAnalyticsState();
   void syncZoneOccupancyFromActiveVehicles();
   void setStatus(Status status, const QString &detail = QString());
   void scheduleReconnect(const QString &reason);
@@ -100,28 +103,32 @@ private:
   QString m_cameraKey;
   int m_cardIndex = -1;
   QString m_displayProfile;
-  QString m_idleProfile;
   QString m_ocrProfile;
   QHash<int, QSize> m_consumerSizes;
-  QSet<int> m_analyticsSlots;
   QVector<QString> m_enabledZoneIds;
   QList<ObjectInfo> m_currentObjects;
+  QList<ObjectInfo> m_latestFrameObjects;
   QSet<QString> m_disabledTypes;
+  QSharedPointer<cv::Mat> m_latestFramePtr;
   bool m_initialized = false;
   bool m_videoReadyNotified = false;
   bool m_shouldRun = false;
   Status m_status = Status::Stopped;
   QString m_statusDetail;
   qint64 m_lastFrameTimestampMs = 0;
+  qint64 m_latestBufferedFrameTimestampMs = 0;
   qint64 m_lastStartAttemptMs = 0;
+  qint64 m_lastDisplayRenderedTimestampMs = 0;
+  qint64 m_lastThumbnailRenderedTimestampMs = 0;
+  qint64 m_lastOcrProcessedTimestampMs = 0;
   int m_reconnectAttempt = 0;
   QElapsedTimer m_roiSyncTimer;
   QElapsedTimer m_zoneStatusTimer;
-  QElapsedTimer m_frameRenderTimer;
-  QElapsedTimer m_thumbnailRenderTimer;
-  QElapsedTimer m_ocrDispatchTimer;
   QTimer *m_healthTimer = nullptr;
   QTimer *m_reconnectTimer = nullptr;
+  QTimer *m_displayRenderTimer = nullptr;
+  QTimer *m_thumbnailRenderTimer = nullptr;
+  QTimer *m_ocrDispatchTimer = nullptr;
 };
 
 #endif // CAMERASOURCE_H

@@ -93,6 +93,8 @@ private:
   void refreshZoneTableAllChannels();
   void updateChannelCardSelection();
   void startCameraSources();
+  void bindRecordPreviewSource(int index);
+  void updateRecordPreviewSourceSize();
   void updateThumbnailForCard(int cardIndex, const QImage &image);
   bool isCameraSourceRunning(int cardIndex) const;
   CameraChannelRuntime *channelAt(int index) const;
@@ -129,6 +131,8 @@ private:
       {nullptr, nullptr, nullptr, nullptr}};
   std::array<CameraSource *, 4> m_cameraSources{
       {nullptr, nullptr, nullptr, nullptr}};
+  CameraSource *m_recordPreviewSource = nullptr;
+  QMetaObject::Connection m_recordPreviewConnection;
   int m_selectedChannelIndex = 0;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
@@ -139,6 +143,7 @@ private:
   QElapsedTimer m_continuousThrottleTimers[4];
   QTimer *m_continuousRecordTimer = nullptr;
   QTimer *m_cleanupTimer = nullptr;
+  static constexpr int kRecordPreviewConsumerId = 100;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

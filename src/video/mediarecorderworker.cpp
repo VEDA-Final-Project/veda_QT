@@ -41,9 +41,7 @@ void MediaRecorderWorker::saveVideo(
 
   for (const auto &framePtr : frames) {
     if (framePtr && !framePtr->empty()) {
-      cv::Mat bgrFrame;
-      cv::cvtColor(*framePtr, bgrFrame, cv::COLOR_RGB2BGR);
-      writer.write(bgrFrame);
+      writer.write(*framePtr);
     }
   }
 
@@ -68,9 +66,7 @@ void MediaRecorderWorker::saveImage(QSharedPointer<cv::Mat> frame,
   QFileInfo fileInfo(filePath);
   QDir().mkpath(fileInfo.absolutePath());
 
-  cv::Mat bgrFrame;
-  cv::cvtColor(*frame, bgrFrame, cv::COLOR_RGB2BGR);
-  if (cv::imwrite(filePath.toStdString(), bgrFrame)) {
+  if (cv::imwrite(filePath.toStdString(), *frame)) {
     // DB 저장은 주 스레드에서: finished 수신 후 처리
     emit finished(true, filePath, type, description, cameraId);
     qDebug() << "[Recorder] Image saved to:" << filePath;
