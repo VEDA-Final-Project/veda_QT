@@ -37,8 +37,7 @@ public:
   };
 
   CameraChannelRuntime(Slot slot, const QString &channelLabel,
-                       VideoWidget *videoWidget,
-                       const SharedUiRefs &sharedUi,
+                       VideoWidget *videoWidget, const SharedUiRefs &sharedUi,
                        QObject *parent = nullptr);
 
   void connectSignals();
