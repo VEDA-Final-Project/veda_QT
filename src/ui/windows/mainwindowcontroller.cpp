@@ -35,6 +35,7 @@
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
+#include <algorithm>
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
                                            QObject *parent)
@@ -49,11 +50,17 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   channelUiRefs.avgFpsLabel = m_ui.lblAvgFps;
 
   m_channels[0] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Primary, QStringLiteral("A"),
-      m_ui.videoWidgetPrimary, channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch1, QStringLiteral("Ch1"),
+      m_ui.videoWidgets[0], channelUiRefs, this);
   m_channels[1] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Secondary, QStringLiteral("B"),
-      m_ui.videoWidgetSecondary, channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch2, QStringLiteral("Ch2"),
+      m_ui.videoWidgets[1], channelUiRefs, this);
+  m_channels[2] = new CameraChannelRuntime(
+      CameraChannelRuntime::Slot::Ch3, QStringLiteral("Ch3"),
+      m_ui.videoWidgets[2], channelUiRefs, this);
+  m_channels[3] = new CameraChannelRuntime(
+      CameraChannelRuntime::Slot::Ch4, QStringLiteral("Ch4"),
+      m_ui.videoWidgets[3], channelUiRefs, this);
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (!m_channels[i]) {
@@ -275,6 +282,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
           &QObject::deleteLater);
   connect(m_recorderWorker, &MediaRecorderWorker::finished, this,
           &MainWindowController::onMediaSaveFinished);
+  connect(m_recorderWorker, &MediaRecorderWorker::error, this,
+          [this](const QString &message) {
+            onLogMessage(QString("[Recorder] %1").arg(message));
+          });
   m_recorderThread->start();
 
   if (m_telegramApi) {
@@ -287,11 +298,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   connect(m_resizeDebounceTimer, &QTimer::timeout, this,
           &MainWindowController::onVideoWidgetResizedSlot);
 
-  if (m_ui.videoWidgetPrimary) {
-    m_ui.videoWidgetPrimary->installEventFilter(this);
-  }
-  if (m_ui.videoWidgetSecondary) {
-    m_ui.videoWidgetSecondary->installEventFilter(this);
+  for (VideoWidget *videoWidget : m_ui.videoWidgets) {
+    if (videoWidget) {
+      videoWidget->installEventFilter(this);
+    }
   }
   for (int i = 0; i < 4; ++i) {
     if (m_ui.channelCards[i]) {
@@ -305,11 +315,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   }
 
-  if (m_channels[0]) {
-    m_channels[0]->setReidPanelActive(true);
-  }
-  if (m_channels[1]) {
-    m_channels[1]->setReidPanelActive(false);
+  for (size_t i = 0; i < m_channels.size(); ++i) {
+    if (m_channels[i]) {
+      m_channels[i]->setReidPanelActive(i == 0);
+    }
   }
 
   initRoiDbForChannels();
@@ -344,7 +353,23 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   startCameraSources();
 }
 
-void MainWindowController::startInitialCctv() { onChannelCardClicked(0); }
+void MainWindowController::startInitialCctv() {
+  QStringList cameraKeys = Config::instance().cameraKeys();
+  const int count = std::min(static_cast<int>(m_channels.size()),
+                             static_cast<int>(cameraKeys.size()));
+  for (int i = 0; i < count; ++i) {
+    CameraChannelRuntime *channel = channelAt(i);
+    if (channel && channel->selectedCardIndex() != i) {
+      onChannelCardClicked(i);
+    }
+  }
+  m_selectedChannelIndex = 0;
+  if (m_ui.roiTargetCombo) {
+    QSignalBlocker blocker(m_ui.roiTargetCombo);
+    m_ui.roiTargetCombo->setCurrentIndex(0);
+  }
+  onRoiTargetChanged(0);
+}
 
 void MainWindowController::onSystemConfigChanged() {
   CameraChannelRuntime *primary = channelAt(0);
@@ -356,8 +381,11 @@ void MainWindowController::onSystemConfigChanged() {
 
 bool MainWindowController::eventFilter(QObject *obj, QEvent *event) {
   if (event->type() == QEvent::Resize) {
-    if (obj == m_ui.videoWidgetPrimary || obj == m_ui.videoWidgetSecondary) {
-      m_resizeDebounceTimer->start(150);
+    for (VideoWidget *videoWidget : m_ui.videoWidgets) {
+      if (obj == videoWidget) {
+        m_resizeDebounceTimer->start(150);
+        break;
+      }
     }
   }
 
@@ -459,16 +487,13 @@ void MainWindowController::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MainWindowController::onRoiTargetChanged);
   }
-  if (m_ui.videoWidgetPrimary) {
-    connect(m_ui.videoWidgetPrimary, &VideoWidget::roiChanged, this,
+  for (VideoWidget *videoWidget : m_ui.videoWidgets) {
+    if (!videoWidget) {
+      continue;
+    }
+    connect(videoWidget, &VideoWidget::roiChanged, this,
             &MainWindowController::onRoiChanged);
-    connect(m_ui.videoWidgetPrimary, &VideoWidget::roiPolygonChanged, this,
-            &MainWindowController::onRoiPolygonChanged);
-  }
-  if (m_ui.videoWidgetSecondary) {
-    connect(m_ui.videoWidgetSecondary, &VideoWidget::roiChanged, this,
-            &MainWindowController::onRoiChanged);
-    connect(m_ui.videoWidgetSecondary, &VideoWidget::roiPolygonChanged, this,
+    connect(videoWidget, &VideoWidget::roiPolygonChanged, this,
             &MainWindowController::onRoiPolygonChanged);
   }
   if (m_ui.reidTable) {
@@ -641,22 +666,18 @@ void MainWindowController::initChannelCards() {
 }
 
 void MainWindowController::updateChannelCardSelection() {
-  const int primaryIndex =
-      channelAt(0) ? channelAt(0)->selectedCardIndex() : -1;
-  const int secondaryIndex =
-      channelAt(1) ? channelAt(1)->selectedCardIndex() : -1;
   QStringList cameraKeys = Config::instance().cameraKeys();
 
   for (int i = 0; i < 4; ++i) {
+    CameraChannelRuntime *channel = channelAt(i);
     if (m_ui.channelCards[i]) {
-      const bool isSelected = (i == primaryIndex || i == secondaryIndex);
+      const bool isSelected = channel && channel->selectedCardIndex() == i;
       m_ui.channelCards[i]->setProperty("selected", isSelected);
       m_ui.channelCards[i]->style()->unpolish(m_ui.channelCards[i]);
       m_ui.channelCards[i]->style()->polish(m_ui.channelCards[i]);
     }
     if (m_ui.channelStatusDots[i]) {
       const bool hasSignal = i < cameraKeys.size();
-      const bool isSelected = (i == primaryIndex || i == secondaryIndex);
       const CameraSource *source = sourceAt(i);
 
       QString style;
@@ -669,7 +690,7 @@ void MainWindowController::updateChannelCardSelection() {
       } else {
         switch (source->status()) {
         case CameraSource::Status::Live:
-          style = isSelected
+          style = (channel && channel->selectedCardIndex() == i)
                       ? QStringLiteral("background: #00e676; border-radius: "
                                        "5px; border: none;")
                       : QStringLiteral("background: #10b981; border-radius: "
@@ -727,17 +748,19 @@ void MainWindowController::startCameraSources() {
 }
 
 void MainWindowController::onRoiTargetChanged(int index) {
-  m_roiTarget = (index == 1) ? RoiTarget::Secondary : RoiTarget::Primary;
-  if (m_channels[0]) {
-    m_channels[0]->setReidPanelActive(m_roiTarget == RoiTarget::Primary);
+  if (index < 0 || index >= static_cast<int>(m_channels.size())) {
+    m_roiTarget = RoiTarget::Ch1;
+  } else {
+    m_roiTarget = static_cast<RoiTarget>(index);
   }
-  if (m_channels[1]) {
-    m_channels[1]->setReidPanelActive(m_roiTarget == RoiTarget::Secondary);
+  for (int i = 0; i < static_cast<int>(m_channels.size()); ++i) {
+    if (m_channels[static_cast<size_t>(i)]) {
+      m_channels[static_cast<size_t>(i)]->setReidPanelActive(
+          i == static_cast<int>(m_roiTarget));
+    }
   }
   refreshRoiSelectorForTarget();
-  onLogMessage(
-      QString("[ROI] 편집 대상 변경: %1")
-          .arg(m_roiTarget == RoiTarget::Primary ? "카메라 A" : "카메라 B"));
+  onLogMessage(QString("[ROI] 편집 대상 변경: %1").arg(roiTargetLabel(m_roiTarget)));
 }
 
 void MainWindowController::onChannelCardClicked(int index) {
@@ -745,11 +768,11 @@ void MainWindowController::onChannelCardClicked(int index) {
     return;
   }
 
-  CameraChannelRuntime *primary = channelAt(0);
-  CameraChannelRuntime *secondary = channelAt(1);
-  if (!primary || !secondary) {
+  CameraChannelRuntime *channel = channelAt(index);
+  if (!channel) {
     return;
   }
+  m_selectedChannelIndex = index;
 
   QStringList cameraKeys = Config::instance().cameraKeys();
   if (cameraKeys.isEmpty()) {
@@ -772,63 +795,38 @@ void MainWindowController::onChannelCardClicked(int index) {
         hasSignal ? QStringLiteral("STANDBY") : QStringLiteral("NO SIGNAL"));
   };
 
-  auto deactivateChannel =
-      [this, &clearThumbnail](CameraChannelRuntime *channel, int cardIndex) {
-        channel->deactivate();
-        updateChannelCardSelection();
-        onLogMessage(QString("[Camera] Ch %1 해제").arg(cardIndex + 1));
-        clearThumbnail(cardIndex);
-        refreshZoneTableAllChannels();
-        refreshRoiSelectorForTarget();
-      };
+  if (m_ui.roiTargetCombo && m_ui.roiTargetCombo->currentIndex() != index) {
+    QSignalBlocker blocker(m_ui.roiTargetCombo);
+    m_ui.roiTargetCombo->setCurrentIndex(index);
+  }
+  onRoiTargetChanged(index);
 
-  auto activateChannel = [this, index, isNoSignal, newSource](
-                             CameraChannelRuntime *channel, int targetIndex) {
-    if (isNoSignal) {
-      channel->selectCardWithoutStream(index);
-      updateChannelCardSelection();
-      onLogMessage(QString("[Camera] Ch %1: 신호 없음").arg(index + 1));
-      refreshRoiSelectorForTarget();
-      return;
-    }
-
-    onLogMessage(
-        QString("[Camera] Ch %1 켜기: %2")
-            .arg(index + 1)
-            .arg(newSource ? newSource->cameraKey() : QStringLiteral("N/A")));
-    if (!channel->activate(newSource, index)) {
-      updateChannelCardSelection();
-      return;
-    }
+  if (index == channel->selectedCardIndex()) {
+    channel->deactivate();
     updateChannelCardSelection();
+    onLogMessage(QString("[Camera] Ch %1 해제").arg(index + 1));
+    clearThumbnail(index);
     refreshZoneTableAllChannels();
-    if (targetIndex == static_cast<int>(m_roiTarget)) {
-      refreshRoiSelectorForTarget();
-    }
-  };
-
-  if (index == primary->selectedCardIndex()) {
-    deactivateChannel(primary, index);
     return;
   }
 
-  if (index == secondary->selectedCardIndex()) {
-    deactivateChannel(secondary, index);
+  if (isNoSignal) {
+    channel->selectCardWithoutStream(index);
+    updateChannelCardSelection();
+    onLogMessage(QString("[Camera] Ch %1: 신호 없음").arg(index + 1));
     return;
   }
 
-  if (primary->selectedCardIndex() == -1) {
-    activateChannel(primary, 0);
+  onLogMessage(
+      QString("[Camera] Ch %1 켜기: %2")
+          .arg(index + 1)
+          .arg(newSource ? newSource->cameraKey() : QStringLiteral("N/A")));
+  if (!channel->activate(newSource, index)) {
+    updateChannelCardSelection();
     return;
   }
-
-  if (secondary->selectedCardIndex() == -1) {
-    activateChannel(secondary, 1);
-    return;
-  }
-
-  onLogMessage(QString("[Camera] 이미 두 개의 채널이 켜져 있습니다. 시청을 "
-                       "원하는 채널을 끄고 다시 시도하세요."));
+  updateChannelCardSelection();
+  refreshZoneTableAllChannels();
 }
 
 void MainWindowController::updateObjectFilter(
@@ -898,7 +896,7 @@ void MainWindowController::onStartRoiDraw() {
   targetWidget->startRoiDrawing();
   m_ui.logView->append(
       QString("[ROI] Draw mode (%1): left-click points, then press 'ROI 완료'.")
-          .arg(m_roiTarget == RoiTarget::Primary ? "카메라 A" : "카메라 B"));
+          .arg(roiTargetLabel(m_roiTarget)));
 }
 
 void MainWindowController::onCompleteRoiDraw() {
@@ -976,9 +974,13 @@ void MainWindowController::onRoiChanged(const QRect &roi) {
     return;
   }
   const VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
-  const QString channel = (sourceWidget == m_ui.videoWidgetSecondary)
-                              ? QStringLiteral("B")
-                              : QStringLiteral("A");
+  QString channel = QStringLiteral("Unknown");
+  for (int i = 0; i < 4; ++i) {
+    if (sourceWidget == m_ui.videoWidgets[i]) {
+      channel = QString("Ch%1").arg(i + 1);
+      break;
+    }
+  }
   m_ui.logView->append(QString("[ROI][%1] bbox x:%2 y:%3 w:%4 h:%5")
                            .arg(channel)
                            .arg(roi.x())
@@ -1002,10 +1004,11 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
 
   VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
   RoiTarget target = m_roiTarget;
-  if (sourceWidget == m_ui.videoWidgetSecondary) {
-    target = RoiTarget::Secondary;
-  } else if (sourceWidget == m_ui.videoWidgetPrimary) {
-    target = RoiTarget::Primary;
+  for (int i = 0; i < 4; ++i) {
+    if (sourceWidget == m_ui.videoWidgets[i]) {
+      target = static_cast<RoiTarget>(i);
+      break;
+    }
   }
 
   CameraChannelRuntime *targetChannel = channelAt(static_cast<int>(target));
@@ -1523,6 +1526,10 @@ MainWindowController::parkingServiceForTarget(RoiTarget target) {
 QString MainWindowController::cameraKeyForTarget(RoiTarget target) const {
   CameraChannelRuntime *channel = channelAt(static_cast<int>(target));
   return channel ? channel->cameraKey() : QString();
+}
+
+QString MainWindowController::roiTargetLabel(RoiTarget target) const {
+  return QString("Ch%1").arg(static_cast<int>(target) + 1);
 }
 
 void MainWindowController::updateThumbnailForCard(int cardIndex,

@@ -57,9 +57,7 @@ private:
   void setupUi();
   void openLogFilterSettings();
 
-  QSplitter *m_videoSplitter = nullptr;
-  VideoWidget *m_videoWidgetPrimary = nullptr;
-  VideoWidget *m_videoWidgetSecondary = nullptr;
+  VideoWidget *m_videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
   QFrame *m_channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *m_channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *m_channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};

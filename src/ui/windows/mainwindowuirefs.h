@@ -17,8 +17,7 @@ class VideoWidget;
 class QFrame;
 
 struct MainWindowUiRefs {
-  VideoWidget *videoWidgetPrimary = nullptr;
-  VideoWidget *videoWidgetSecondary = nullptr;
+  VideoWidget *videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
   QFrame *channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};

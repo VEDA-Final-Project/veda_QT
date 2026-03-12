@@ -26,7 +26,7 @@ class CameraChannelRuntime : public QObject {
   Q_OBJECT
 
 public:
-  enum class Slot { Primary = 0, Secondary = 1 };
+  enum class Slot { Ch1 = 0, Ch2 = 1, Ch3 = 2, Ch4 = 3 };
 
   struct SharedUiRefs {
     QTableWidget *reidTable = nullptr;

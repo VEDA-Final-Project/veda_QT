@@ -14,6 +14,7 @@
 #include <QDoubleSpinBox>
 #include <QFont>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLineEdit>
@@ -83,9 +84,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
 MainWindowUiRefs MainWindow::controllerUiRefs() const {
   MainWindowUiRefs uiRefs;
-  uiRefs.videoWidgetPrimary = m_videoWidgetPrimary;
-  uiRefs.videoWidgetSecondary = m_videoWidgetSecondary;
   for (int i = 0; i < 4; ++i) {
+    uiRefs.videoWidgets[i] = m_videoWidgets[i];
     uiRefs.channelCards[i] = m_channelCards[i];
     uiRefs.channelStatusDots[i] = m_channelStatusDots[i];
     uiRefs.channelNameLabels[i] = m_channelNameLabels[i];
@@ -769,22 +769,24 @@ void MainWindow::setupUi() {
   toggleBarLayout->addWidget(btnToggleEvent);
   centerLayout->addLayout(toggleBarLayout);
 
-  m_videoWidgetPrimary = new VideoWidget(this);
-  m_videoWidgetSecondary = new VideoWidget(this);
-  m_videoWidgetSecondary->setVisible(false);
+  QWidget *videoGridPanel = new QWidget(this);
+  QGridLayout *videoGridLayout = new QGridLayout(videoGridPanel);
+  videoGridLayout->setContentsMargins(0, 0, 0, 0);
+  videoGridLayout->setHorizontalSpacing(4);
+  videoGridLayout->setVerticalSpacing(4);
 
-  m_videoSplitter = new QSplitter(Qt::Horizontal, this);
-  m_videoSplitter->setHandleWidth(4);
-  m_videoSplitter->setChildrenCollapsible(false);
-  m_videoSplitter->addWidget(m_videoWidgetPrimary);
-  m_videoSplitter->addWidget(m_videoWidgetSecondary);
+  for (int i = 0; i < 4; ++i) {
+    m_videoWidgets[i] = new VideoWidget(this);
+    m_videoWidgets[i]->setVisible(false);
+    m_videoWidgets[i]->setMinimumSize(320, 180);
+    videoGridLayout->addWidget(m_videoWidgets[i], i / 2, i % 2);
+  }
+  videoGridLayout->setRowStretch(0, 1);
+  videoGridLayout->setRowStretch(1, 1);
+  videoGridLayout->setColumnStretch(0, 1);
+  videoGridLayout->setColumnStretch(1, 1);
 
-  // 초기 1:1 비율 설정 (두 번째 화면이 안 보일 때는 첫 번째만 100% 차지)
-  m_videoSplitter->setStretchFactor(0, 1);
-  m_videoSplitter->setStretchFactor(1, 1);
-  m_videoSplitter->setSizes({600, 600});
-
-  centerLayout->addWidget(m_videoSplitter, 1);
+  centerLayout->addWidget(videoGridPanel, 1);
 
   // ── Right Panel: Event Log ──
   QFrame *eventPanel = new QFrame(this);

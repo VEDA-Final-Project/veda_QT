@@ -30,7 +30,7 @@ void CameraChannelRuntime::connectSignals() {
     return;
   }
 
-  if (m_slot == Slot::Primary && m_sharedUi.avgFpsLabel) {
+  if (m_slot == Slot::Ch1 && m_sharedUi.avgFpsLabel) {
     connect(m_videoWidget, &VideoWidget::avgFpsUpdated, this,
             [this](double fps) {
               m_sharedUi.avgFpsLabel->setText(
@@ -195,7 +195,7 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
   m_videoWidget->setProfileName(m_source->displayProfile());
   refreshReidTable();
 
-  if (m_slot == Slot::Primary && !m_videoReadyNotified) {
+  if (m_slot == Slot::Ch1 && !m_videoReadyNotified) {
     m_videoReadyNotified = true;
     emit videoReady();
   }
@@ -204,7 +204,7 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
 void CameraChannelRuntime::onSourceRoiDataChanged() { applyRoiDataToWidget(); }
 
 void CameraChannelRuntime::onSourceVideoReady() {
-  if (m_slot == Slot::Primary && !m_videoReadyNotified) {
+  if (m_slot == Slot::Ch1 && !m_videoReadyNotified) {
     m_videoReadyNotified = true;
     emit videoReady();
   }

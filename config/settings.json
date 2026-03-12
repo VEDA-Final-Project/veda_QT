@@ -13,6 +13,20 @@
     "profile": "profile6/media.smp",
     "subProfile": "profile7/media.smp"
   },
+  "camera3": {
+    "ip": "192.168.0.76",
+    "username": "admin",
+    "password": "1team@@@",
+    "profile": "profile6/media.smp",
+    "subProfile": "profile7/media.smp"
+  },
+  "camera4": {
+    "ip": "192.168.0.78",
+    "username": "admin",
+    "password": "1team@@@",
+    "profile": "profile6/media.smp",
+    "subProfile": "profile7/media.smp"
+  },
   "video": {
     "sourceWidth": 3840,
     "sourceHeight": 2160,

@@ -84,7 +84,7 @@ public slots:
   void onAdminSummoned(const QString &chatId, const QString &name);
 
 private:
-  enum class RoiTarget { Primary = 0, Secondary = 1 };
+  enum class RoiTarget { Ch1 = 0, Ch2 = 1, Ch3 = 2, Ch4 = 3 };
 
   void initChannelCards();
   void initRoiDbForChannels();
@@ -102,9 +102,10 @@ private:
   const RoiService *roiServiceForTarget(RoiTarget target) const;
   ParkingService *parkingServiceForTarget(RoiTarget target);
   QString cameraKeyForTarget(RoiTarget target) const;
+  QString roiTargetLabel(RoiTarget target) const;
 
   MainWindowUiRefs m_ui;
-  RoiTarget m_roiTarget = RoiTarget::Primary;
+  RoiTarget m_roiTarget = RoiTarget::Ch1;
   TelegramBotAPI *m_telegramApi = nullptr;
   RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
@@ -124,11 +125,11 @@ private:
   uint64_t m_manualRecordStartIdx = 0;
   QString m_currentManualRecordPath;
 
-  std::array<CameraChannelRuntime *, 2> m_channels{{nullptr, nullptr}};
+  std::array<CameraChannelRuntime *, 4> m_channels{
+      {nullptr, nullptr, nullptr, nullptr}};
   std::array<CameraSource *, 4> m_cameraSources{
       {nullptr, nullptr, nullptr, nullptr}};
   int m_selectedChannelIndex = 0;
-  int m_secondaryChannelIndex = 1;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
   QTimer *m_resizeDebounceTimer = nullptr;
