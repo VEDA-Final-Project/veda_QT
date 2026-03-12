@@ -213,14 +213,11 @@ void CameraManager::stopThread(QThread *thread, const QString &name,
 
   if (!thread->wait(kThreadStopTimeoutMs)) {
     if (warnOnFailure) {
-      emit logMessage(QString("Warning: %1 stop timeout (%2 ms). Forcing terminate.")
+      emit logMessage(QString("Warning: %1 stop timeout (%2 ms). Thread will finish in background.")
                           .arg(name)
                           .arg(kThreadStopTimeoutMs));
     }
-    thread->terminate();
-    if (!thread->wait(kForceStopWaitMs) && warnOnFailure) {
-      emit logMessage(QString("Error: %1 did not terminate cleanly.").arg(name));
-    }
+    // thread->terminate(); <- Removed to prevent OpenCV global FFmpeg mutex lock leakage
   }
 }
 

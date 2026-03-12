@@ -3,15 +3,15 @@
     "ip": "192.168.0.23",
     "username": "admin",
     "password": "1team@@@",
-    "profile": "profile7/media.smp",
-    "subProfile": "profile5/media.smp"
+    "profile": "profile6/media.smp",
+    "subProfile": "profile7/media.smp"
   },
   "camera2": {
     "ip": "192.168.0.34",
     "username": "admin",
     "password": "1team@@@",
-    "profile": "profile7/media.smp",
-    "subProfile": "profile5/media.smp"
+    "profile": "profile6/media.smp",
+    "subProfile": "profile7/media.smp"
   },
   "video": {
     "sourceWidth": 3840,

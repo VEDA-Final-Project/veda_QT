@@ -31,10 +31,11 @@ void CameraChannelRuntime::connectSignals() {
   }
 
   if (m_slot == Slot::Primary && m_sharedUi.avgFpsLabel) {
-    connect(m_videoWidget, &VideoWidget::avgFpsUpdated, this, [this](double fps) {
-      m_sharedUi.avgFpsLabel->setText(
-          QString("최근 1분 평균 FPS: %1").arg(fps, 0, 'f', 1));
-    });
+    connect(m_videoWidget, &VideoWidget::avgFpsUpdated, this,
+            [this](double fps) {
+              m_sharedUi.avgFpsLabel->setText(
+                  QString("최근 1분 평균 FPS: %1").arg(fps, 0, 'f', 1));
+            });
   }
 
   m_signalsConnected = true;
@@ -56,7 +57,8 @@ bool CameraChannelRuntime::activate(CameraSource *source, int cardIndex) {
     m_videoWidget->setVisible(true);
     m_videoWidget->setProfileName(source->displayProfile());
   }
-  source->attachDisplayConsumer(slotId(), m_videoWidget ? m_videoWidget->size() : QSize());
+  source->attachDisplayConsumer(slotId(), m_videoWidget ? m_videoWidget->size()
+                                                        : QSize());
   source->setAnalyticsActive(slotId(), true);
   applyRoiDataToWidget();
   refreshReidTable();
@@ -125,7 +127,9 @@ void CameraChannelRuntime::setReidPanelActive(bool active) {
   }
 }
 
-int CameraChannelRuntime::selectedCardIndex() const { return m_selectedCardIndex; }
+int CameraChannelRuntime::selectedCardIndex() const {
+  return m_selectedCardIndex;
+}
 
 QString CameraChannelRuntime::cameraKey() const {
   return m_source ? m_source->cameraKey() : QString();
@@ -143,7 +147,9 @@ QString CameraChannelRuntime::ocrProfile() const {
 
 VideoWidget *CameraChannelRuntime::videoWidget() const { return m_videoWidget; }
 
-bool CameraChannelRuntime::isRunning() const { return m_source && m_source->isRunning(); }
+bool CameraChannelRuntime::isRunning() const {
+  return m_source && m_source->isRunning();
+}
 
 ParkingService *CameraChannelRuntime::parkingService() {
   return m_source ? m_source->parkingService() : nullptr;
@@ -178,7 +184,8 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
     return;
   }
 
-  if (m_renderTimer.isValid() && m_renderTimer.elapsed() < kUiRenderIntervalMs) {
+  if (m_renderTimer.isValid() &&
+      m_renderTimer.elapsed() < kUiRenderIntervalMs) {
     return;
   }
   m_renderTimer.restart();
@@ -294,7 +301,8 @@ void CameraChannelRuntime::applyRoiDataToWidget() {
   }
 
   if (!m_source) {
-    m_videoWidget->queueNormalizedRoiPolygons(QList<QPolygonF>(), QStringList());
+    m_videoWidget->queueNormalizedRoiPolygons(QList<QPolygonF>(),
+                                              QStringList());
     return;
   }
 
@@ -314,10 +322,11 @@ void CameraChannelRuntime::refreshReidTable() {
   }
   m_reidTimer.restart();
 
-  const int staleMs =
-      m_sharedUi.staleTimeoutInput ? m_sharedUi.staleTimeoutInput->value() : 1000;
-  const bool showStaleObjects =
-      !m_sharedUi.chkShowStaleObjects || m_sharedUi.chkShowStaleObjects->isChecked();
+  const int staleMs = m_sharedUi.staleTimeoutInput
+                          ? m_sharedUi.staleTimeoutInput->value()
+                          : 1000;
+  const bool showStaleObjects = !m_sharedUi.chkShowStaleObjects ||
+                                m_sharedUi.chkShowStaleObjects->isChecked();
   populateReidTable(m_sharedUi.reidTable, m_source->activeVehicles(), staleMs,
                     showStaleObjects);
 }
@@ -326,7 +335,8 @@ void CameraChannelRuntime::clearWidgetState() {
   if (m_videoWidget) {
     m_videoWidget->setVisible(false);
     m_videoWidget->updateMetadata(QList<ObjectInfo>());
-    m_videoWidget->queueNormalizedRoiPolygons(QList<QPolygonF>(), QStringList());
+    m_videoWidget->queueNormalizedRoiPolygons(QList<QPolygonF>(),
+                                              QStringList());
   }
   if (m_reidPanelActive && m_sharedUi.reidTable) {
     m_sharedUi.reidTable->setRowCount(0);

@@ -1,6 +1,9 @@
 #include "videothread.h"
 #include <QDateTime>
 #include <QDebug>
+#include <QTcpSocket>
+#include <QUrl>
+#include <QtGlobal>
 #include <opencv2/imgproc.hpp>
 
 /**
@@ -75,17 +78,48 @@ void VideoThread::run() {
     m_stop = false;
   }
 
+  // === 타임아웃 방지를 위한 TCP 사전 체크 ===
+  // OpenCV FFmpeg `open`은 전역 락을 사용하므로, IP가 오프라인일 때 OS 기본 타임아웃(21초)
+  // 동안 다른 채널의 연결까지 모두 블로킹하는 치명적인 데드락을 유발합니다.
+  // 따라서 카메라가 응답 가능한지 TCP 접속 테스트를 먼저 수행합니다 (2초 타임아웃).
+  {
+    QUrl qurl(url);
+    QString host = qurl.host();
+    int port = qurl.port(554);
+
+    // QUrl이 비밀번호 내 특수문자(@ 등) 때문에 파싱에 실패할 경우 수동 추출
+    if (host.isEmpty()) {
+      int atIndex = url.lastIndexOf('@');
+      int slashIndex = url.indexOf('/', atIndex >= 0 ? atIndex : 0);
+      if (slashIndex == -1) slashIndex = url.length();
+      
+      QString hostPort = url.mid(atIndex + 1, slashIndex - atIndex - 1);
+      int colonIndex = hostPort.indexOf(':');
+      if (colonIndex >= 0) {
+        host = hostPort.mid(0, colonIndex);
+        port = hostPort.mid(colonIndex + 1).toInt();
+      } else {
+        host = hostPort;
+      }
+    }
+
+    if (!host.isEmpty()) {
+      QTcpSocket socket;
+      socket.connectToHost(host, port);
+      if (!socket.waitForConnected(2000)) {
+        emit logMessage(QString("Error: Camera %1:%2 is offline (TCP pre-check failed).").arg(host).arg(port));
+        return; // 오프라인이면 FFmpeg open을 아예 호출하지 않음
+      }
+      socket.disconnectFromHost();
+    }
+  }
+
   /**
    * === RTSP 최적화 설정 ===
-   * - 내부 버퍼 최소화(0)
+   * OpenCV FFmpeg 백엔드 타임아웃을 환경 변수로 전달 (단위: 마이크로초)
+   * stimeout: TCP 기반 RTSP 연결 및 읽기 타임아웃 2초 (2,000,000)
    */
-  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);
-#ifdef CV_CAP_PROP_OPEN_TIMEOUT_MSEC
-  m_cap.set(CV_CAP_PROP_OPEN_TIMEOUT_MSEC, 2000);
-#endif
-#ifdef CV_CAP_PROP_READ_TIMEOUT_MSEC
-  m_cap.set(CV_CAP_PROP_READ_TIMEOUT_MSEC, 1000);
-#endif
+  qputenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", "stimeout;2000000");
 
   // === RTSP 스트림 열기 ===
   if (!m_cap.open(url.toStdString(), cv::CAP_FFMPEG)) {
@@ -97,6 +131,9 @@ void VideoThread::run() {
     emit logMessage(QString("Error: Cannot open stream: %1").arg(safeUrl));
     return;
   }
+
+  // 내부 버퍼 최소화 (FFmpeg 캡처가 열린 후에 적용 가능)
+  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);
 
   const double sourceFps = m_cap.get(cv::CAP_PROP_FPS);
   {

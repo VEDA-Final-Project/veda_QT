@@ -108,6 +108,8 @@ int main(int argc, char *argv[]) {
     if (controller) {
       controller->startInitialCctv();
     }
+    // 2초 후 강제로 메인 화면(CCTV 페이지)으로 전환하는 타이머 추가
+    QTimer::singleShot(2000, &w, [&]() { w.showCctvPage(); });
     loginPage.close();
   });
 

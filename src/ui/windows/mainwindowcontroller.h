@@ -16,11 +16,9 @@
 #include <opencv2/core.hpp>
 #include <vector>
 
-
 #include "logging/logdeduplicator.h"
 #include "mainwindowuirefs.h"
 #include "telegram/telegrambotapi.h"
-
 
 class CameraChannelRuntime;
 class CameraSource;
