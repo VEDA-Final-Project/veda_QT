@@ -12,6 +12,7 @@
 #include <QSize>
 #include <QString>
 #include <QTimer>
+#include <QVector>
 #include <array>
 #include <opencv2/core.hpp>
 #include <vector>
@@ -84,6 +85,7 @@ public slots:
   void onAdminSummoned(const QString &chatId, const QString &name);
 
 private:
+  enum class LiveLayoutMode { Single, Dual, Quad };
   enum class RoiTarget { Ch1 = 0, Ch2 = 1, Ch3 = 2, Ch4 = 3 };
 
   void initChannelCards();
@@ -91,13 +93,21 @@ private:
   void reloadRoiForTarget(RoiTarget target, bool writeLog = true);
   void refreshRoiSelectorForTarget();
   void refreshZoneTableAllChannels();
+  void ensureChannelSelected(int index);
+  void rebuildLiveLayout();
+  void applyLiveGridLayout(LiveLayoutMode mode);
   void updateChannelCardSelection();
   void startCameraSources();
   void bindRecordPreviewSource(int index);
   void updateRecordPreviewSourceSize();
   void updateThumbnailForCard(int cardIndex, const QImage &image);
+  bool isChannelSelected(int index) const;
   bool isCameraSourceRunning(int cardIndex) const;
+  int primarySelectedChannelIndex() const;
+  int cardIndexForVideoWidget(const VideoWidget *videoWidget) const;
+  LiveLayoutMode liveLayoutMode() const;
   CameraChannelRuntime *channelAt(int index) const;
+  CameraChannelRuntime *channelForCardIndex(int cardIndex) const;
   CameraSource *sourceAt(int cardIndex) const;
   VideoWidget *videoWidgetForTarget(RoiTarget target) const;
   RoiService *roiServiceForTarget(RoiTarget target);
@@ -134,6 +144,7 @@ private:
   CameraSource *m_recordPreviewSource = nullptr;
   QMetaObject::Connection m_recordPreviewConnection;
   int m_selectedChannelIndex = 0;
+  QVector<int> m_selectedChannelIndices;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
   QTimer *m_resizeDebounceTimer = nullptr;

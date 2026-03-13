@@ -15,6 +15,7 @@ class QTableWidget;
 class QTextEdit;
 class VideoWidget;
 class QFrame;
+class QGridLayout;
 
 struct MainWindowUiRefs {
   VideoWidget *videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
@@ -22,6 +23,7 @@ struct MainWindowUiRefs {
   QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *thumbnailLabels[4] = {nullptr, nullptr, nullptr, nullptr};
+  QGridLayout *videoGridLayout = nullptr;
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
   QComboBox *roiSelectorCombo = nullptr;
