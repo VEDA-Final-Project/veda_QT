@@ -26,6 +26,7 @@
 #include <QToolButton>
 
 class MainWindowController;
+class QGridLayout;
 class QSplitter;
 
 class MainWindow : public QMainWindow {
@@ -62,7 +63,7 @@ private:
   QLabel *m_channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *m_channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *m_thumbnailLabels[4] = {nullptr, nullptr, nullptr, nullptr};
-  int m_selectedChannelIndex = 0;
+  QGridLayout *m_videoGridLayout = nullptr;
   QComboBox *m_roiTargetCombo = nullptr;
   QLineEdit *m_roiNameEdit = nullptr;
   QComboBox *m_roiSelectorCombo = nullptr;

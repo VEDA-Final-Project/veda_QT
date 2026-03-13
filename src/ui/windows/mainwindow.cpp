@@ -97,6 +97,7 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   for (int i = 0; i < 4; ++i) {
     uiRefs.thumbnailLabels[i] = m_thumbnailLabels[i];
   }
+  uiRefs.videoGridLayout = m_videoGridLayout;
   uiRefs.btnApplyRoi = m_btnApplyRoi;
   uiRefs.btnFinishRoi = m_btnFinishRoi;
   uiRefs.btnDeleteRoi = m_btnDeleteRoi;
@@ -770,21 +771,21 @@ void MainWindow::setupUi() {
   centerLayout->addLayout(toggleBarLayout);
 
   QWidget *videoGridPanel = new QWidget(this);
-  QGridLayout *videoGridLayout = new QGridLayout(videoGridPanel);
-  videoGridLayout->setContentsMargins(0, 0, 0, 0);
-  videoGridLayout->setHorizontalSpacing(4);
-  videoGridLayout->setVerticalSpacing(4);
+  m_videoGridLayout = new QGridLayout(videoGridPanel);
+  m_videoGridLayout->setContentsMargins(0, 0, 0, 0);
+  m_videoGridLayout->setHorizontalSpacing(4);
+  m_videoGridLayout->setVerticalSpacing(4);
 
   for (int i = 0; i < 4; ++i) {
     m_videoWidgets[i] = new VideoWidget(this);
     m_videoWidgets[i]->setVisible(false);
     m_videoWidgets[i]->setMinimumSize(320, 180);
-    videoGridLayout->addWidget(m_videoWidgets[i], i / 2, i % 2);
+    m_videoGridLayout->addWidget(m_videoWidgets[i], i / 2, i % 2);
   }
-  videoGridLayout->setRowStretch(0, 1);
-  videoGridLayout->setRowStretch(1, 1);
-  videoGridLayout->setColumnStretch(0, 1);
-  videoGridLayout->setColumnStretch(1, 1);
+  m_videoGridLayout->setRowStretch(0, 1);
+  m_videoGridLayout->setRowStretch(1, 1);
+  m_videoGridLayout->setColumnStretch(0, 1);
+  m_videoGridLayout->setColumnStretch(1, 1);
 
   centerLayout->addWidget(videoGridPanel, 1);
 
