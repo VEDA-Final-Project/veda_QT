@@ -8,25 +8,20 @@ LogFilterConfig &LogFilterConfig::instance() {
 
 LogFilterConfig::LogFilterConfig() {
   // 카테고리 정의 — 접두사 패턴 + 기본값
-  m_categories["OCR"] = {"OCR", {"[OCR]"}, false}; // 기본 OFF (양이 많음)
+  m_categories["OCR"] = {{"[OCR]"}, false}; // 기본 OFF (양이 많음)
 
-  m_categories["Video"] = {"Video", {"[Video]"}, false}; // 기본 OFF (양이 많음)
+  m_categories["Video"] = {{"[Video]"}, false}; // 기본 OFF (양이 많음)
 
-  m_categories["Camera"] = {"Camera", {"[Camera]"}, true};
+  m_categories["Camera"] = {{"[Camera]"}, true};
 
-  m_categories["Telegram"] = {"Telegram", {"[Telegram]"}, true};
+  m_categories["Telegram"] = {{"[Telegram]"}, true};
 
-  m_categories["DB"] = {"DB", {"[DB]"}, true};
+  m_categories["DB"] = {{"[DB]"}, true};
 
-  m_categories["ROI"] = {"ROI", {"[ROI]"}, true};
+  m_categories["ROI"] = {{"[ROI]"}, true};
 
-  m_categories["OpenCV"] = {
-      "OpenCV", {"[ INFO:", "[ WARN:", "[ ERROR:"}, false}; // 기본 OFF
-}
-
-QStringList LogFilterConfig::categories() const {
-  QMutexLocker lock(&m_mutex);
-  return m_categories.keys();
+  m_categories["OpenCV"] = {{"[ INFO:", "[ WARN:", "[ ERROR:"},
+                             false}; // 기본 OFF
 }
 
 bool LogFilterConfig::isEnabled(const QString &category) const {

@@ -57,17 +57,17 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   channelUiRefs.avgFpsLabel = m_ui.lblAvgFps;
 
   m_channels[0] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch1, QStringLiteral("Ch1"),
-      m_ui.videoWidgets[0], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch1, m_ui.videoWidgets[0], channelUiRefs,
+      this);
   m_channels[1] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch2, QStringLiteral("Ch2"),
-      m_ui.videoWidgets[1], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch2, m_ui.videoWidgets[1], channelUiRefs,
+      this);
   m_channels[2] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch3, QStringLiteral("Ch3"),
-      m_ui.videoWidgets[2], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch3, m_ui.videoWidgets[2], channelUiRefs,
+      this);
   m_channels[3] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch4, QStringLiteral("Ch4"),
-      m_ui.videoWidgets[3], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch4, m_ui.videoWidgets[3], channelUiRefs,
+      this);
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (!m_channels[i]) {

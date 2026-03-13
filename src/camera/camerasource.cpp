@@ -145,7 +145,6 @@ void CameraSource::stop()
 {
   m_shouldRun = false;
   m_videoReadyNotified = false;
-  m_currentObjects.clear();
   m_latestFrameObjects.clear();
   m_latestFramePtr.reset();
   m_latestBufferedFrameTimestampMs = 0;
@@ -284,8 +283,6 @@ int CameraSource::cardIndex() const { return m_cardIndex; }
 
 QString CameraSource::displayProfile() const { return m_displayProfile; }
 
-QString CameraSource::ocrProfile() const { return m_ocrProfile; }
-
 CameraSource::Status CameraSource::status() const { return m_status; }
 
 qint64 CameraSource::lastFrameTimestampMs() const
@@ -403,7 +400,6 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   const QList<ObjectInfo> readyMetadata =
       m_cameraSession.consumeReadyMetadata(QDateTime::currentMSecsSinceEpoch());
-  m_currentObjects = readyMetadata;
   m_latestFramePtr = framePtr;
   m_latestFrameObjects = readyMetadata;
   m_latestBufferedFrameTimestampMs = timestampMs;
@@ -646,7 +642,6 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   }
 
   m_displayProfile = connectionInfo.profile;
-  m_ocrProfile = connectionInfo.profile;
   m_cameraManager->setConnectionInfo(connectionInfo);
   m_cameraManager->setDisabledObjectTypes(m_disabledTypes);
   return true;

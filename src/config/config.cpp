@@ -1,5 +1,4 @@
 #include "config.h"
-#include "util/rtspurl.h"
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
@@ -153,7 +152,6 @@ bool Config::load(const QString &path) {
   m_ocr = root["ocr"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
-  m_loaded = true;
 
   qDebug() << "Config loaded from:" << loadedPath;
   return true;
@@ -226,11 +224,6 @@ QString Config::cameraSubProfile(const QString &cameraKey) const {
 /**
  * @brief RTSP 접속 URL 생성
  */
-QString Config::rtspUrl(const QString &cameraKey) const {
-  return buildRtspUrl(cameraIp(cameraKey), cameraUsername(cameraKey),
-                      cameraPassword(cameraKey), cameraProfile(cameraKey));
-}
-
 /* =========================
  * Video 관련 설정
  * ========================= */

@@ -17,13 +17,11 @@ constexpr qint64 kUiRenderIntervalMs = 33;
 constexpr qint64 kReidRefreshIntervalMs = 300;
 } // namespace
 
-CameraChannelRuntime::CameraChannelRuntime(Slot slot,
-                                           const QString &channelLabel,
-                                           VideoWidget *videoWidget,
+CameraChannelRuntime::CameraChannelRuntime(Slot slot, VideoWidget *videoWidget,
                                            const SharedUiRefs &sharedUi,
                                            QObject *parent)
-    : QObject(parent), m_slot(slot), m_channelLabel(channelLabel),
-      m_videoWidget(videoWidget), m_sharedUi(sharedUi) {}
+    : QObject(parent), m_slot(slot), m_videoWidget(videoWidget),
+      m_sharedUi(sharedUi) {}
 
 void CameraChannelRuntime::connectSignals() {
   if (m_signalsConnected || !m_videoWidget) {
@@ -129,52 +127,7 @@ int CameraChannelRuntime::selectedCardIndex() const {
   return m_selectedCardIndex;
 }
 
-QString CameraChannelRuntime::cameraKey() const {
-  return m_source ? m_source->cameraKey() : QString();
-}
-
-QString CameraChannelRuntime::channelLabel() const { return m_channelLabel; }
-
-QString CameraChannelRuntime::displayProfile() const {
-  return m_source ? m_source->displayProfile() : QString();
-}
-
-QString CameraChannelRuntime::ocrProfile() const {
-  return m_source ? m_source->ocrProfile() : QString();
-}
-
 VideoWidget *CameraChannelRuntime::videoWidget() const { return m_videoWidget; }
-
-bool CameraChannelRuntime::isRunning() const {
-  return m_source && m_source->isRunning();
-}
-
-ParkingService *CameraChannelRuntime::parkingService() {
-  return m_source ? m_source->parkingService() : nullptr;
-}
-
-const ParkingService *CameraChannelRuntime::parkingService() const {
-  return m_source ? m_source->parkingService() : nullptr;
-}
-
-RoiService *CameraChannelRuntime::roiService() {
-  return m_source ? m_source->roiService() : nullptr;
-}
-
-const RoiService *CameraChannelRuntime::roiService() const {
-  return m_source ? m_source->roiService() : nullptr;
-}
-
-const QVector<QJsonObject> &CameraChannelRuntime::roiRecords() const {
-  static const QVector<QJsonObject> kEmptyRecords;
-  return m_source ? m_source->roiRecords() : kEmptyRecords;
-}
-
-QList<VehicleState> CameraChannelRuntime::activeVehicles() const {
-  return m_source ? m_source->activeVehicles() : QList<VehicleState>();
-}
-
-CameraSource *CameraChannelRuntime::source() const { return m_source; }
 
 void CameraChannelRuntime::onSourceDisplayFrameReady(
     const QImage &image, const QList<ObjectInfo> &objects) {
