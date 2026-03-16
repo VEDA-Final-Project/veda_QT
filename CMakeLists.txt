@@ -23,6 +23,8 @@ qt_add_executable(rtsp_test
     src/ui/windows/mainwindowcontroller.h
     src/ui/windows/dbpanelcontroller.cpp
     src/ui/windows/dbpanelcontroller.h
+    src/ui/windows/parkinglogpanelcontroller.cpp
+    src/ui/windows/parkinglogpanelcontroller.h
     src/ui/windows/rpipanelcontroller.cpp
     src/ui/windows/rpipanelcontroller.h
     src/ui/windows/recordpanelcontroller.cpp

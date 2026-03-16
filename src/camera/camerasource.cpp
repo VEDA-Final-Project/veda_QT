@@ -241,8 +241,10 @@ void CameraSource::syncEnabledRoiPolygons()
 
   const QVector<QJsonObject> &records = m_roiService.records();
   QList<QPolygonF> enabledPolygons;
+  QStringList enabledZoneNames;
   QVector<QString> enabledZoneIds;
   enabledPolygons.reserve(records.size());
+  enabledZoneNames.reserve(records.size());
   enabledZoneIds.reserve(records.size());
 
   for (const QJsonObject &record : records)
@@ -265,11 +267,14 @@ void CameraSource::syncEnabledRoiPolygons()
       continue;
     }
     enabledPolygons.append(polygon);
+    const QString zoneName = record.value("zone_name").toString().trimmed();
+    enabledZoneNames.append(zoneName.isEmpty() ? record.value("zone_id").toString()
+                                               : zoneName);
     enabledZoneIds.append(record.value("zone_id").toString());
   }
 
   m_enabledZoneIds = enabledZoneIds;
-  m_parkingService->updateRoiPolygons(enabledPolygons);
+  m_parkingService->updateRoiPolygons(enabledPolygons, enabledZoneNames);
 }
 
 bool CameraSource::isRunning() const
