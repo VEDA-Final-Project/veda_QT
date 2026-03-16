@@ -1,4 +1,5 @@
 #include "ocrmanager.h"
+#include "config/config.h"
 #include "ocr/debug/ocrdebugdumper.h"
 #include "ocr/postprocess/platepostprocessor.h"
 #include "ocr/preprocess/platepreprocessor.h"
@@ -127,7 +128,9 @@ bool shouldLogRuntimeOcrMessage(const int objectId) {
 
 OcrManager::OcrManager() = default;
 
-OcrManager::~OcrManager() = default;
+OcrManager::~OcrManager() {
+  delete m_llmRunner;
+}
 
 QString OcrManager::findFirstFileRecursively(const QString &rootPath,
                                              const QStringList &filters) {
@@ -233,6 +236,15 @@ OcrManager::resolveDictionaryPath(const QString &dictPath,
 
 bool OcrManager::init(const QString &modelPath, const QString &dictPath,
                       const int inputWidth, const int inputHeight) {
+  const QString type = Config::instance().ocrType();
+  if (type == "LLM") {
+    if (!m_llmRunner) {
+      m_llmRunner = new ocr::recognition::LlmOcrRunner();
+    }
+    qDebug() << "[OCR] Initialized with LLM mode (Gemini)";
+    return true;
+  }
+
   m_inputWidth = (inputWidth > 0) ? inputWidth : kDefaultInputWidth;
   m_inputHeight = (inputHeight > 0) ? inputHeight : kDefaultInputHeight;
 
@@ -276,6 +288,12 @@ bool OcrManager::init(const QString &modelPath, const QString &dictPath,
 OcrResult OcrManager::performOcrDetailed(const QImage &image,
                                          const int objectId) {
   OcrResult out;
+
+  const QString type = Config::instance().ocrType();
+  if (type == "LLM" && m_llmRunner) {
+    // LLM 모드: 전처리 없이 원본 크롭(AABB+padding) 이미지 그대로 전달
+    return m_llmRunner->runSingleCandidate(image, objectId);
+  }
 
   ocr::preprocess::PlatePreprocessResult preprocessed;
   if (!ocr::preprocess::preprocessPlateImage(image, m_inputWidth, m_inputHeight,

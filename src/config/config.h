@@ -38,10 +38,16 @@ public:
   int cropOffsetX() const;
 
   // OCR
+  QString ocrType() const;
   QString ocrModelPath() const;
   QString ocrDictPath() const;
   int ocrInputWidth() const;
   int ocrInputHeight() const;
+
+  // Gemini
+  QString geminiApiKey() const;
+  QString geminiModel() const;
+  QString geminiPrompt() const;
 
   // Sync
   int defaultDelayMs() const;

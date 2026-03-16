@@ -262,6 +262,10 @@ int Config::cropOffsetX() const { return m_video["cropOffsetX"].toInt(480); }
  * OCR 관련 설정
  * ========================= */
 
+QString Config::ocrType() const {
+  return m_ocr["type"].toString("Paddle"); // 기본값은 Paddle
+}
+
 QString Config::ocrModelPath() const {
   const QString path = m_ocr["modelPath"].toString();
   if (path.isEmpty() || path == "null") {
@@ -284,6 +288,34 @@ int Config::ocrInputWidth() const {
 
 int Config::ocrInputHeight() const {
   return std::max(16, m_ocr["inputHeight"].toInt(48));
+}
+
+/* =========================
+ * Gemini 관련 설정
+ * ========================= */
+
+QString Config::geminiApiKey() const {
+  // 환경변수 우선 참조
+  QString key = qEnvironmentVariable("GEMINI_API_KEY");
+  if (!key.isEmpty()) {
+    // qInfo() << "[Config] Gemini API Key loaded from Environment (Masked: " << key.left(5) << "...)";
+    return key;
+  }
+  QString jsonKey = m_ocr["gemini"].toObject()["apiKey"].toString();
+  if (jsonKey.isEmpty()) {
+    // qWarning() << "[Config] Gemini API Key is missing!";
+  }
+  return jsonKey;
+}
+
+QString Config::geminiModel() const {
+  return m_ocr["gemini"].toObject()["model"].toString("gemini-1.5-flash");
+}
+
+QString Config::geminiPrompt() const {
+  return m_ocr["gemini"].toObject()["prompt"].toString(
+      "이 이미지는 자동차 번호판의 크롭 본이야. 번호판 숫자와 글자만 정확히 추출해줘. "
+      "다른 설명은 필요 없어. 예: 123가4567");
 }
 
 /* =========================

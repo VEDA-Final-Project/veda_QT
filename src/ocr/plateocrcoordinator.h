@@ -51,7 +51,10 @@ private:
     QQueue<QString> recentResults;
     QString lastEmitted;
     qint64 lastUpdatedMs = 0;
+    qint64 lastRequestMs = 0; // 마지막 OCR 요청 시각
     int logFrameCount = 0;
+    int attemptCount = 0;    // OCR 시도 횟수
+    bool isFinalized = false; // 인식 성공 여부 (성공 시 추가 요청 중단)
   };
 
   QString restoreDigitOnlyResult(const OcrHistory &history,

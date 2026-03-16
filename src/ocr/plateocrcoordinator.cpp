@@ -143,6 +143,24 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop) {
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+  // API 요청 최적화 로직
+  if (Config::instance().ocrType() == "LLM") {
+    OcrHistory &history = m_histories[objectId];
+    
+    // 1. 이미 인식이 성공적으로 완료된 경우 중단
+    if (history.isFinalized) {
+      return;
+    }
+
+    // 2. 최대 시도 횟수 제한 (사용자 요청: 번호판 당 1번)
+    if (history.attemptCount >= 1) {
+      return;
+    }
+
+    history.lastRequestMs = nowMs;
+    history.attemptCount++;
+  }
   m_pending.enqueue(PendingOcr{objectId, crop, nowMs});
   m_pendingObjectIds.insert(objectId);
   qDebug() << "[OCR][Enter] objectId=" << objectId
@@ -185,13 +203,32 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
   worker.startedAtMs = 0;
 
   if (!result.filtered.isEmpty()) {
-    const QString stabilized = stabilizeResult(objectId, result.filtered);
-    if (!stabilized.isEmpty()) {
+    const bool isLlmMode = (Config::instance().ocrType() == "LLM");
+    const bool isPatternMatch = kPlatePattern.match(result.filtered).hasMatch();
+
+    QString finalizedText;
+    if (isLlmMode && isPatternMatch) {
+      // LLM 모드에서는 유효한 패턴이 나오면 즉시 확정 (API 비용 절감 및 신뢰도 우선)
+      finalizedText = result.filtered;
+      m_histories[objectId].isFinalized = true;
+      m_histories[objectId].lastEmitted = finalizedText;
+      qDebug() << "[OCR] LLM recognition finalized immediately for objectId=" << objectId << "text=" << finalizedText;
+    } else {
+      // 그 외(Paddle 모드 또는 패턴 불일치)에는 기존 안정화 로직 사용
+      finalizedText = stabilizeResult(objectId, result.filtered);
+      
+      // LLM 모드에서 안정화 로직을 통과한 경우에도 확정 처리
+      if (isLlmMode && !finalizedText.isEmpty()) {
+        m_histories[objectId].isFinalized = true;
+      }
+    }
+
+    if (!finalizedText.isEmpty()) {
       OcrFullResult finalRes = result;
-      finalRes.filtered = stabilized; // Use stabilized text
+      finalRes.filtered = finalizedText;
       emit ocrReady(objectId, finalRes);
     } else {
-      qDebug() << "[OCR] Result filtered out by stabilization. filtered="
+      qDebug() << "[OCR] Result filtered out by stabilization or pattern check. filtered="
                << result.filtered;
     }
   } else if (!result.raw.isEmpty()) {

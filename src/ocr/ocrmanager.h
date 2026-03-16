@@ -3,6 +3,7 @@
 
 #include "ocr/ocrtypes.h"
 #include "ocr/recognition/paddleocrunner.h"
+#include "ocr/recognition/llmocrrunner.h"
 #include <QImage>
 #include <QString>
 #include <QStringList>
@@ -29,6 +30,7 @@ private:
                                 const QString &resolvedModelPath) const;
 
   ocr::recognition::PaddleOcrRunner m_runner;
+  ocr::recognition::LlmOcrRunner *m_llmRunner = nullptr;
   int m_inputWidth = 320;
   int m_inputHeight = 48;
 };
