@@ -3,6 +3,10 @@
 #include <QDateTime>
 #include <QDebug>
 
+namespace {
+constexpr qint64 kEntryPersistDelayMs = 5000;
+}
+
 ParkingService::ParkingService(QObject *parent) : QObject(parent) {}
 
 bool ParkingService::init(QString *errorMessage)
@@ -44,7 +48,8 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
       objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
 
   for (const VehicleState &vs : newEntries) {
-    if (vs.occupiedRoiIndex >= 0 && !vs.notified) {
+    if (vs.occupiedRoiIndex >= 0 && !vs.notified &&
+        vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) >= kEntryPersistDelayMs) {
       handleNewEntry(vs);
     }
   }
@@ -54,7 +59,8 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   const auto &activeVehicles = m_tracker.vehicles();
   for (auto it = activeVehicles.cbegin(); it != activeVehicles.cend(); ++it) {
     const VehicleState &vs = it.value();
-    if (vs.occupiedRoiIndex >= 0 && !vs.notified) {
+    if (vs.occupiedRoiIndex >= 0 && !vs.notified &&
+        vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) >= kEntryPersistDelayMs) {
       handleNewEntry(vs);
     }
   }
@@ -152,6 +158,11 @@ QList<VehicleState> ParkingService::activeVehicles() const
 
 void ParkingService::handleNewEntry(const VehicleState &vs) 
 {
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  if (vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) < kEntryPersistDelayMs) {
+    return;
+  }
+
   const QDateTime now = QDateTime::currentDateTime();
   const QString zoneName = zoneNameForIndex(vs.occupiedRoiIndex);
   const QString vehicleLabel =
