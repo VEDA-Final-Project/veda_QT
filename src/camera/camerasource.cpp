@@ -79,8 +79,15 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
       });
   connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
           &CameraSource::onOcrResult);
+  connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrStarted, this,
+          [this](int objectId) {
+            if (m_parkingService) {
+              m_parkingService->processOcrStarted(objectId);
+            }
+          });
   connect(m_parkingService, &ParkingService::logMessage, this,
           &CameraSource::logMessage);
+
 }
 
 bool CameraSource::initialize(TelegramBotAPI *telegramApi)

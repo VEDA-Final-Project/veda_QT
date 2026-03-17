@@ -50,9 +50,15 @@ public:
                        qint64 pruneTimeoutMs = 5000);
 
   /**
+   * @brief OCR 시작 수신 처리 (인식 중 상태 표시)
+   */
+  void processOcrStarted(int objectId);
+
+  /**
    * @brief OCR 결과 수신 처리
    */
   void processOcrResult(int objectId, const QString &plateNumber);
+
 
   /**
    * @brief 최근 입출차 기록 조회 (UI 표시용)

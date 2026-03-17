@@ -27,6 +27,8 @@ public:
 
 signals:
   void ocrReady(int objectId, const OcrFullResult &result);
+  void ocrStarted(int objectId);
+
 
 private:
   static constexpr size_t kWorkerCount = 2;

@@ -9,6 +9,12 @@ constexpr qint64 kEntryPersistDelayMs = 5000;
 
 ParkingService::ParkingService(QObject *parent) : QObject(parent) {}
 
+void ParkingService::processOcrStarted(int objectId)
+{
+  m_tracker.setPlateNumber(objectId, QStringLiteral("인식중.."));
+}
+
+
 bool ParkingService::init(QString *errorMessage)
 {
   return m_repository.init(errorMessage);

@@ -160,8 +160,10 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop) {
 
     history.lastRequestMs = nowMs;
     history.attemptCount++;
+    emit ocrStarted(objectId);
   }
   m_pending.enqueue(PendingOcr{objectId, crop, nowMs});
+
   m_pendingObjectIds.insert(objectId);
   qDebug() << "[OCR][Enter] objectId=" << objectId
            << "pending=" << m_pending.size()
