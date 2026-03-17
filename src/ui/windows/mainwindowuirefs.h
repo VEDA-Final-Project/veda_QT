@@ -49,9 +49,6 @@ struct MainWindowUiRefs {
   QPushButton *btnRefreshLogs = nullptr;
   QLineEdit *forcePlateInput = nullptr;
   QSpinBox *forceObjectIdInput = nullptr;
-  QLineEdit *forceTypeInput = nullptr;
-  QDoubleSpinBox *forceScoreInput = nullptr;
-  QLineEdit *forceBBoxInput = nullptr;
   QPushButton *btnForcePlate = nullptr;
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;

@@ -2,13 +2,10 @@
 
 #include "parking/parkingservice.h"
 #include <QDateTime>
-#include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QRectF>
-#include <QRegularExpression>
 #include <QSpinBox>
-#include <QStringList>
 #include <Qt>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -185,38 +182,33 @@ void ParkingLogPanelController::onSearchParkingLogs() {
 }
 
 void ParkingLogPanelController::onForcePlate() {
-  if (!m_ui.forceObjectIdInput || !m_ui.forceTypeInput ||
-      !m_ui.forcePlateInput || !m_ui.forceScoreInput || !m_ui.forceBBoxInput) {
+  if (!m_ui.forceObjectIdInput || !m_ui.forcePlateInput) {
     return;
   }
 
   const int objectId = m_ui.forceObjectIdInput->value();
-  const QString type = m_ui.forceTypeInput->text().trimmed();
   const QString plate = m_ui.forcePlateInput->text().trimmed();
-  const double score = m_ui.forceScoreInput->value();
-  QString bboxText = m_ui.forceBBoxInput->text().trimmed();
 
-  bboxText.remove("x:");
-  bboxText.remove("y:");
-  bboxText.remove("w:");
-  bboxText.remove("h:");
-  const QStringList parts =
-      bboxText.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-
-  QRectF bbox(0, 0, 0, 0);
-  if (parts.size() >= 4) {
-    bbox.setX(parts[0].toDouble());
-    bbox.setY(parts[1].toDouble());
-    bbox.setWidth(parts[2].toDouble());
-    bbox.setHeight(parts[3].toDouble());
-  }
-
-  ParkingService *service = m_context.parkingServiceProvider
-                                ? m_context.parkingServiceProvider()
-                                : nullptr;
+  const QString cameraKey =
+      m_ui.btnForcePlate ? m_ui.btnForcePlate->property("cameraKey").toString()
+                         : QString();
+  ParkingService *service =
+      (!cameraKey.isEmpty() && m_context.parkingServiceForCameraKeyProvider)
+          ? m_context.parkingServiceForCameraKeyProvider(cameraKey)
+          : (m_context.parkingServiceProvider
+                 ? m_context.parkingServiceProvider()
+                 : nullptr);
   if (!service) {
     return;
   }
+
+  const VehicleState currentState = service->getVehicleState(objectId);
+  const QString type =
+      currentState.type.trimmed().isEmpty() ? QStringLiteral("Vehicle")
+                                            : currentState.type.trimmed();
+  const double score = currentState.score > 0.0 ? currentState.score : 1.0;
+  const QRectF bbox = currentState.boundingBox;
+
   service->forceObjectData(objectId, type, plate, score, bbox);
   appendLog(QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId));
 }

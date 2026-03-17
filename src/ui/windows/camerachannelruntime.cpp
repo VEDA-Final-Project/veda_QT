@@ -188,13 +188,12 @@ void CameraChannelRuntime::populateReidTable(
     const int row = table->rowCount();
     table->insertRow(row);
 
-    const QColor textColor = isStale ? QColor("#64748B") : QColor("#FFFFFF");
+    const QColor textColor = isStale ? QColor("#94A3B8") : QColor("#FFFFFF");
 
-
-
-    auto *chItem = new QTableWidgetItem(QString("Ch%1").arg(channelId));
+    auto *chItem = new QTableWidgetItem(QString("Ch %1").arg(channelId));
     chItem->setForeground(textColor);
     table->setItem(row, 0, chItem);
+
 
     auto *idItem = new QTableWidgetItem(QString::number(vehicle.objectId));
     idItem->setForeground(textColor);

@@ -116,9 +116,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnRefreshLogs = m_btnRefreshLogs;
   uiRefs.forcePlateInput = m_forcePlateInput;
   uiRefs.forceObjectIdInput = m_forceObjectIdInput;
-  uiRefs.forceTypeInput = m_forceTypeInput;
-  uiRefs.forceScoreInput = m_forceScoreInput;
-  uiRefs.forceBBoxInput = m_forceBBoxInput;
   uiRefs.btnForcePlate = m_btnForcePlate;
   uiRefs.editPlateInput = m_editPlateInput;
   uiRefs.btnEditPlate = m_btnEditPlate;
@@ -798,7 +795,7 @@ void MainWindow::setupUi() {
   mainSplitter->setCollapsible(2, true);  // 우측 이벤트 패널 접기 가능
   mainSplitter->setStretchFactor(
       1, 1); // 중앙 화면이 남는 공간을 모두 차지하도록 설정 (매우 중요)
-  mainSplitter->setSizes({220, 600, 250});
+  mainSplitter->setSizes({220, 850, 0});
 
   // 이제 Splitter 전체를 꽉 차게 cctvLayout에 바로 추가 (여백 없음)
   cctvLayout->addWidget(mainSplitter, 1);
@@ -924,6 +921,7 @@ void MainWindow::setupUi() {
       QStringList() << "ID" << "Object ID" << "번호판" << "구역명" << "입차시간"
                     << "출차시간" << "지불여부" << "총 금액");
   m_parkingLogTable->setColumnHidden(0, true);
+  m_parkingLogTable->setColumnHidden(1, true);
   m_parkingLogTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::Stretch);
   m_parkingLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -989,10 +987,7 @@ void MainWindow::setupUi() {
 
   QHBoxLayout *labelRow = new QHBoxLayout();
   labelRow->addWidget(new QLabel("ID", this), 1);
-  labelRow->addWidget(new QLabel("Type", this), 2);
-  labelRow->addWidget(new QLabel("Plate", this), 2);
-  labelRow->addWidget(new QLabel("Score", this), 1);
-  labelRow->addWidget(new QLabel("BBox (x y w h)", this), 3);
+  labelRow->addWidget(new QLabel("Plate", this), 4);
   labelRow->addWidget(new QLabel("", this), 1);
 
   QHBoxLayout *inputRow = new QHBoxLayout();
@@ -1001,22 +996,9 @@ void MainWindow::setupUi() {
   m_forceObjectIdInput->setRange(0, 2147483647);
   inputRow->addWidget(m_forceObjectIdInput, 1);
 
-  m_forceTypeInput = new QLineEdit(this);
-  m_forceTypeInput->setPlaceholderText("Type");
-  inputRow->addWidget(m_forceTypeInput, 2);
-
   m_forcePlateInput = new QLineEdit(this);
   m_forcePlateInput->setPlaceholderText("Plate");
-  inputRow->addWidget(m_forcePlateInput, 2);
-
-  m_forceScoreInput = new QDoubleSpinBox(this);
-  m_forceScoreInput->setRange(0.0, 1.0);
-  m_forceScoreInput->setSingleStep(0.01);
-  inputRow->addWidget(m_forceScoreInput, 1);
-
-  m_forceBBoxInput = new QLineEdit(this);
-  m_forceBBoxInput->setPlaceholderText("x y w h");
-  inputRow->addWidget(m_forceBBoxInput, 3);
+  inputRow->addWidget(m_forcePlateInput, 4);
 
   m_btnForcePlate = new QPushButton(QString::fromUtf8("정보 업데이트"), this);
   inputRow->addWidget(m_btnForcePlate, 1);

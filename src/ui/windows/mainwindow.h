@@ -89,9 +89,6 @@ private:
   QPushButton *m_btnRefreshLogs = nullptr;
   QLineEdit *m_forcePlateInput = nullptr;
   QSpinBox *m_forceObjectIdInput = nullptr;
-  QLineEdit *m_forceTypeInput = nullptr;
-  QDoubleSpinBox *m_forceScoreInput = nullptr;
-  QLineEdit *m_forceBBoxInput = nullptr;
   QPushButton *m_btnForcePlate = nullptr;
   QLineEdit *m_editPlateInput = nullptr;
   QPushButton *m_btnEditPlate = nullptr;

@@ -94,6 +94,7 @@ private:
   void reloadRoiForTarget(RoiTarget target, bool writeLog = true);
   void refreshRoiSelectorForTarget();
   void refreshZoneTableAllChannels();
+  void refreshReidTableAllChannels(bool force = false);
   void ensureChannelSelected(int index);
   void rebuildLiveLayout();
   void applyLiveGridLayout(LiveLayoutMode mode);
@@ -147,6 +148,7 @@ private:
   QVector<int> m_selectedChannelIndices;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
+  QElapsedTimer m_reidRefreshTimer;
   QTimer *m_resizeDebounceTimer = nullptr;
   // Continuous Recording
   VideoBufferManager *m_continuousBuffers[4] = {nullptr, nullptr, nullptr,
