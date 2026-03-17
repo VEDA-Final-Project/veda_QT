@@ -110,20 +110,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnSendExit = m_btnSendExit;
   uiRefs.userTable = m_userTable;
 
-  uiRefs.rpiHostEdit = m_rpiHostEdit;
-  uiRefs.rpiPortSpin = m_rpiPortSpin;
-  uiRefs.btnRpiConnect = m_btnRpiConnect;
-  uiRefs.btnRpiDisconnect = m_btnRpiDisconnect;
-  uiRefs.btnBarrierUp = m_btnBarrierUp;
-  uiRefs.btnBarrierDown = m_btnBarrierDown;
-  uiRefs.btnLedOn = m_btnLedOn;
-  uiRefs.btnLedOff = m_btnLedOff;
-  uiRefs.rpiConnectionStatusLabel = m_rpiConnectionStatusLabel;
-  uiRefs.rpiVehicleStatusLabel = m_rpiVehicleStatusLabel;
-  uiRefs.rpiLedStatusLabel = m_rpiLedStatusLabel;
-  uiRefs.rpiIrRawLabel = m_rpiIrRawLabel;
-  uiRefs.rpiServoAngleLabel = m_rpiServoAngleLabel;
-
   uiRefs.parkingLogTable = m_parkingLogTable;
   uiRefs.plateSearchInput = m_plateSearchInput;
   uiRefs.btnSearchPlate = m_btnSearchPlate;
@@ -149,9 +135,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnAddUser = m_btnAddUser;
   uiRefs.btnEditUser = m_btnEditUser;
   uiRefs.btnDeleteUser = m_btnDeleteUser;
-  uiRefs.hwLogTable = m_hwLogTable;
-  uiRefs.btnRefreshHwLogs = m_btnRefreshHwLogs;
-  uiRefs.btnClearHwLogs = m_btnClearHwLogs;
   uiRefs.vehicleTable = m_vehicleTable;
   uiRefs.btnRefreshVehicles = m_btnRefreshVehicles;
   uiRefs.btnDeleteVehicle = m_btnDeleteVehicle;
@@ -410,11 +393,10 @@ void MainWindow::setupUi() {
   const QStringList menuLabels = {
       QString::fromUtf8("\xF0\x9F\x93\xB1 "
                         "\xED\x85\x94\xEB\xA0\x88\xEA\xB7\xB8\xEB\x9E\xA8"),
-      QString::fromUtf8("\xF0\x9F\xA7\xA0 RPi"),
       QString::fromUtf8("\xF0\x9F\x97\x84\xEF\xB8\x8F DB"),
       QString::fromUtf8("\xF0\x9F\x94\x8D ReID"),
       QString::fromUtf8("\xF0\x9F\x93\xBD REC")};
-  const QList<int> menuIndices = {2, 3, 4, 5, 6};
+  const QList<int> menuIndices = {2, 3, 4, 5};
 
   for (int i = 0; i < menuLabels.size(); ++i) {
     QAction *action = m_navMenu->addAction(menuLabels[i]);
@@ -916,72 +898,7 @@ void MainWindow::setupUi() {
 
   tgLayout->addStretch();
 
-  // ======================
-  // Tab 3: RPi 제어
-  // ======================
-  QWidget *rpiTab = new QWidget(this);
-  QVBoxLayout *rpiLayout = new QVBoxLayout(rpiTab);
-
-  // 1. 연결 설정
-  QGroupBox *rpiConnGroup =
-      new QGroupBox(QString::fromUtf8("RPi 연결 설정"), this);
-  QHBoxLayout *rpiConnRow = new QHBoxLayout();
-  m_rpiHostEdit = new QLineEdit(this);
-  m_rpiHostEdit->setPlaceholderText(
-      QStringLiteral("RPi Host (예: 192.168.0.50)"));
-  m_rpiHostEdit->setText(QStringLiteral("127.0.0.1"));
-  m_rpiPortSpin = new QSpinBox(this);
-  m_rpiPortSpin->setRange(1, 65535);
-  m_rpiPortSpin->setValue(5000);
-  m_btnRpiConnect = new QPushButton(QString::fromUtf8("연결"), this);
-  m_btnRpiDisconnect = new QPushButton(QString::fromUtf8("해제"), this);
-  rpiConnRow->addWidget(new QLabel(QString::fromUtf8("Host:"), this));
-  rpiConnRow->addWidget(m_rpiHostEdit);
-  rpiConnRow->addWidget(new QLabel(QString::fromUtf8("Port:"), this));
-  rpiConnRow->addWidget(m_rpiPortSpin);
-  rpiConnRow->addWidget(m_btnRpiConnect);
-  rpiConnRow->addWidget(m_btnRpiDisconnect);
-  rpiConnGroup->setLayout(rpiConnRow);
-  rpiLayout->addWidget(rpiConnGroup);
-
-  // 2. 제어
-  QGroupBox *rpiControlGroup =
-      new QGroupBox(QString::fromUtf8("차단봉 / LED 제어"), this);
-  QHBoxLayout *rpiControlRow = new QHBoxLayout();
-  m_btnBarrierUp = new QPushButton(QString::fromUtf8("차단봉 올리기"), this);
-  m_btnBarrierDown = new QPushButton(QString::fromUtf8("차단봉 내리기"), this);
-  m_btnLedOn = new QPushButton(QString::fromUtf8("LED ON"), this);
-  m_btnLedOff = new QPushButton(QString::fromUtf8("LED OFF"), this);
-  rpiControlRow->addWidget(m_btnBarrierUp);
-  rpiControlRow->addWidget(m_btnBarrierDown);
-  rpiControlRow->addSpacing(20);
-  rpiControlRow->addWidget(m_btnLedOn);
-  rpiControlRow->addWidget(m_btnLedOff);
-  rpiControlGroup->setLayout(rpiControlRow);
-  rpiLayout->addWidget(rpiControlGroup);
-
-  // 3. 상태
-  QGroupBox *rpiStatusGroup = new QGroupBox(QString::fromUtf8("상태"), this);
-  QFormLayout *rpiStatusForm = new QFormLayout();
-  m_rpiConnectionStatusLabel =
-      new QLabel(QString::fromUtf8("Disconnected"), this);
-  m_rpiVehicleStatusLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiLedStatusLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiIrRawLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiServoAngleLabel = new QLabel(QString::fromUtf8("-"), this);
-  rpiStatusForm->addRow(QString::fromUtf8("연결 상태:"),
-                        m_rpiConnectionStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("차량 감지(IR):"),
-                        m_rpiVehicleStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("LED 상태:"), m_rpiLedStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("IR Raw:"), m_rpiIrRawLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("서보 각도:"), m_rpiServoAngleLabel);
-  rpiStatusGroup->setLayout(rpiStatusForm);
-  rpiLayout->addWidget(rpiStatusGroup);
-
-  rpiLayout->addStretch();
-
-  // Tab 4: 주차 DB 현황판
+  // Tab 3: 주차 DB 현황판
   // ======================
   QWidget *parkingDbTab = new QWidget(this);
   QVBoxLayout *dbLayout = new QVBoxLayout(parkingDbTab);
@@ -1046,29 +963,7 @@ void MainWindow::setupUi() {
   usersLayout->addWidget(m_userDbTable);
   dbSubTabs->addTab(usersTab, "👥 사용자");
 
-  // --- Sub-Tab 3: 장치 로그 (Hardware Logs) ---
-  QWidget *hwTab = new QWidget(this);
-  QVBoxLayout *hwLayout = new QVBoxLayout(hwTab);
-
-  QHBoxLayout *hwToolBar = new QHBoxLayout();
-  m_btnRefreshHwLogs = new QPushButton("새로고침", this);
-  m_btnClearHwLogs = new QPushButton("로그 비우기", this);
-  hwToolBar->addWidget(m_btnRefreshHwLogs);
-  hwToolBar->addWidget(m_btnClearHwLogs);
-  hwToolBar->addStretch();
-
-  m_hwLogTable = new QTableWidget(this);
-  m_hwLogTable->setColumnCount(5);
-  m_hwLogTable->setHorizontalHeaderLabels(
-      QStringList() << "ID" << "구역" << "장치" << "동작" << "시간");
-  m_hwLogTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  m_hwLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-
-  hwLayout->addLayout(hwToolBar);
-  hwLayout->addWidget(m_hwLogTable);
-  dbSubTabs->addTab(hwTab, "🔧 장치 로그");
-
-  // --- Sub-Tab 4: 차량 정보 (Vehicles) ---
+  // --- Sub-Tab 3: 차량 정보 (Vehicles) ---
   QWidget *vhTab = new QWidget(this);
   QVBoxLayout *vhLayout = new QVBoxLayout(vhTab);
 
@@ -1093,7 +988,7 @@ void MainWindow::setupUi() {
   vhLayout->addWidget(m_vehicleTable);
   dbSubTabs->addTab(vhTab, "🚘 차량 정보");
 
-  // --- Sub-Tab 5: 주차구역 현황 (Zones) ---
+  // --- Sub-Tab 4: 주차구역 현황 (Zones) ---
   QWidget *zoneTab = new QWidget(this);
   QVBoxLayout *zoneLayout = new QVBoxLayout(zoneTab);
 
@@ -1461,7 +1356,6 @@ void MainWindow::setupUi() {
   stackedWidget->addWidget(splashTab);
   stackedWidget->addWidget(cctvTab);
   stackedWidget->addWidget(telegramTab);
-  stackedWidget->addWidget(rpiTab);
   stackedWidget->addWidget(parkingDbTab);
   stackedWidget->addWidget(reidTab);
   stackedWidget->addWidget(recordTab);

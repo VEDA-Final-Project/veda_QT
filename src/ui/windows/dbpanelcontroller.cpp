@@ -1,6 +1,5 @@
 #include "dbpanelcontroller.h"
 
-#include "database/hardwarelogrepository.h"
 #include "database/userrepository.h"
 #include "database/vehiclerepository.h"
 #include "parkinglogpanelcontroller.h"
@@ -112,14 +111,6 @@ void DbPanelController::connectSignals() {
     connect(m_ui.btnDeleteUser, &QPushButton::clicked, this,
             &DbPanelController::deleteUser);
   }
-  if (m_ui.btnRefreshHwLogs) {
-    connect(m_ui.btnRefreshHwLogs, &QPushButton::clicked, this,
-            &DbPanelController::refreshHwLogs);
-  }
-  if (m_ui.btnClearHwLogs) {
-    connect(m_ui.btnClearHwLogs, &QPushButton::clicked, this,
-            &DbPanelController::clearHwLogs);
-  }
   if (m_ui.btnRefreshVehicles) {
     connect(m_ui.btnRefreshVehicles, &QPushButton::clicked, this,
             &DbPanelController::refreshVehicleTable);
@@ -137,7 +128,6 @@ void DbPanelController::connectSignals() {
 void DbPanelController::refreshAll() {
   onRefreshParkingLogs();
   refreshUserTable();
-  refreshHwLogs();
   refreshVehicleTable();
   refreshZoneTable();
 }
@@ -338,43 +328,6 @@ void DbPanelController::editUser() {
   } else {
     appendLog(QString("[DB] 사용자 수정 실패: %1").arg(error));
   }
-}
-
-void DbPanelController::refreshHwLogs() {
-  if (!m_ui.hwLogTable) {
-    return;
-  }
-
-  HardwareLogRepository repo;
-  QString error;
-  const QVector<QJsonObject> logs = repo.getAllLogs(&error);
-
-  m_ui.hwLogTable->setRowCount(0);
-  for (int i = 0; i < logs.size(); ++i) {
-    const QJsonObject &row = logs[i];
-    m_ui.hwLogTable->insertRow(i);
-    m_ui.hwLogTable->setItem(
-        i, 0, new QTableWidgetItem(QString::number(row["log_id"].toInt())));
-    m_ui.hwLogTable->setItem(i, 1,
-                             new QTableWidgetItem(row["zone_id"].toString()));
-    m_ui.hwLogTable->setItem(
-        i, 2, new QTableWidgetItem(row["device_type"].toString()));
-    m_ui.hwLogTable->setItem(i, 3,
-                             new QTableWidgetItem(row["action"].toString()));
-    m_ui.hwLogTable->setItem(i, 4,
-                             new QTableWidgetItem(row["timestamp"].toString()));
-  }
-}
-
-void DbPanelController::clearHwLogs() {
-  HardwareLogRepository repo;
-  QString error;
-  if (repo.clearLogs(&error)) {
-    appendLog("[DB] 장치 로그 초기화 완료");
-    refreshHwLogs();
-    return;
-  }
-  appendLog(QString("[DB] 장치 로그 초기화 실패: %1").arg(error));
 }
 
 void DbPanelController::refreshVehicleTable() {

@@ -39,10 +39,6 @@ public:
     QPushButton *btnEditUser = nullptr;
     QPushButton *btnDeleteUser = nullptr;
 
-    QTableWidget *hwLogTable = nullptr;
-    QPushButton *btnRefreshHwLogs = nullptr;
-    QPushButton *btnClearHwLogs = nullptr;
-
     QTableWidget *vehicleTable = nullptr;
     QPushButton *btnRefreshVehicles = nullptr;
     QPushButton *btnDeleteVehicle = nullptr;
@@ -79,8 +75,6 @@ public slots:
   void addUser();
   void editUser();
   void deleteUser();
-  void refreshHwLogs();
-  void clearHwLogs();
   void refreshVehicleTable();
   void deleteVehicle();
 

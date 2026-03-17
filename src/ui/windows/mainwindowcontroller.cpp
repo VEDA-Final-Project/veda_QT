@@ -9,7 +9,6 @@
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
 #include "roi/roiservice.h"
-#include "rpipanelcontroller.h"
 #include "ui/video/videowidget.h"
 #include "video/mediarecorderworker.h"
 #include "video/videobuffermanager.h"
@@ -81,23 +80,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &MainWindowController::primaryVideoReady);
   }
 
-  RpiPanelController::UiRefs rpiUiRefs;
-  rpiUiRefs.hostEdit = m_ui.rpiHostEdit;
-  rpiUiRefs.portSpin = m_ui.rpiPortSpin;
-  rpiUiRefs.btnConnect = m_ui.btnRpiConnect;
-  rpiUiRefs.btnDisconnect = m_ui.btnRpiDisconnect;
-  rpiUiRefs.btnBarrierUp = m_ui.btnBarrierUp;
-  rpiUiRefs.btnBarrierDown = m_ui.btnBarrierDown;
-  rpiUiRefs.btnLedOn = m_ui.btnLedOn;
-  rpiUiRefs.btnLedOff = m_ui.btnLedOff;
-  rpiUiRefs.connectionStatusLabel = m_ui.rpiConnectionStatusLabel;
-  rpiUiRefs.vehicleStatusLabel = m_ui.rpiVehicleStatusLabel;
-  rpiUiRefs.ledStatusLabel = m_ui.rpiLedStatusLabel;
-  rpiUiRefs.irRawLabel = m_ui.rpiIrRawLabel;
-  rpiUiRefs.servoAngleLabel = m_ui.rpiServoAngleLabel;
-  rpiUiRefs.logView = m_ui.logView;
-  m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
-
   const QString dbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
   DatabaseContext::init(dbPath);
@@ -123,9 +105,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnAddUser = m_ui.btnAddUser;
   dbUiRefs.btnEditUser = m_ui.btnEditUser;
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
-  dbUiRefs.hwLogTable = m_ui.hwLogTable;
-  dbUiRefs.btnRefreshHwLogs = m_ui.btnRefreshHwLogs;
-  dbUiRefs.btnClearHwLogs = m_ui.btnClearHwLogs;
   dbUiRefs.vehicleTable = m_ui.vehicleTable;
   dbUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
   dbUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
@@ -469,9 +448,6 @@ void MainWindowController::shutdown() {
       source->stop();
     }
   }
-  if (m_rpiPanelController) {
-    m_rpiPanelController->shutdown();
-  }
   // 백그라운드 워커 삭제
   if (m_recorderThread) {
     m_recorderThread->quit();
@@ -572,10 +548,6 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onPaymentConfirmed);
   connect(m_telegramApi, &TelegramBotAPI::adminSummoned, this,
           &MainWindowController::onAdminSummoned);
-
-  if (m_rpiPanelController) {
-    m_rpiPanelController->connectSignals();
-  }
 
   if (m_dbPanelController) {
     m_dbPanelController->connectSignals();
