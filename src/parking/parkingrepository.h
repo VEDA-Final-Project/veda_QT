@@ -24,8 +24,10 @@ public:
    * @brief 입차 기록 생성
    * @return 생성된 레코드의 ID (실패 시 -1)
    */
-  int insertEntry(const QString &cameraKey, const QString &plateNumber,
-                  int roiIndex, const QDateTime &entryTime,
+  int insertEntry(const QString &cameraKey, int objectId,
+                  const QString &plateNumber, const QString &zoneName,
+                  int roiIndex,
+                  const QDateTime &entryTime,
                   QString *errorMessage = nullptr);
 
   /**
@@ -33,6 +35,26 @@ public:
    */
   bool updateExit(int recordId, const QDateTime &exitTime,
                   QString *errorMessage = nullptr);
+
+  /**
+   * @brief 활성 주차 기록의 결제 상태/금액 업데이트
+   */
+  bool updatePayment(const QString &cameraKey, const QString &plateNumber,
+                     int totalAmount, const QString &payStatus,
+                     QString *errorMessage = nullptr);
+
+  /**
+   * @brief obj_id로 현재 입차 중인 레코드 조회
+   */
+  QJsonObject findActiveByObjectId(const QString &cameraKey, int objectId,
+                                   QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 활성 레코드의 번호판을 obj_id 기준으로 갱신
+   */
+  bool updateActivePlateByObjectId(const QString &cameraKey, int objectId,
+                                   const QString &plateNumber,
+                                   QString *errorMessage = nullptr);
 
   /**
    * @brief 번호판으로 현재 입차 중인 레코드 조회

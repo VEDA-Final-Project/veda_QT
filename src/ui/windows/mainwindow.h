@@ -82,21 +82,6 @@ private:
   QPushButton *m_btnSendExit = nullptr;
   QTableWidget *m_userTable = nullptr;
 
-  // RPi Widgets
-  QLineEdit *m_rpiHostEdit = nullptr;
-  QSpinBox *m_rpiPortSpin = nullptr;
-  QPushButton *m_btnRpiConnect = nullptr;
-  QPushButton *m_btnRpiDisconnect = nullptr;
-  QPushButton *m_btnBarrierUp = nullptr;
-  QPushButton *m_btnBarrierDown = nullptr;
-  QPushButton *m_btnLedOn = nullptr;
-  QPushButton *m_btnLedOff = nullptr;
-  QLabel *m_rpiConnectionStatusLabel = nullptr;
-  QLabel *m_rpiVehicleStatusLabel = nullptr;
-  QLabel *m_rpiLedStatusLabel = nullptr;
-  QLabel *m_rpiIrRawLabel = nullptr;
-  QLabel *m_rpiServoAngleLabel = nullptr;
-
   // Parking DB Panel Widgets
   QTableWidget *m_parkingLogTable = nullptr;
   QLineEdit *m_plateSearchInput = nullptr;
@@ -117,10 +102,6 @@ private:
   QPushButton *m_btnAddUser = nullptr;
   QPushButton *m_btnEditUser = nullptr;
   QPushButton *m_btnDeleteUser = nullptr;
-
-  QTableWidget *m_hwLogTable = nullptr;
-  QPushButton *m_btnRefreshHwLogs = nullptr;
-  QPushButton *m_btnClearHwLogs = nullptr;
 
   QTableWidget *m_vehicleTable = nullptr;
   QPushButton *m_btnRefreshVehicles = nullptr;

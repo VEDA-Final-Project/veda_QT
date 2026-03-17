@@ -43,7 +43,6 @@ public:
   QString cameraKey() const;
   int cardIndex() const;
   QString displayProfile() const;
-  QString ocrProfile() const;
   Status status() const;
   qint64 lastFrameTimestampMs() const;
   ParkingService *parkingService();
@@ -103,10 +102,8 @@ private:
   QString m_cameraKey;
   int m_cardIndex = -1;
   QString m_displayProfile;
-  QString m_ocrProfile;
   QHash<int, QSize> m_consumerSizes;
   QVector<QString> m_enabledZoneIds;
-  QList<ObjectInfo> m_currentObjects;
   QList<ObjectInfo> m_latestFrameObjects;
   QSet<QString> m_disabledTypes;
   QSharedPointer<cv::Mat> m_latestFramePtr;

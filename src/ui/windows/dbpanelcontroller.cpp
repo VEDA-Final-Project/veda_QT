@@ -1,8 +1,8 @@
 #include "dbpanelcontroller.h"
 
-#include "database/hardwarelogrepository.h"
 #include "database/userrepository.h"
 #include "database/vehiclerepository.h"
+#include "parkinglogpanelcontroller.h"
 #include "parking/parkingservice.h"
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -55,32 +55,36 @@ QString formatDisplayDateTime(const QString &rawIsoText) {
       .arg(hour12)
       .arg(dt.time().minute(), 2, 10, QLatin1Char('0'));
 }
-
-void populateParkingTable(QTableWidget *table,
-                          const QVector<QJsonObject> &logs) {
-  if (!table) {
-    return;
-  }
-
-  table->setRowCount(0);
-
-  for (int i = 0; i < logs.size(); ++i) {
-    const QJsonObject &row = logs[i];
-    table->insertRow(i);
-    table->setItem(i, 0,
-                   new QTableWidgetItem(QString::number(row["id"].toInt())));
-    table->setItem(i, 1, new QTableWidgetItem(row["plate_number"].toString()));
-    table->setItem(
-        i, 2, new QTableWidgetItem(QString::number(row["roi_index"].toInt())));
-    table->setItem(i, 3, new QTableWidgetItem(row["entry_time"].toString()));
-    table->setItem(i, 4, new QTableWidgetItem(row["exit_time"].toString()));
-  }
-}
 } // namespace
 
 DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
                                      QObject *parent)
-    : QObject(parent), m_ui(uiRefs), m_context(std::move(context)) {}
+    : QObject(parent), m_ui(uiRefs), m_context(std::move(context)) {
+  ParkingLogPanelController::UiRefs parkingUiRefs;
+  parkingUiRefs.parkingLogTable = m_ui.parkingLogTable;
+  parkingUiRefs.plateSearchInput = m_ui.plateSearchInput;
+  parkingUiRefs.btnSearchPlate = m_ui.btnSearchPlate;
+  parkingUiRefs.btnRefreshLogs = m_ui.btnRefreshLogs;
+  parkingUiRefs.forcePlateInput = m_ui.forcePlateInput;
+  parkingUiRefs.forceObjectIdInput = m_ui.forceObjectIdInput;
+  parkingUiRefs.forceTypeInput = m_ui.forceTypeInput;
+  parkingUiRefs.forceScoreInput = m_ui.forceScoreInput;
+  parkingUiRefs.forceBBoxInput = m_ui.forceBBoxInput;
+  parkingUiRefs.btnForcePlate = m_ui.btnForcePlate;
+  parkingUiRefs.editPlateInput = m_ui.editPlateInput;
+  parkingUiRefs.btnEditPlate = m_ui.btnEditPlate;
+
+  ParkingLogPanelController::Context parkingContext;
+  parkingContext.parkingServiceProvider = m_context.parkingServiceProvider;
+  parkingContext.allParkingServicesProvider =
+      m_context.allParkingServicesProvider;
+  parkingContext.parkingServiceForCameraKeyProvider =
+      m_context.parkingServiceForCameraKeyProvider;
+  parkingContext.logMessage = m_context.logMessage;
+
+  m_parkingLogPanelController =
+      new ParkingLogPanelController(parkingUiRefs, parkingContext, this);
+}
 
 void DbPanelController::connectSignals() {
   if (m_signalsConnected) {
@@ -88,21 +92,8 @@ void DbPanelController::connectSignals() {
   }
   m_signalsConnected = true;
 
-  if (m_ui.btnRefreshLogs) {
-    connect(m_ui.btnRefreshLogs, &QPushButton::clicked, this,
-            &DbPanelController::onRefreshParkingLogs);
-  }
-  if (m_ui.btnSearchPlate) {
-    connect(m_ui.btnSearchPlate, &QPushButton::clicked, this,
-            &DbPanelController::onSearchParkingLogs);
-  }
-  if (m_ui.btnForcePlate) {
-    connect(m_ui.btnForcePlate, &QPushButton::clicked, this,
-            &DbPanelController::onForcePlate);
-  }
-  if (m_ui.btnEditPlate) {
-    connect(m_ui.btnEditPlate, &QPushButton::clicked, this,
-            &DbPanelController::onEditPlate);
+  if (m_parkingLogPanelController) {
+    m_parkingLogPanelController->connectSignals();
   }
   if (m_ui.btnRefreshUsers) {
     connect(m_ui.btnRefreshUsers, &QPushButton::clicked, this,
@@ -119,14 +110,6 @@ void DbPanelController::connectSignals() {
   if (m_ui.btnDeleteUser) {
     connect(m_ui.btnDeleteUser, &QPushButton::clicked, this,
             &DbPanelController::deleteUser);
-  }
-  if (m_ui.btnRefreshHwLogs) {
-    connect(m_ui.btnRefreshHwLogs, &QPushButton::clicked, this,
-            &DbPanelController::refreshHwLogs);
-  }
-  if (m_ui.btnClearHwLogs) {
-    connect(m_ui.btnClearHwLogs, &QPushButton::clicked, this,
-            &DbPanelController::clearHwLogs);
   }
   if (m_ui.btnRefreshVehicles) {
     connect(m_ui.btnRefreshVehicles, &QPushButton::clicked, this,
@@ -145,7 +128,6 @@ void DbPanelController::connectSignals() {
 void DbPanelController::refreshAll() {
   onRefreshParkingLogs();
   refreshUserTable();
-  refreshHwLogs();
   refreshVehicleTable();
   refreshZoneTable();
 }
@@ -161,149 +143,33 @@ void DbPanelController::appendLog(const QString &message) const {
 }
 
 void DbPanelController::onRefreshParkingLogs() {
-  ParkingService *service = m_context.parkingServiceProvider
-                                ? m_context.parkingServiceProvider()
-                                : nullptr;
-  if (!service) {
-    return;
+  if (m_parkingLogPanelController) {
+    m_parkingLogPanelController->onRefreshParkingLogs();
   }
-
-  const QVector<QJsonObject> logs = service->recentLogs(100);
-  populateParkingTable(m_ui.parkingLogTable, logs);
-  appendLog(QString("[DB][%1] 전체 새로고침: %2건 표시")
-                .arg(service->cameraKey())
-                .arg(logs.size()));
 }
 
 void DbPanelController::onSearchParkingLogs() {
-  if (!m_ui.plateSearchInput) {
-    return;
+  if (m_parkingLogPanelController) {
+    m_parkingLogPanelController->onSearchParkingLogs();
   }
-
-  const QString keyword = m_ui.plateSearchInput->text().trimmed();
-  if (keyword.isEmpty()) {
-    onRefreshParkingLogs();
-    return;
-  }
-
-  ParkingService *service = m_context.parkingServiceProvider
-                                ? m_context.parkingServiceProvider()
-                                : nullptr;
-  if (!service) {
-    return;
-  }
-
-  const QVector<QJsonObject> logs = service->searchByPlate(keyword);
-  populateParkingTable(m_ui.parkingLogTable, logs);
-  appendLog(QString("[DB][%1] '%2' 검색 결과: %3건")
-                .arg(service->cameraKey(), keyword)
-                .arg(logs.size()));
 }
 
 void DbPanelController::onForcePlate() {
-  if (!m_ui.forceObjectIdInput || !m_ui.forceTypeInput ||
-      !m_ui.forcePlateInput || !m_ui.forceScoreInput || !m_ui.forceBBoxInput) {
-    return;
+  if (m_parkingLogPanelController) {
+    m_parkingLogPanelController->onForcePlate();
   }
-
-  const int objectId = m_ui.forceObjectIdInput->value();
-  const QString type = m_ui.forceTypeInput->text().trimmed();
-  const QString plate = m_ui.forcePlateInput->text().trimmed();
-  const double score = m_ui.forceScoreInput->value();
-  QString bboxText = m_ui.forceBBoxInput->text().trimmed();
-
-  bboxText.remove("x:");
-  bboxText.remove("y:");
-  bboxText.remove("w:");
-  bboxText.remove("h:");
-  const QStringList parts =
-      bboxText.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-
-  QRectF bbox(0, 0, 0, 0);
-  if (parts.size() >= 4) {
-    bbox.setX(parts[0].toDouble());
-    bbox.setY(parts[1].toDouble());
-    bbox.setWidth(parts[2].toDouble());
-    bbox.setHeight(parts[3].toDouble());
-  }
-
-  ParkingService *service = m_context.parkingServiceProvider
-                                ? m_context.parkingServiceProvider()
-                                : nullptr;
-  if (!service) {
-    return;
-  }
-  service->forceObjectData(objectId, type, plate, score, bbox);
-  appendLog(QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId));
 }
 
 void DbPanelController::onEditPlate() {
-  if (!m_ui.parkingLogTable || !m_ui.editPlateInput) {
-    return;
+  if (m_parkingLogPanelController) {
+    m_parkingLogPanelController->onEditPlate();
   }
-
-  const int currentRow = m_ui.parkingLogTable->currentRow();
-  if (currentRow < 0) {
-    appendLog("[DB] 수정할 레코드를 먼저 선택해주세요.");
-    return;
-  }
-
-  const QString newPlate = m_ui.editPlateInput->text().trimmed();
-  if (newPlate.isEmpty()) {
-    appendLog("[DB] 새 번호판을 입력해주세요.");
-    return;
-  }
-
-  QTableWidgetItem *idItem = m_ui.parkingLogTable->item(currentRow, 0);
-  if (!idItem) {
-    return;
-  }
-
-  const int recordId = idItem->text().toInt();
-  ParkingService *service = m_context.parkingServiceProvider
-                                ? m_context.parkingServiceProvider()
-                                : nullptr;
-  if (service && service->updatePlate(recordId, newPlate)) {
-    appendLog(QString("[DB] 번호판 수정 완료: ID=%1 → %2")
-                  .arg(recordId)
-                  .arg(newPlate));
-    onRefreshParkingLogs();
-    return;
-  }
-  appendLog(QString("[DB] 번호판 수정 실패: ID=%1").arg(recordId));
 }
 
 void DbPanelController::deleteParkingLog() {
-  if (!m_ui.parkingLogTable) {
-    return;
+  if (m_parkingLogPanelController) {
+    m_parkingLogPanelController->deleteParkingLog();
   }
-
-  const int row = m_ui.parkingLogTable->currentRow();
-  if (row < 0) {
-    return;
-  }
-
-  QTableWidgetItem *idItem = m_ui.parkingLogTable->item(row, 0);
-  if (!idItem) {
-    return;
-  }
-  const int id = idItem->text().toInt();
-
-  ParkingService *service = m_context.parkingServiceProvider
-                                ? m_context.parkingServiceProvider()
-                                : nullptr;
-  QString error;
-  if (service && service->deleteLog(id, &error)) {
-    appendLog(QString("[DB][%1] 주차 기록 삭제 완료: ID=%2")
-                  .arg(service->cameraKey())
-                  .arg(id));
-    onRefreshParkingLogs();
-    return;
-  }
-
-  const QString reason = error.isEmpty() ? QStringLiteral("unknown") : error;
-  appendLog(
-      QString("[DB] 주차 기록 삭제 실패: ID=%1 (%2)").arg(id).arg(reason));
 }
 
 void DbPanelController::refreshUserTable() {
@@ -464,43 +330,6 @@ void DbPanelController::editUser() {
   }
 }
 
-void DbPanelController::refreshHwLogs() {
-  if (!m_ui.hwLogTable) {
-    return;
-  }
-
-  HardwareLogRepository repo;
-  QString error;
-  const QVector<QJsonObject> logs = repo.getAllLogs(&error);
-
-  m_ui.hwLogTable->setRowCount(0);
-  for (int i = 0; i < logs.size(); ++i) {
-    const QJsonObject &row = logs[i];
-    m_ui.hwLogTable->insertRow(i);
-    m_ui.hwLogTable->setItem(
-        i, 0, new QTableWidgetItem(QString::number(row["log_id"].toInt())));
-    m_ui.hwLogTable->setItem(i, 1,
-                             new QTableWidgetItem(row["zone_id"].toString()));
-    m_ui.hwLogTable->setItem(
-        i, 2, new QTableWidgetItem(row["device_type"].toString()));
-    m_ui.hwLogTable->setItem(i, 3,
-                             new QTableWidgetItem(row["action"].toString()));
-    m_ui.hwLogTable->setItem(i, 4,
-                             new QTableWidgetItem(row["timestamp"].toString()));
-  }
-}
-
-void DbPanelController::clearHwLogs() {
-  HardwareLogRepository repo;
-  QString error;
-  if (repo.clearLogs(&error)) {
-    appendLog("[DB] 장치 로그 초기화 완료");
-    refreshHwLogs();
-    return;
-  }
-  appendLog(QString("[DB] 장치 로그 초기화 실패: %1").arg(error));
-}
-
 void DbPanelController::refreshVehicleTable() {
   if (!m_ui.vehicleTable) {
     return;
@@ -582,17 +411,10 @@ void DbPanelController::refreshZoneTable() {
     }
   };
 
-  const QVector<QJsonObject> primaryRecords =
-      m_context.primaryZoneRecordsProvider
-          ? m_context.primaryZoneRecordsProvider()
-          : QVector<QJsonObject>();
-  const QVector<QJsonObject> secondaryRecords =
-      m_context.secondaryZoneRecordsProvider
-          ? m_context.secondaryZoneRecordsProvider()
-          : QVector<QJsonObject>();
-  appendRows(primaryRecords);
-  appendRows(secondaryRecords);
+  const QVector<QJsonObject> allRecords =
+      m_context.allZoneRecordsProvider ? m_context.allZoneRecordsProvider()
+                                       : QVector<QJsonObject>();
+  appendRows(allRecords);
 
-  appendLog(QString("주차구역 현황 갱신 완료 (%1건)")
-                .arg(primaryRecords.size() + secondaryRecords.size()));
+  appendLog(QString("주차구역 현황 갱신 완료 (%1건)").arg(allRecords.size()));
 }

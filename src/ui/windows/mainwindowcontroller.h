@@ -31,7 +31,6 @@ class MediaRecorderWorker;
 class QThread;
 class ParkingService;
 class RoiService;
-class RpiPanelController;
 class VideoWidget;
 class QEvent;
 
@@ -119,7 +118,6 @@ private:
   MainWindowUiRefs m_ui;
   RoiTarget m_roiTarget = RoiTarget::Ch1;
   TelegramBotAPI *m_telegramApi = nullptr;
-  RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
   RecordPanelController *m_recordPanelController = nullptr;
   MediaRepository *m_mediaRepo = nullptr;

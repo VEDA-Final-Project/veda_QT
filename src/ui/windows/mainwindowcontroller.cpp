@@ -1,4 +1,4 @@
-#include "mainwindowcontroller.h"
+    #include "mainwindowcontroller.h"
 
 #include "camera/camerasource.h"
 #include "camerachannelruntime.h"
@@ -9,7 +9,6 @@
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
 #include "roi/roiservice.h"
-#include "rpipanelcontroller.h"
 #include "ui/video/videowidget.h"
 #include "video/mediarecorderworker.h"
 #include "video/videobuffermanager.h"
@@ -57,17 +56,17 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   channelUiRefs.avgFpsLabel = m_ui.lblAvgFps;
 
   m_channels[0] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch1, QStringLiteral("Ch1"),
-      m_ui.videoWidgets[0], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch1, m_ui.videoWidgets[0], channelUiRefs,
+      this);
   m_channels[1] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch2, QStringLiteral("Ch2"),
-      m_ui.videoWidgets[1], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch2, m_ui.videoWidgets[1], channelUiRefs,
+      this);
   m_channels[2] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch3, QStringLiteral("Ch3"),
-      m_ui.videoWidgets[2], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch3, m_ui.videoWidgets[2], channelUiRefs,
+      this);
   m_channels[3] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch4, QStringLiteral("Ch4"),
-      m_ui.videoWidgets[3], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch4, m_ui.videoWidgets[3], channelUiRefs,
+      this);
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (!m_channels[i]) {
@@ -80,23 +79,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     connect(m_channels[0], &CameraChannelRuntime::videoReady, this,
             &MainWindowController::primaryVideoReady);
   }
-
-  RpiPanelController::UiRefs rpiUiRefs;
-  rpiUiRefs.hostEdit = m_ui.rpiHostEdit;
-  rpiUiRefs.portSpin = m_ui.rpiPortSpin;
-  rpiUiRefs.btnConnect = m_ui.btnRpiConnect;
-  rpiUiRefs.btnDisconnect = m_ui.btnRpiDisconnect;
-  rpiUiRefs.btnBarrierUp = m_ui.btnBarrierUp;
-  rpiUiRefs.btnBarrierDown = m_ui.btnBarrierDown;
-  rpiUiRefs.btnLedOn = m_ui.btnLedOn;
-  rpiUiRefs.btnLedOff = m_ui.btnLedOff;
-  rpiUiRefs.connectionStatusLabel = m_ui.rpiConnectionStatusLabel;
-  rpiUiRefs.vehicleStatusLabel = m_ui.rpiVehicleStatusLabel;
-  rpiUiRefs.ledStatusLabel = m_ui.rpiLedStatusLabel;
-  rpiUiRefs.irRawLabel = m_ui.rpiIrRawLabel;
-  rpiUiRefs.servoAngleLabel = m_ui.rpiServoAngleLabel;
-  rpiUiRefs.logView = m_ui.logView;
-  m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
 
   const QString dbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
@@ -123,9 +105,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnAddUser = m_ui.btnAddUser;
   dbUiRefs.btnEditUser = m_ui.btnEditUser;
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
-  dbUiRefs.hwLogTable = m_ui.hwLogTable;
-  dbUiRefs.btnRefreshHwLogs = m_ui.btnRefreshHwLogs;
-  dbUiRefs.btnClearHwLogs = m_ui.btnClearHwLogs;
   dbUiRefs.vehicleTable = m_ui.vehicleTable;
   dbUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
   dbUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
@@ -137,13 +116,39 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbContext.parkingServiceProvider = [this]() {
     return parkingServiceForTarget(m_roiTarget);
   };
-  dbContext.primaryZoneRecordsProvider = [this]() {
-    CameraSource *source = sourceAt(0);
-    return source ? source->roiRecords() : QVector<QJsonObject>();
+  dbContext.allParkingServicesProvider = [this]() {
+    QVector<ParkingService *> services;
+    for (CameraSource *source : m_cameraSources) {
+      ParkingService *service = source ? source->parkingService() : nullptr;
+      if (service) {
+        services.append(service);
+      }
+    }
+    return services;
   };
-  dbContext.secondaryZoneRecordsProvider = [this]() {
-    CameraSource *source = sourceAt(1);
-    return source ? source->roiRecords() : QVector<QJsonObject>();
+  dbContext.parkingServiceForCameraKeyProvider = [this](const QString &cameraKey) {
+    for (CameraSource *source : m_cameraSources) {
+      if (!source || source->cameraKey() != cameraKey) {
+        continue;
+      }
+      return source->parkingService();
+    }
+    return static_cast<ParkingService *>(nullptr);
+  };
+  dbContext.allZoneRecordsProvider = [this]() {
+    QVector<QJsonObject> allRecords;
+    for (CameraSource *source : m_cameraSources) {
+      if (!source) {
+        continue;
+      }
+
+      const QVector<QJsonObject> &records = source->roiRecords();
+      allRecords.reserve(allRecords.size() + records.size());
+      for (const QJsonObject &record : records) {
+        allRecords.append(record);
+      }
+    }
+    return allRecords;
   };
   dbContext.logMessage = [this](const QString &message) {
     onLogMessage(message);
@@ -154,6 +159,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+  for (CameraSource *source : m_cameraSources) {
+    ParkingService *service = source ? source->parkingService() : nullptr;
+    if (!service) {
+      continue;
+    }
+    connect(service, &ParkingService::vehicleEntered, m_dbPanelController,
+            &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
+            &DbPanelController::onRefreshParkingLogs);
+  }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();
   m_mediaRepo->init();
@@ -433,9 +448,6 @@ void MainWindowController::shutdown() {
       source->stop();
     }
   }
-  if (m_rpiPanelController) {
-    m_rpiPanelController->shutdown();
-  }
   // 백그라운드 워커 삭제
   if (m_recorderThread) {
     m_recorderThread->quit();
@@ -536,10 +548,6 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onPaymentConfirmed);
   connect(m_telegramApi, &TelegramBotAPI::adminSummoned, this,
           &MainWindowController::onAdminSummoned);
-
-  if (m_rpiPanelController) {
-    m_rpiPanelController->connectSignals();
-  }
 
   if (m_dbPanelController) {
     m_dbPanelController->connectSignals();
@@ -958,6 +966,9 @@ void MainWindowController::onRoiTargetChanged(int index) {
     m_roiTarget = static_cast<RoiTarget>(index);
   }
   refreshRoiSelectorForTarget();
+  if (m_dbPanelController) {
+    m_dbPanelController->onRefreshParkingLogs();
+  }
   onLogMessage(QString("[ROI] 편집 대상 변경: %1").arg(roiTargetLabel(m_roiTarget)));
 }
 
@@ -1305,16 +1316,38 @@ void MainWindowController::onUsersUpdated(int count) {
 
 void MainWindowController::onPaymentConfirmed(const QString &plate,
                                               int amount) {
+  bool updated = false;
+  for (CameraSource *source : m_cameraSources) {
+    ParkingService *service = source ? source->parkingService() : nullptr;
+    if (!service) {
+      continue;
+    }
+
+    QString error;
+    if (service->updatePayment(plate, amount, QStringLiteral("결제완료"), &error)) {
+      updated = true;
+    }
+  }
+
   if (m_ui.logView) {
     const QString msg =
         QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
             .arg(plate)
             .arg(amount);
 
-    if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
-      return;
+    if (!m_ui.chkShowPlateLogs || m_ui.chkShowPlateLogs->isChecked()) {
+      m_ui.logView->append(msg);
+      if (updated) {
+        m_ui.logView->append(
+            QString("[Payment] DB 결제 상태 반영 완료: %1, %2원")
+                .arg(plate)
+                .arg(amount));
+      }
     }
-    m_ui.logView->append(msg);
+  }
+
+  if (updated && m_dbPanelController) {
+    m_dbPanelController->onRefreshParkingLogs();
   }
 }
 

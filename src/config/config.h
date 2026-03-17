@@ -29,7 +29,6 @@ public:
   QString defaultCameraSubProfile() const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
   QString cameraSubProfile(const QString &cameraKey = QString()) const;
-  QString rtspUrl(const QString &cameraKey = QString()) const;
 
   // Video
   int sourceWidth() const;
@@ -70,7 +69,6 @@ private:
   QJsonObject m_ocr;
   QJsonObject m_sync;
   QJsonObject m_auth;
-  bool m_loaded = false;
 };
 
 #endif // CONFIG_H
