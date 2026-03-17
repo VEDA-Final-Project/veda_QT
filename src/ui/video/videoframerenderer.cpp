@@ -52,7 +52,12 @@ int matchedVehicleObjectId(const QImage &frame, const QList<ObjectInfo> &objects
       continue;
     }
 
-    const QRect overlap = vehicleRect.intersected(plateRect);
+    // 번호판은 보통 차량 하단에 위치하므로, 차량 바운딩 박스의 하단 절반 영역과만 겹침도를 계산합니다.
+    // 이는 차량이 줄지어 서 있을 때 뒤차의 번호판이 앞차의 상단 영역과 겹쳐 오인식되는 것을 방지합니다.
+    QRect lowerHalf = vehicleRect;
+    lowerHalf.setTop(vehicleRect.top() + vehicleRect.height() / 2);
+
+    const QRect overlap = lowerHalf.intersected(plateRect);
     const int overlapArea = overlap.width() * overlap.height();
     if (overlapArea <= 0) {
       continue;

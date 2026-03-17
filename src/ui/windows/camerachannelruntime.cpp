@@ -144,7 +144,7 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
   m_videoWidget->updateMetadata(objects);
   m_videoWidget->updateFrame(image);
   m_videoWidget->setProfileName(m_source->displayProfile());
-  refreshReidTable();
+
 
   if (m_slot == Slot::Ch1 && !m_videoReadyNotified) {
     m_videoReadyNotified = true;
@@ -162,13 +162,11 @@ void CameraChannelRuntime::onSourceVideoReady() {
 }
 
 void CameraChannelRuntime::populateReidTable(
-    QTableWidget *table, const QList<VehicleState> &vehicleStates,
+    QTableWidget *table, int channelId, const QList<VehicleState> &vehicleStates,
     int staleTimeoutMs, bool showStaleObjects) {
   if (!table) {
     return;
   }
-
-  table->setRowCount(0);
 
   QList<VehicleState> sortedVehicles = vehicleStates;
   std::sort(sortedVehicles.begin(), sortedVehicles.end(),
@@ -190,24 +188,30 @@ void CameraChannelRuntime::populateReidTable(
     const int row = table->rowCount();
     table->insertRow(row);
 
-    const QColor textColor = isStale ? Qt::gray : Qt::black;
+    const QColor textColor = isStale ? QColor("#64748B") : QColor("#FFFFFF");
+
+
+
+    auto *chItem = new QTableWidgetItem(QString("Ch%1").arg(channelId));
+    chItem->setForeground(textColor);
+    table->setItem(row, 0, chItem);
 
     auto *idItem = new QTableWidgetItem(QString::number(vehicle.objectId));
     idItem->setForeground(textColor);
-    table->setItem(row, 0, idItem);
+    table->setItem(row, 1, idItem);
 
     auto *typeItem = new QTableWidgetItem(vehicle.type);
     typeItem->setForeground(textColor);
-    table->setItem(row, 1, typeItem);
+    table->setItem(row, 2, typeItem);
 
     auto *plateItem = new QTableWidgetItem(vehicle.plateNumber);
     plateItem->setForeground(textColor);
-    table->setItem(row, 2, plateItem);
+    table->setItem(row, 3, plateItem);
 
     auto *scoreItem =
         new QTableWidgetItem(QString::number(vehicle.score, 'f', 2));
     scoreItem->setForeground(textColor);
-    table->setItem(row, 3, scoreItem);
+    table->setItem(row, 4, scoreItem);
 
     const QRectF &rect = vehicle.boundingBox;
     auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
@@ -216,9 +220,10 @@ void CameraChannelRuntime::populateReidTable(
                                               .arg(rect.width(), 0, 'f', 1)
                                               .arg(rect.height(), 0, 'f', 1));
     bboxItem->setForeground(textColor);
-    table->setItem(row, 4, bboxItem);
+    table->setItem(row, 5, bboxItem);
   }
 }
+
 
 void CameraChannelRuntime::bindSource(CameraSource *source) {
   if (m_source == source) {
@@ -277,8 +282,9 @@ void CameraChannelRuntime::refreshReidTable() {
                           : 1000;
   const bool showStaleObjects = !m_sharedUi.chkShowStaleObjects ||
                                 m_sharedUi.chkShowStaleObjects->isChecked();
-  populateReidTable(m_sharedUi.reidTable, m_source->activeVehicles(), staleMs,
-                    showStaleObjects);
+  populateReidTable(m_sharedUi.reidTable, slotId(), m_source->activeVehicles(),
+                    staleMs, showStaleObjects);
+
 }
 
 void CameraChannelRuntime::clearWidgetState() {

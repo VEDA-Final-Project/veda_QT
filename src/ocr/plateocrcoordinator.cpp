@@ -87,10 +87,10 @@ PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent) {
   const auto &cfg = Config::instance();
   for (size_t i = 0; i < m_workers.size(); ++i) {
     WorkerState &worker = m_workers[i];
-    if (!worker.ocrManager.init(cfg.ocrModelPath(), cfg.ocrDictPath(),
-                                cfg.ocrInputWidth(), cfg.ocrInputHeight())) {
+    if (!worker.ocrManager.init()) {
       qDebug() << "Could not initialize OCR Manager for worker" << i;
     }
+
 
     connect(&worker.watcher, &QFutureWatcher<OcrFullResult>::finished, this,
             [this, i]() { onWorkerFinished(i); });

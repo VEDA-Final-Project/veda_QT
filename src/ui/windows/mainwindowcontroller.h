@@ -72,9 +72,11 @@ public slots:
   void onContinuousRecordTimeout();
   void onCleanupTimeout();
   void onContinuousSettingChanged();
+  void onRefreshReidTableAllChannels();
   void onApplyContinuousSettingClicked();
   void onRawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
                        qint64 timestampMs);
+
 
   void onSendEntry();
   void onSendExit();
@@ -152,7 +154,9 @@ private:
   QElapsedTimer m_continuousThrottleTimers[4];
   QTimer *m_continuousRecordTimer = nullptr;
   QTimer *m_cleanupTimer = nullptr;
+  QTimer *m_reidRefreshTimer = nullptr;
   static constexpr int kRecordPreviewConsumerId = 100;
+
 };
 
 #endif // MAINWINDOWCONTROLLER_H

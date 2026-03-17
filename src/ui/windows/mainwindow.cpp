@@ -974,9 +974,10 @@ void MainWindow::setupUi() {
   vhLayout->addWidget(reidSectionTitle);
 
   m_reidTable = new QTableWidget(this);
-  m_reidTable->setColumnCount(5);
+  m_reidTable->setColumnCount(6);
   m_reidTable->setHorizontalHeaderLabels(
-      QStringList() << "ID" << "Type" << "Plate" << "Score" << "BBox");
+      QStringList() << "Ch" << "ID" << "Type" << "Plate" << "Score" << "BBox");
+
   m_reidTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_reidTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_reidTable->setSelectionBehavior(QAbstractItemView::SelectRows);

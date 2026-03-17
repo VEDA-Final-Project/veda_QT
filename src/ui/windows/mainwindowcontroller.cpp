@@ -334,9 +334,15 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (m_channels[i]) {
-      m_channels[i]->setReidPanelActive(i == 0);
+      m_channels[i]->setReidPanelActive(false); // 개별 갱신 중지, 컨트롤러에서 통합 갱신
     }
   }
+
+  m_reidRefreshTimer = new QTimer(this);
+  m_reidRefreshTimer->setInterval(300);
+  connect(m_reidRefreshTimer, &QTimer::timeout, this,
+          &MainWindowController::onRefreshReidTableAllChannels);
+  m_reidRefreshTimer->start();
 
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
@@ -767,7 +773,7 @@ void MainWindowController::rebuildLiveLayout() {
       } else {
         channel->selectCardWithoutStream(cardIndex);
       }
-      channel->setReidPanelActive(slotIndex == 0);
+      // channel->setReidPanelActive(slotIndex == 0); // 레벨러 레이아웃 스웝 시 개별 제어 주석 처리
     } else {
       channel->deactivate();
       channel->setReidPanelActive(false);
@@ -1576,6 +1582,30 @@ void MainWindowController::onMediaSaveFinished(bool success,
   // 목록 자동 갱신
   if (m_recordPanelController) {
     m_recordPanelController->refreshLogTable();
+  }
+}
+
+void MainWindowController::onRefreshReidTableAllChannels() {
+  if (!m_ui.reidTable) {
+    return;
+  }
+
+  // 데이터 수집 전 정렬을 위해 임시 보관할 수도 있으나, 
+  // 여기서는 채널별로 순차적으로 추가함.
+  m_ui.reidTable->setRowCount(0);
+
+  const int staleMs =
+      m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
+  const bool showStaleObjects = !m_ui.chkShowStaleObjects ||
+                                m_ui.chkShowStaleObjects->isChecked();
+
+  for (int i = 0; i < 4; ++i) {
+    CameraSource *source = m_cameraSources[i];
+    if (source) {
+      CameraChannelRuntime::populateReidTable(m_ui.reidTable, i + 1,
+                                              source->activeVehicles(), staleMs,
+                                              showStaleObjects);
+    }
   }
 }
 

@@ -51,6 +51,10 @@ public:
   int selectedCardIndex() const;
   VideoWidget *videoWidget() const;
 
+  static void populateReidTable(QTableWidget *table, int channelId,
+                                const QList<VehicleState> &vehicleStates,
+                                int staleTimeoutMs, bool showStaleObjects);
+
 signals:
   void logMessage(const QString &msg);
   void videoReady();
@@ -63,9 +67,7 @@ private slots:
   void onSourceVideoReady();
 
 private:
-  static void populateReidTable(QTableWidget *table,
-                                const QList<VehicleState> &vehicleStates,
-                                int staleTimeoutMs, bool showStaleObjects);
+
   void bindSource(CameraSource *source);
   void applyRoiDataToWidget();
   void refreshReidTable();
