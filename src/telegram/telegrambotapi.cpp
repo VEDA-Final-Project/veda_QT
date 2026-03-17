@@ -3,15 +3,19 @@
 #include <QNetworkReply>
 #include <QProcessEnvironment>
 #include <QUrlQuery>
+#include <QDateTime>
 
 /**
  * @brief 생성자
  */
 TelegramBotAPI::TelegramBotAPI(QObject *parent)
     : QObject(parent), m_networkManager(new QNetworkAccessManager(this)),
-      m_pollTimer(new QTimer(this)) {
+      m_pollTimer(new QTimer(this)), m_llmRunner(new ocr::recognition::TelegramLlmRunner(this)) {
   // 환경변수에서 봇 토큰 읽기
   m_botToken = QProcessEnvironment::systemEnvironment().value("TELEGRAM_BOT_TOKEN");
+  
+  // Repository 초기화
+  m_parkingRepository.init();
 
   if (m_botToken.isEmpty()) {
     qWarning() << "[Telegram] TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다.";
@@ -857,6 +861,14 @@ void TelegramBotAPI::pollUpdates() {
         sendMainMenu(chatId);
       } else if (text == QString::fromUtf8("◀ 메뉴로 돌아가기")) {
         sendMainMenu(chatId);
+      } else {
+        // LLM 자연어 처리 (기존 버튼/세션에 해당하지 않는 경우)
+        ocr::recognition::TelegramLlmRunner::CommandCategory category = m_llmRunner->classifyCommand(text);
+        if (category != ocr::recognition::TelegramLlmRunner::CommandCategory::NONE) {
+          handleLlmCommand(chatId, text, category);
+        } else {
+          sendMainMenu(chatId, "죄송합니다. 명령을 이해하지 못했습니다.\n하단 메뉴 버튼을 사용하시거나 더 구체적으로 말씀해주세요.");
+        }
       }
     }
 
@@ -869,4 +881,147 @@ void TelegramBotAPI::pollUpdates() {
     // 처리가 끝나면 즉시 다음 폴링 시작 (재귀 호출 효과)
     pollUpdates();
   });
+}
+
+void TelegramBotAPI::handleLlmCommand(const QString &chatId, const QString &userText,
+                                      ocr::recognition::TelegramLlmRunner::CommandCategory category) {
+  using Cat = ocr::recognition::TelegramLlmRunner::CommandCategory;
+  
+  switch (category) {
+    case Cat::INFO_INQUIRY:  handleInfoInquiry(chatId); break;
+    case Cat::FEE_INQUIRY:   handleFeeInquiry(chatId); break;
+    case Cat::USAGE_HISTORY: handleUsageHistory(chatId); break;
+    case Cat::CALL_ADMIN:    handleCallAdmin(chatId); break;
+    case Cat::FEE_PAYMENT:   handleFeePayment(chatId); break;
+    default:
+      sendMainMenu(chatId);
+      break;
+  }
+}
+
+void TelegramBotAPI::handleInfoInquiry(const QString &chatId) {
+  // 기존 "내 정보 조회" 버튼 로직과 동일하게 처리 (코드 중복 방지를 위해 공통화 가능하지만 일단 직접 구현)
+  UserRepository userRepo;
+  const QVector<QJsonObject> allUsers = userRepo.getAllUsersFull();
+  QJsonObject userInfo;
+  for (const QJsonObject &u : allUsers) {
+    if (u["chat_id"].toString() == chatId) {
+      userInfo = u;
+      break;
+    }
+  }
+
+  if (userInfo.isEmpty()) {
+    sendMessage(chatId, "차량 등록 정보가 없습니다. /start 를 눌러 등록해주세요.");
+  } else {
+    QString maskedCard = userInfo["payment_info"].toString();
+    if (maskedCard.length() >= 8) {
+      maskedCard = maskedCard.left(4) + QString(maskedCard.length() - 8, '*') + maskedCard.right(4);
+    }
+    
+    QJsonObject btnEdit;
+    btnEdit["text"] = QString::fromUtf8("✏️ 수정하기");
+    btnEdit["callback_data"] = "edit_select";
+    QJsonArray row; row.append(btnEdit);
+    QJsonArray keyboard; keyboard.append(row);
+    QJsonObject markup; markup["inline_keyboard"] = keyboard;
+    QString replyMarkup = QJsonDocument(markup).toJson(QJsonDocument::Compact);
+
+    sendMessage(chatId,
+                QString::fromUtf8("👤 *내 정보*\n\n이름: %1\n차량번호: `%2`\n전화번호: %3\n결제 카드: `%4`")
+                    .arg(userInfo["name"].toString())
+                    .arg(userInfo["plate_number"].toString())
+                    .arg(userInfo["phone"].toString())
+                    .arg(maskedCard),
+                replyMarkup);
+  }
+}
+
+void TelegramBotAPI::handleFeeInquiry(const QString &chatId) {
+  QString plate = m_chatToPlate.value(chatId);
+  if (plate.isEmpty()) {
+    sendMessage(chatId, "등록된 차량이 없습니다.");
+    return;
+  }
+
+  QJsonObject active = m_parkingRepository.findActiveByPlate("camera", plate);
+  if (active.isEmpty()) {
+    sendMessage(chatId, "현재 주차 중인 내역이 없습니다.");
+  } else {
+    QDateTime entryTime = QDateTime::fromString(active["entry_time"].toString(), Qt::ISODate);
+    qint64 secs = entryTime.secsTo(QDateTime::currentDateTime());
+    int mins = static_cast<int>(secs / 60);
+    int fee = (mins / 10) * 1000; // 10분당 1000원 (예시)
+
+    QString text = QString("💳 *실시간 요금 조회*\n\n"
+                           "차량번호: `%1`\n"
+                           "입차 시간: %2\n"
+                           "이용 시간: %3분\n\n"
+                           "💰 현재 요금: *%4원*")
+                       .arg(plate)
+                       .arg(entryTime.toString("yyyy-MM-dd HH:mm"))
+                       .arg(mins)
+                       .arg(fee);
+
+    if (fee > 0) {
+      QJsonObject btnPay;
+      btnPay["text"] = QString::fromUtf8("💰 납부하기");
+      btnPay["callback_data"] = QString("PAY_%1_%2").arg(plate).arg(fee);
+      QJsonArray row; row.append(btnPay);
+      QJsonArray keyboard; keyboard.append(row);
+      QJsonObject markup; markup["inline_keyboard"] = keyboard;
+      QString replyMarkup = QJsonDocument(markup).toJson(QJsonDocument::Compact);
+      sendMessage(chatId, text, replyMarkup);
+    } else {
+      sendMessage(chatId, text);
+    }
+  }
+}
+
+void TelegramBotAPI::handleUsageHistory(const QString &chatId) {
+  QString plate = m_chatToPlate.value(chatId);
+  if (plate.isEmpty()) {
+    sendMessage(chatId, "등록된 차량이 없습니다.");
+    return;
+  }
+
+  QList<QJsonObject> logs = m_parkingRepository.searchByPlate("camera", plate);
+  if (logs.isEmpty()) {
+    sendMessage(chatId, "이용 내역이 없습니다.");
+  } else {
+    QString text = "🕒 *최근 이용 내역 (최대 5건)*\n\n";
+    int count = 0;
+    for (const QJsonObject &log : logs) {
+      if (count >= 5) break;
+      text += QString("%1. %2 (%3) - %4원\n")
+                  .arg(count + 1)
+                  .arg(log["entry_time"].toString().left(10))
+                  .arg(log["zone_name"].toString())
+                  .arg(log["total_amount"].toInt());
+      count++;
+    }
+    sendMessage(chatId, text);
+  }
+}
+
+void TelegramBotAPI::handleCallAdmin(const QString &chatId) {
+  QString name = m_registrationSessions.contains(chatId) ? m_registrationSessions[chatId].name : "사용자";
+  sendMessage(chatId, "✅ *관리자가 호출되었습니다.*\n잠시만 기다려주시면 조치해 드리겠습니다.");
+  emit logMessage(QString("[Telegram] 🚨 LLM 관리자 호출 요청! (User: %1)").arg(name));
+  emit adminSummoned(chatId, name);
+}
+
+void TelegramBotAPI::handleFeePayment(const QString &chatId) {
+  QString plate = m_chatToPlate.value(chatId);
+  if (plate.isEmpty()) {
+    sendMessage(chatId, "등록된 차량이 없습니다.");
+    return;
+  }
+
+  QJsonObject active = m_parkingRepository.findActiveByPlate("camera", plate);
+  if (active.isEmpty()) {
+    sendMessage(chatId, "현재 납부할 요금이 있는 주차 내역이 없습니다.");
+  } else {
+    handleFeeInquiry(chatId); // 요금 조회를 먼저 보여주어 결제 버튼 유도
+  }
 }

@@ -59,6 +59,8 @@ qt_add_executable(rtsp_test
     src/ocr/plateocrcoordinator.h
     src/ocr/recognition/llmocrrunner.cpp
     src/ocr/recognition/llmocrrunner.h
+    src/ocr/recognition/telegramllmrunner.cpp
+    src/ocr/recognition/telegramllmrunner.h
 
     # Core
     src/config/config.cpp
