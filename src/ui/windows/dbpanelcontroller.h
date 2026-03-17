@@ -8,6 +8,9 @@
 
 class ParkingService;
 class ParkingLogPanelController;
+class UserDbPanelController;
+class VehicleInfoPanelController;
+class ZonePanelController;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -75,11 +78,12 @@ public slots:
   void deleteVehicle();
 
 private:
-  void appendLog(const QString &message) const;
-
   UiRefs m_ui;
   Context m_context;
   ParkingLogPanelController *m_parkingLogPanelController = nullptr;
+  UserDbPanelController *m_userDbPanelController = nullptr;
+  VehicleInfoPanelController *m_vehicleInfoPanelController = nullptr;
+  ZonePanelController *m_zonePanelController = nullptr;
   bool m_signalsConnected = false;
 };
 
