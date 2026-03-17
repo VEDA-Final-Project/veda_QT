@@ -190,7 +190,9 @@ void CameraChannelRuntime::populateReidTable(
     const int row = table->rowCount();
     table->insertRow(row);
 
-    const QColor textColor = isStale ? Qt::gray : Qt::black;
+    const QColor textColor =
+        isStale ? QColor(QStringLiteral("#94A3B8"))
+                : QColor(QStringLiteral("#F8FAFC"));
 
     auto *idItem = new QTableWidgetItem(QString::number(vehicle.objectId));
     idItem->setForeground(textColor);

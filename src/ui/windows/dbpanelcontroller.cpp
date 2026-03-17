@@ -67,9 +67,6 @@ DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
   parkingUiRefs.btnRefreshLogs = m_ui.btnRefreshLogs;
   parkingUiRefs.forcePlateInput = m_ui.forcePlateInput;
   parkingUiRefs.forceObjectIdInput = m_ui.forceObjectIdInput;
-  parkingUiRefs.forceTypeInput = m_ui.forceTypeInput;
-  parkingUiRefs.forceScoreInput = m_ui.forceScoreInput;
-  parkingUiRefs.forceBBoxInput = m_ui.forceBBoxInput;
   parkingUiRefs.btnForcePlate = m_ui.btnForcePlate;
   parkingUiRefs.editPlateInput = m_ui.editPlateInput;
   parkingUiRefs.btnEditPlate = m_ui.btnEditPlate;
