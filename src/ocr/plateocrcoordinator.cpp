@@ -153,9 +153,23 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop) {
       return;
     }
 
-    // 2. 최대 시도 횟수 제한 (사용자 요청: 번호판 당 1번)
-    if (history.attemptCount >= 1) {
+    // 2. 시도 횟수 및 재시도 로직 제어
+    if (history.attemptCount >= 2) {
       return;
+    }
+
+    if (history.attemptCount == 1) {
+      // 패턴 불일치로 인한 재시도 요청인 경우
+      if (!history.isRetryScheduled) {
+        return;
+      }
+      // 3초 대기 체크 (다른 각도/프레임 확보를 위해 대기)
+      if (nowMs - history.lastFailedMs < 3000) {
+        return;
+      }
+      // 재시도 시작
+      history.isRetryScheduled = false;
+      qDebug() << "[OCR] Starting retry for objectId=" << objectId << "after 3s wait.";
     }
 
     history.lastRequestMs = nowMs;
@@ -204,8 +218,9 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
   worker.queuedAtMs = 0;
   worker.startedAtMs = 0;
 
+  const bool isLlmMode = (Config::instance().ocrType() == "LLM");
+
   if (!result.filtered.isEmpty()) {
-    const bool isLlmMode = (Config::instance().ocrType() == "LLM");
     const bool isPatternMatch = kPlatePattern.match(result.filtered).hasMatch();
 
     QString finalizedText;
@@ -238,6 +253,17 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
              << result.raw;
     if (m_emitPartialResults) {
       emit ocrReady(objectId, result);
+    }
+  }
+
+  // LLM 모드 재시도 로직: 1회차 실패 시 (패턴 불일치 혹은 비어있음) 3초 후 재시도 예약
+  if (isLlmMode && m_histories.contains(objectId)) {
+    OcrHistory &history = m_histories[objectId];
+    if (history.attemptCount == 1 && !history.isFinalized && !history.isRetryScheduled) {
+      history.isRetryScheduled = true;
+      history.lastFailedMs = finishedAtMs;
+      history.lastUpdatedMs = finishedAtMs; // 히스토리 TTL 연장
+      qDebug() << "[OCR] Failed to get valid pattern. Scheduling retry in 3s for objectId=" << objectId;
     }
   }
 

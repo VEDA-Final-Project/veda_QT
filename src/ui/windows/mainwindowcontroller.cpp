@@ -337,11 +337,11 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   }
 
-  m_reidRefreshTimer = new QTimer(this);
-  m_reidRefreshTimer->setInterval(300);
-  connect(m_reidRefreshTimer, &QTimer::timeout, this,
+  m_reidTimer = new QTimer(this);
+  m_reidTimer->setInterval(300);
+  connect(m_reidTimer, &QTimer::timeout, this,
           &MainWindowController::onRefreshReidTableAllChannels);
-  m_reidRefreshTimer->start();
+  m_reidTimer->start();
 
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
@@ -476,6 +476,9 @@ void MainWindowController::shutdown() {
   }
   if (m_cleanupTimer) {
     m_cleanupTimer->stop();
+  }
+  if (m_reidTimer) {
+    m_reidTimer->stop();
   }
   for (int i = 0; i < 4; ++i) {
     if (m_continuousBuffers[i]) {
@@ -699,13 +702,14 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
               return a.state.objectId < b.state.objectId;
             });
 
+  m_ui.reidTable->setUpdatesEnabled(false);
   const QSignalBlocker blocker(m_ui.reidTable);
-  m_ui.reidTable->setRowCount(0);
+  m_ui.reidTable->setRowCount(static_cast<int>(rows.size()));
 
   int rowToRestore = -1;
-  for (const AggregatedVehicleRow &rowData : rows) {
-    const int row = m_ui.reidTable->rowCount();
-    m_ui.reidTable->insertRow(row);
+  for (int i = 0; i < rows.size(); ++i) {
+    const AggregatedVehicleRow &rowData = rows[i];
+    const int row = i;
 
     const bool isStale = (nowMs - rowData.state.lastSeenMs) > staleMs;
     const QColor textColor =
@@ -761,6 +765,8 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
       m_ui.btnForcePlate->setProperty("cameraKey", QString());
     }
   }
+
+  m_ui.reidTable->setUpdatesEnabled(true);
 }
 
 void MainWindowController::initRoiDb() { initRoiDbForChannels(); }
@@ -1718,29 +1724,6 @@ void MainWindowController::onMediaSaveFinished(bool success,
   }
 }
 
-void MainWindowController::onRefreshReidTableAllChannels() {
-  if (!m_ui.reidTable) {
-    return;
-  }
-
-  // 데이터 수집 전 정렬을 위해 임시 보관할 수도 있으나, 
-  // 여기서는 채널별로 순차적으로 추가함.
-  m_ui.reidTable->setRowCount(0);
-
-  const int staleMs =
-      m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
-  const bool showStaleObjects = !m_ui.chkShowStaleObjects ||
-                                m_ui.chkShowStaleObjects->isChecked();
-
-  for (int i = 0; i < 4; ++i) {
-    CameraSource *source = m_cameraSources[i];
-    if (source) {
-      CameraChannelRuntime::populateReidTable(m_ui.reidTable, i + 1,
-                                              source->activeVehicles(), staleMs,
-                                              showStaleObjects);
-    }
-  }
-}
 
 void MainWindowController::onContinuousRecordTimeout() {
   // 활성화 체크박스 제거로 상시 실행
@@ -1945,4 +1928,8 @@ bool MainWindowController::isCameraSourceRunning(int cardIndex) const {
 
   CameraSource *source = m_cameraSources[static_cast<size_t>(cardIndex)];
   return source && source->isRunning();
+}
+
+void MainWindowController::onRefreshReidTableAllChannels() {
+  refreshReidTableAllChannels();
 }

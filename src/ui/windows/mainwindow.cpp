@@ -972,9 +972,9 @@ void MainWindow::setupUi() {
   vhLayout->addWidget(reidSectionTitle);
 
   m_reidTable = new QTableWidget(this);
-  m_reidTable->setColumnCount(6);
+  m_reidTable->setColumnCount(3);
   m_reidTable->setHorizontalHeaderLabels(
-      QStringList() << "Ch" << "ID" << "Type" << "Plate" << "Score" << "BBox");
+      QStringList() << QString::fromUtf8("채널") << "ID" << QString::fromUtf8("번호판"));
 
   m_reidTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_reidTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

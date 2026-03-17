@@ -59,8 +59,6 @@ qt_add_executable(rtsp_test
     src/ocr/plateocrcoordinator.h
     src/ocr/recognition/llmocrrunner.cpp
     src/ocr/recognition/llmocrrunner.h
-    src/ocr/debug/ocrdebugdumper.cpp
-    src/ocr/debug/ocrdebugdumper.h
 
     # Core
     src/config/config.cpp

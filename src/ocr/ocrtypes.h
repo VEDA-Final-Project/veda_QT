@@ -6,9 +6,6 @@
 struct OcrResult {
   QString text;
   QString selectedRawText;
-  QString selectedCandidate;
-  int selectedScore = 0;
-  int selectedConfidence = -1;
 };
 
 struct OcrFullResult {

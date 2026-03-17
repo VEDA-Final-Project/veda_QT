@@ -24,7 +24,6 @@ OcrResult LlmOcrRunner::runSingleCandidate(const QImage &image, int objectId) {
 
   if (image.isNull()) {
     result.text = "";
-    result.selectedConfidence = 0;
     return result;
   }
 
@@ -63,7 +62,6 @@ OcrResult LlmOcrRunner::runSingleCandidate(const QImage &image, int objectId) {
     QByteArray responseData = reply->readAll();
     result.text = parseResponse(responseData);
     result.selectedRawText = result.text;
-    result.selectedConfidence = 90;
   } else {
     QByteArray errorData = reply->readAll();
     QString errTitle = reply->errorString();
@@ -77,7 +75,6 @@ OcrResult LlmOcrRunner::runSingleCandidate(const QImage &image, int objectId) {
       qWarning() << "[LLM OCR] Error Response Body:" << errorData;
     }
     result.text = "";
-    result.selectedConfidence = 0;
   }
 
   saveDebugData(image, result.text, objectId, latencyMs);

@@ -148,15 +148,16 @@ private:
   QVector<int> m_selectedChannelIndices;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
+  QElapsedTimer m_reidRefreshTimer;
   QTimer *m_resizeDebounceTimer = nullptr;
 
   // Continuous Recording
   VideoBufferManager *m_continuousBuffers[4] = {nullptr, nullptr, nullptr,
-                                                nullptr};
+                                                 nullptr};
   QElapsedTimer m_continuousThrottleTimers[4];
   QTimer *m_continuousRecordTimer = nullptr;
   QTimer *m_cleanupTimer = nullptr;
-  QTimer *m_reidRefreshTimer = nullptr;
+  QTimer *m_reidTimer = nullptr;
   static constexpr int kRecordPreviewConsumerId = 100;
 
 };
