@@ -23,6 +23,14 @@ qt_add_executable(rtsp_test
     src/ui/windows/mainwindowcontroller.h
     src/ui/windows/dbpanelcontroller.cpp
     src/ui/windows/dbpanelcontroller.h
+    src/ui/windows/parkinglogpanelcontroller.cpp
+    src/ui/windows/parkinglogpanelcontroller.h
+    src/ui/windows/userdbpanelcontroller.cpp
+    src/ui/windows/userdbpanelcontroller.h
+    src/ui/windows/vehicleinfopanelcontroller.cpp
+    src/ui/windows/vehicleinfopanelcontroller.h
+    src/ui/windows/zonepanelcontroller.cpp
+    src/ui/windows/zonepanelcontroller.h
     src/ui/windows/rpipanelcontroller.cpp
     src/ui/windows/rpipanelcontroller.h
     src/ui/windows/recordpanelcontroller.cpp
@@ -53,6 +61,8 @@ qt_add_executable(rtsp_test
     src/ocr/preprocess/platepreprocessor.h
     src/ocr/recognition/paddleocrunner.cpp
     src/ocr/recognition/paddleocrunner.h
+    src/ocr/recognition/llmocrrunner.cpp
+    src/ocr/recognition/llmocrrunner.h
     src/ocr/postprocess/platepostprocessor.cpp
     src/ocr/postprocess/platepostprocessor.h
     src/ocr/debug/ocrdebugdumper.cpp

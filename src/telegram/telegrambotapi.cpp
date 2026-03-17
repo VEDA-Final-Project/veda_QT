@@ -11,19 +11,16 @@ TelegramBotAPI::TelegramBotAPI(QObject *parent)
     : QObject(parent), m_networkManager(new QNetworkAccessManager(this)),
       m_pollTimer(new QTimer(this)) {
   // 환경변수에서 봇 토큰 읽기
-  m_botToken =
-      QProcessEnvironment::systemEnvironment().value("TELEGRAM_BOT_TOKEN");
+  m_botToken = QProcessEnvironment::systemEnvironment().value("TELEGRAM_BOT_TOKEN");
 
   if (m_botToken.isEmpty()) {
-    qWarning() << "[Telegram] TELEGRAM_BOT_TOKEN 환경변수가 설정되지 "
-                  "않았습니다.";
+    qWarning() << "[Telegram] TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다.";
   }
 
   // 시그널 연결 후 로그가 출력되도록 지연 실행
   QTimer::singleShot(0, this, [this]() {
     if (m_botToken.isEmpty()) {
-      emit logMessage("[Telegram] ⚠️ TELEGRAM_BOT_TOKEN 환경변수가 "
-                      "설정되지 않았습니다. 환경변수를 설정해주세요.");
+      emit logMessage("[Telegram] ⚠️ TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다. 환경변수를 설정해주세요.");
     } else {
       emit logMessage(QString("[Telegram] ✅ 봇 토큰 로드 완료 (길이: %1)")
                           .arg(m_botToken.length()));

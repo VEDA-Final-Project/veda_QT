@@ -1,4 +1,4 @@
-#include "mainwindowcontroller.h"
+    #include "mainwindowcontroller.h"
 
 #include "camera/camerasource.h"
 #include "camerachannelruntime.h"
@@ -9,11 +9,11 @@
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
 #include "roi/roiservice.h"
-#include "rpipanelcontroller.h"
 #include "ui/video/videowidget.h"
 #include "video/mediarecorderworker.h"
 #include "video/videobuffermanager.h"
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -42,6 +42,7 @@
 namespace {
 constexpr int kCameraStartStaggerMs = 350;
 constexpr int kMaxLiveSlots = 4;
+constexpr qint64 kReidRefreshIntervalMs = 300;
 }
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
@@ -50,24 +51,24 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   m_telegramApi = new TelegramBotAPI(this);
 
   CameraChannelRuntime::SharedUiRefs channelUiRefs;
-  channelUiRefs.reidTable = m_ui.reidTable;
+  channelUiRefs.reidTable = nullptr;
   channelUiRefs.staleTimeoutInput = m_ui.staleTimeoutInput;
   channelUiRefs.pruneTimeoutInput = m_ui.pruneTimeoutInput;
   channelUiRefs.chkShowStaleObjects = m_ui.chkShowStaleObjects;
   channelUiRefs.avgFpsLabel = m_ui.lblAvgFps;
 
   m_channels[0] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch1, QStringLiteral("Ch1"),
-      m_ui.videoWidgets[0], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch1, m_ui.videoWidgets[0], channelUiRefs,
+      this);
   m_channels[1] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch2, QStringLiteral("Ch2"),
-      m_ui.videoWidgets[1], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch2, m_ui.videoWidgets[1], channelUiRefs,
+      this);
   m_channels[2] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch3, QStringLiteral("Ch3"),
-      m_ui.videoWidgets[2], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch3, m_ui.videoWidgets[2], channelUiRefs,
+      this);
   m_channels[3] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch4, QStringLiteral("Ch4"),
-      m_ui.videoWidgets[3], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch4, m_ui.videoWidgets[3], channelUiRefs,
+      this);
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (!m_channels[i]) {
@@ -80,23 +81,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     connect(m_channels[0], &CameraChannelRuntime::videoReady, this,
             &MainWindowController::primaryVideoReady);
   }
-
-  RpiPanelController::UiRefs rpiUiRefs;
-  rpiUiRefs.hostEdit = m_ui.rpiHostEdit;
-  rpiUiRefs.portSpin = m_ui.rpiPortSpin;
-  rpiUiRefs.btnConnect = m_ui.btnRpiConnect;
-  rpiUiRefs.btnDisconnect = m_ui.btnRpiDisconnect;
-  rpiUiRefs.btnBarrierUp = m_ui.btnBarrierUp;
-  rpiUiRefs.btnBarrierDown = m_ui.btnBarrierDown;
-  rpiUiRefs.btnLedOn = m_ui.btnLedOn;
-  rpiUiRefs.btnLedOff = m_ui.btnLedOff;
-  rpiUiRefs.connectionStatusLabel = m_ui.rpiConnectionStatusLabel;
-  rpiUiRefs.vehicleStatusLabel = m_ui.rpiVehicleStatusLabel;
-  rpiUiRefs.ledStatusLabel = m_ui.rpiLedStatusLabel;
-  rpiUiRefs.irRawLabel = m_ui.rpiIrRawLabel;
-  rpiUiRefs.servoAngleLabel = m_ui.rpiServoAngleLabel;
-  rpiUiRefs.logView = m_ui.logView;
-  m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
 
   const QString dbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
@@ -112,9 +96,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnRefreshLogs = m_ui.btnRefreshLogs;
   dbUiRefs.forcePlateInput = m_ui.forcePlateInput;
   dbUiRefs.forceObjectIdInput = m_ui.forceObjectIdInput;
-  dbUiRefs.forceTypeInput = m_ui.forceTypeInput;
-  dbUiRefs.forceScoreInput = m_ui.forceScoreInput;
-  dbUiRefs.forceBBoxInput = m_ui.forceBBoxInput;
   dbUiRefs.btnForcePlate = m_ui.btnForcePlate;
   dbUiRefs.editPlateInput = m_ui.editPlateInput;
   dbUiRefs.btnEditPlate = m_ui.btnEditPlate;
@@ -123,9 +104,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnAddUser = m_ui.btnAddUser;
   dbUiRefs.btnEditUser = m_ui.btnEditUser;
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
-  dbUiRefs.hwLogTable = m_ui.hwLogTable;
-  dbUiRefs.btnRefreshHwLogs = m_ui.btnRefreshHwLogs;
-  dbUiRefs.btnClearHwLogs = m_ui.btnClearHwLogs;
   dbUiRefs.vehicleTable = m_ui.vehicleTable;
   dbUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
   dbUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
@@ -137,13 +115,39 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbContext.parkingServiceProvider = [this]() {
     return parkingServiceForTarget(m_roiTarget);
   };
-  dbContext.primaryZoneRecordsProvider = [this]() {
-    CameraSource *source = sourceAt(0);
-    return source ? source->roiRecords() : QVector<QJsonObject>();
+  dbContext.allParkingServicesProvider = [this]() {
+    QVector<ParkingService *> services;
+    for (CameraSource *source : m_cameraSources) {
+      ParkingService *service = source ? source->parkingService() : nullptr;
+      if (service) {
+        services.append(service);
+      }
+    }
+    return services;
   };
-  dbContext.secondaryZoneRecordsProvider = [this]() {
-    CameraSource *source = sourceAt(1);
-    return source ? source->roiRecords() : QVector<QJsonObject>();
+  dbContext.parkingServiceForCameraKeyProvider = [this](const QString &cameraKey) {
+    for (CameraSource *source : m_cameraSources) {
+      if (!source || source->cameraKey() != cameraKey) {
+        continue;
+      }
+      return source->parkingService();
+    }
+    return static_cast<ParkingService *>(nullptr);
+  };
+  dbContext.allZoneRecordsProvider = [this]() {
+    QVector<QJsonObject> allRecords;
+    for (CameraSource *source : m_cameraSources) {
+      if (!source) {
+        continue;
+      }
+
+      const QVector<QJsonObject> &records = source->roiRecords();
+      allRecords.reserve(allRecords.size() + records.size());
+      for (const QJsonObject &record : records) {
+        allRecords.append(record);
+      }
+    }
+    return allRecords;
   };
   dbContext.logMessage = [this](const QString &message) {
     onLogMessage(message);
@@ -154,6 +158,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+  for (CameraSource *source : m_cameraSources) {
+    ParkingService *service = source ? source->parkingService() : nullptr;
+    if (!service) {
+      continue;
+    }
+    connect(service, &ParkingService::vehicleEntered, m_dbPanelController,
+            &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
+            &DbPanelController::onRefreshParkingLogs);
+  }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();
   m_mediaRepo->init();
@@ -319,13 +333,20 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (m_channels[i]) {
-      m_channels[i]->setReidPanelActive(i == 0);
+      m_channels[i]->setReidPanelActive(false); // 개별 갱신 중지, 컨트롤러에서 통합 갱신
     }
   }
+
+  m_reidTimer = new QTimer(this);
+  m_reidTimer->setInterval(300);
+  connect(m_reidTimer, &QTimer::timeout, this,
+          &MainWindowController::onRefreshReidTableAllChannels);
+  m_reidTimer->start();
 
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
   updateChannelCardSelection();
+  refreshReidTableAllChannels(true);
   connectSignals();
   bindRecordPreviewSource(m_ui.cmbManualCamera
                               ? m_ui.cmbManualCamera->currentIndex()
@@ -433,9 +454,6 @@ void MainWindowController::shutdown() {
       source->stop();
     }
   }
-  if (m_rpiPanelController) {
-    m_rpiPanelController->shutdown();
-  }
   // 백그라운드 워커 삭제
   if (m_recorderThread) {
     m_recorderThread->quit();
@@ -458,6 +476,9 @@ void MainWindowController::shutdown() {
   }
   if (m_cleanupTimer) {
     m_cleanupTimer->stop();
+  }
+  if (m_reidTimer) {
+    m_reidTimer->stop();
   }
   for (int i = 0; i < 4; ++i) {
     if (m_continuousBuffers[i]) {
@@ -504,6 +525,20 @@ void MainWindowController::connectSignals() {
     connect(m_ui.reidTable, &QTableWidget::cellClicked, this,
             &MainWindowController::onReidTableCellClicked);
   }
+  if (m_ui.staleTimeoutInput) {
+    connect(m_ui.staleTimeoutInput,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { refreshReidTableAllChannels(true); });
+  }
+  if (m_ui.pruneTimeoutInput) {
+    connect(m_ui.pruneTimeoutInput,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { refreshReidTableAllChannels(true); });
+  }
+  if (m_ui.chkShowStaleObjects) {
+    connect(m_ui.chkShowStaleObjects, &QCheckBox::toggled, this,
+            [this](bool) { refreshReidTableAllChannels(true); });
+  }
   if (m_ui.chkShowFps) {
     connect(m_ui.chkShowFps, &QCheckBox::toggled, this, [this](bool checked) {
       for (CameraChannelRuntime *channel : m_channels) {
@@ -536,10 +571,6 @@ void MainWindowController::connectSignals() {
           &MainWindowController::onPaymentConfirmed);
   connect(m_telegramApi, &TelegramBotAPI::adminSummoned, this,
           &MainWindowController::onAdminSummoned);
-
-  if (m_rpiPanelController) {
-    m_rpiPanelController->connectSignals();
-  }
 
   if (m_dbPanelController) {
     m_dbPanelController->connectSignals();
@@ -607,6 +638,135 @@ void MainWindowController::refreshZoneTableAllChannels() {
   if (m_dbPanelController) {
     m_dbPanelController->refreshZoneTable();
   }
+}
+
+void MainWindowController::refreshReidTableAllChannels(bool force) {
+  if (!m_ui.reidTable) {
+    return;
+  }
+
+  if (!force && m_reidRefreshTimer.isValid() &&
+      m_reidRefreshTimer.elapsed() < kReidRefreshIntervalMs) {
+    return;
+  }
+  m_reidRefreshTimer.restart();
+
+  QString selectedCameraKey;
+  int selectedObjectId = -1;
+  if (const int currentRow = m_ui.reidTable->currentRow(); currentRow >= 0) {
+    if (QTableWidgetItem *idItem = m_ui.reidTable->item(currentRow, 1)) {
+      selectedObjectId = idItem->text().toInt();
+      selectedCameraKey = idItem->data(Qt::UserRole).toString();
+    }
+  }
+
+  struct AggregatedVehicleRow {
+    int cardIndex = -1;
+    QString cameraKey;
+    VehicleState state;
+  };
+
+  QVector<AggregatedVehicleRow> rows;
+  const int staleMs =
+      m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
+  const bool showStaleObjects =
+      !m_ui.chkShowStaleObjects || m_ui.chkShowStaleObjects->isChecked();
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+  for (int i = 0; i < static_cast<int>(m_cameraSources.size()); ++i) {
+    CameraSource *source = sourceAt(i);
+    if (!source) {
+      continue;
+    }
+
+    const QList<VehicleState> activeVehicles = source->activeVehicles();
+    for (const VehicleState &vehicle : activeVehicles) {
+      if (vehicle.objectId < 0) {
+        continue;
+      }
+
+      const bool isStale = (nowMs - vehicle.lastSeenMs) > staleMs;
+      if (isStale && !showStaleObjects) {
+        continue;
+      }
+
+      rows.append({i, source->cameraKey(), vehicle});
+    }
+  }
+
+  std::sort(rows.begin(), rows.end(),
+            [](const AggregatedVehicleRow &a, const AggregatedVehicleRow &b) {
+              if (a.cardIndex != b.cardIndex) {
+                return a.cardIndex < b.cardIndex;
+              }
+              return a.state.objectId < b.state.objectId;
+            });
+
+  m_ui.reidTable->setUpdatesEnabled(false);
+  const QSignalBlocker blocker(m_ui.reidTable);
+  m_ui.reidTable->setRowCount(static_cast<int>(rows.size()));
+
+  int rowToRestore = -1;
+  for (int i = 0; i < rows.size(); ++i) {
+    const AggregatedVehicleRow &rowData = rows[i];
+    const int row = i;
+
+    const bool isStale = (nowMs - rowData.state.lastSeenMs) > staleMs;
+    const QColor textColor =
+        isStale ? QColor(QStringLiteral("#94A3B8"))
+                : QColor(QStringLiteral("#F8FAFC"));
+    const QColor rowBackground = [cardIndex = rowData.cardIndex]() {
+      switch (cardIndex) {
+      case 0:
+        return QColor(QStringLiteral("#17324A"));
+      case 1:
+        return QColor(QStringLiteral("#402636"));
+      case 2:
+        return QColor(QStringLiteral("#183D35"));
+      case 3:
+        return QColor(QStringLiteral("#433A1E"));
+      default:
+        return QColor(QStringLiteral("#1E293B"));
+      }
+    }();
+
+    auto *channelItem =
+        new QTableWidgetItem(QStringLiteral("Ch%1").arg(rowData.cardIndex + 1));
+    channelItem->setForeground(textColor);
+    channelItem->setBackground(rowBackground);
+    channelItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 0, channelItem);
+
+    auto *idItem =
+        new QTableWidgetItem(QString::number(rowData.state.objectId));
+    idItem->setForeground(textColor);
+    idItem->setBackground(rowBackground);
+    idItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 1, idItem);
+
+    auto *plateItem = new QTableWidgetItem(rowData.state.plateNumber);
+    plateItem->setForeground(textColor);
+    plateItem->setBackground(rowBackground);
+    plateItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 2, plateItem);
+
+    if (rowData.state.objectId == selectedObjectId &&
+        rowData.cameraKey == selectedCameraKey) {
+      rowToRestore = row;
+    }
+  }
+
+  if (rowToRestore >= 0) {
+    m_ui.reidTable->setCurrentCell(rowToRestore, 1);
+    m_ui.reidTable->selectRow(rowToRestore);
+  } else {
+    m_ui.reidTable->clearSelection();
+    if (m_ui.btnForcePlate) {
+      m_ui.btnForcePlate->setProperty("cameraKey", QString());
+    }
+  }
+
+  m_ui.reidTable->setUpdatesEnabled(true);
 }
 
 void MainWindowController::initRoiDb() { initRoiDbForChannels(); }
@@ -759,7 +919,7 @@ void MainWindowController::rebuildLiveLayout() {
       } else {
         channel->selectCardWithoutStream(cardIndex);
       }
-      channel->setReidPanelActive(slotIndex == 0);
+      // channel->setReidPanelActive(slotIndex == 0); // 레벨러 레이아웃 스웝 시 개별 제어 주석 처리
     } else {
       channel->deactivate();
       channel->setReidPanelActive(false);
@@ -958,6 +1118,9 @@ void MainWindowController::onRoiTargetChanged(int index) {
     m_roiTarget = static_cast<RoiTarget>(index);
   }
   refreshRoiSelectorForTarget();
+  if (m_dbPanelController) {
+    m_dbPanelController->onRefreshParkingLogs();
+  }
   onLogMessage(QString("[ROI] 편집 대상 변경: %1").arg(roiTargetLabel(m_roiTarget)));
 }
 
@@ -1249,6 +1412,8 @@ void MainWindowController::onRawFrameReady(int cardIndex,
   if (targetBuffer) {
     targetBuffer->addFrame(framePtr);
   }
+
+  refreshReidTableAllChannels(false);
 }
 void MainWindowController::onSendEntry() {
   if (!m_ui.entryPlateInput || !m_ui.logView) {
@@ -1305,16 +1470,38 @@ void MainWindowController::onUsersUpdated(int count) {
 
 void MainWindowController::onPaymentConfirmed(const QString &plate,
                                               int amount) {
+  bool updated = false;
+  for (CameraSource *source : m_cameraSources) {
+    ParkingService *service = source ? source->parkingService() : nullptr;
+    if (!service) {
+      continue;
+    }
+
+    QString error;
+    if (service->updatePayment(plate, amount, QStringLiteral("결제완료"), &error)) {
+      updated = true;
+    }
+  }
+
   if (m_ui.logView) {
     const QString msg =
         QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
             .arg(plate)
             .arg(amount);
 
-    if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
-      return;
+    if (!m_ui.chkShowPlateLogs || m_ui.chkShowPlateLogs->isChecked()) {
+      m_ui.logView->append(msg);
+      if (updated) {
+        m_ui.logView->append(
+            QString("[Payment] DB 결제 상태 반영 완료: %1, %2원")
+                .arg(plate)
+                .arg(amount));
+      }
     }
-    m_ui.logView->append(msg);
+  }
+
+  if (updated && m_dbPanelController) {
+    m_dbPanelController->onRefreshParkingLogs();
   }
 }
 
@@ -1324,31 +1511,22 @@ void MainWindowController::onReidTableCellClicked(int row, int column) {
     return;
   }
 
-  QTableWidgetItem *idItem = m_ui.reidTable->item(row, 0);
+  QTableWidgetItem *idItem = m_ui.reidTable->item(row, 1);
   QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 2);
 
   if (idItem && m_ui.forceObjectIdInput) {
     m_ui.forceObjectIdInput->setValue(idItem->text().toInt());
   }
 
-  QTableWidgetItem *typeItem = m_ui.reidTable->item(row, 1);
-  if (typeItem && m_ui.forceTypeInput) {
-    m_ui.forceTypeInput->setText(typeItem->text());
-  }
-
   if (plateItem && m_ui.forcePlateInput) {
     m_ui.forcePlateInput->setText(plateItem->text());
   }
 
-  QTableWidgetItem *scoreItem = m_ui.reidTable->item(row, 3);
-  if (scoreItem && m_ui.forceScoreInput) {
-    m_ui.forceScoreInput->setValue(scoreItem->text().toDouble());
+  if (m_ui.btnForcePlate && idItem) {
+    m_ui.btnForcePlate->setProperty("cameraKey",
+                                    idItem->data(Qt::UserRole).toString());
   }
 
-  QTableWidgetItem *bboxItem = m_ui.reidTable->item(row, 4);
-  if (bboxItem && m_ui.forceBBoxInput) {
-    m_ui.forceBBoxInput->setText(bboxItem->text());
-  }
 }
 
 void MainWindowController::onAdminSummoned(const QString &chatId,
@@ -1545,6 +1723,7 @@ void MainWindowController::onMediaSaveFinished(bool success,
     m_recordPanelController->refreshLogTable();
   }
 }
+
 
 void MainWindowController::onContinuousRecordTimeout() {
   // 활성화 체크박스 제거로 상시 실행
@@ -1749,4 +1928,8 @@ bool MainWindowController::isCameraSourceRunning(int cardIndex) const {
 
   CameraSource *source = m_cameraSources[static_cast<size_t>(cardIndex)];
   return source && source->isRunning();
+}
+
+void MainWindowController::onRefreshReidTableAllChannels() {
+  refreshReidTableAllChannels();
 }

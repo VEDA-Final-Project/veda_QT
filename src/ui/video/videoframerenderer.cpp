@@ -23,6 +23,53 @@ QRect sourceRectForObject(const QImage &frame, const ObjectInfo &obj) {
                static_cast<int>(srcW), static_cast<int>(srcH));
 }
 
+bool isVehicleMetadataType(const QString &type) {
+  return type == QStringLiteral("Vehical") ||
+         type == QStringLiteral("Vehicle") ||
+         type == QStringLiteral("Car") || type == QStringLiteral("Truck") ||
+         type == QStringLiteral("Bus") ||
+         type == QStringLiteral("Motorcycle");
+}
+
+int matchedVehicleObjectId(const QImage &frame, const QList<ObjectInfo> &objects,
+                           const ObjectInfo &plateObj) {
+  const QRect plateRect = sourceRectForObject(frame, plateObj);
+  if (plateRect.isEmpty()) {
+    return -1;
+  }
+
+  int bestVehicleId = -1;
+  int bestOverlapArea = -1;
+  for (const ObjectInfo &candidate : objects) {
+    if (!isVehicleMetadataType(candidate.type)) {
+      continue;
+    }
+
+    const QRect vehicleRect = sourceRectForObject(frame, candidate);
+    if (vehicleRect.isEmpty()) {
+      continue;
+    }
+
+    // 번호판은 보통 차량 하단에 위치하므로, 차량 바운딩 박스의 하단 절반 영역과만 겹침도를 계산합니다.
+    // 이는 차량이 줄지어 서 있을 때 뒤차의 번호판이 앞차의 상단 영역과 겹쳐 오인식되는 것을 방지합니다.
+    QRect lowerHalf = vehicleRect;
+    lowerHalf.setTop(vehicleRect.top() + vehicleRect.height() / 2);
+
+    const QRect overlap = lowerHalf.intersected(plateRect);
+    const int overlapArea = overlap.width() * overlap.height();
+    if (overlapArea <= 0) {
+      continue;
+    }
+
+    if (overlapArea > bestOverlapArea) {
+      bestOverlapArea = overlapArea;
+      bestVehicleId = candidate.id;
+    }
+  }
+
+  return bestVehicleId;
+}
+
 QRegion roiRegionOnFrame(const QRect &frameRect,
                          const QList<QPolygon> &roiPolygons) {
   QRegion region;
@@ -96,13 +143,18 @@ void VideoFrameRenderer::collectOcrRequests(
       continue;
     }
 
+    const int targetObjectId = matchedVehicleObjectId(frame, objects, obj);
+    if (targetObjectId < 0) {
+      continue;
+    }
+
     const QRect srcRect = sourceRectForObject(frame, obj);
     const int padX = std::max(1, static_cast<int>(srcRect.width() * 0.015));
     const int padY = std::max(1, static_cast<int>(srcRect.height() * 0.03));
     const QRect paddedRect = srcRect.adjusted(-padX, -padY, padX, padY);
     const QRect safeRect = paddedRect.intersected(frame.rect());
     if (!safeRect.isEmpty()) {
-      ocrRequests->append(OcrRequest{obj.id, frame.copy(safeRect)});
+      ocrRequests->append(OcrRequest{targetObjectId, frame.copy(safeRect)});
     }
   }
 }

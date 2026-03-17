@@ -1,5 +1,4 @@
 #include "config.h"
-#include "util/rtspurl.h"
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
@@ -154,7 +153,6 @@ bool Config::load(const QString &path) {
   m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
-  m_loaded = true;
 
   qDebug() << "Config loaded from:" << loadedPath;
   return true;
@@ -227,11 +225,6 @@ QString Config::cameraSubProfile(const QString &cameraKey) const {
 /**
  * @brief RTSP 접속 URL 생성
  */
-QString Config::rtspUrl(const QString &cameraKey) const {
-  return buildRtspUrl(cameraIp(cameraKey), cameraUsername(cameraKey),
-                      cameraPassword(cameraKey), cameraProfile(cameraKey));
-}
-
 /* =========================
  * Video 관련 설정
  * ========================= */
@@ -262,6 +255,10 @@ int Config::cropOffsetX() const { return m_video["cropOffsetX"].toInt(480); }
 /* =========================
  * OCR 관련 설정
  * ========================= */
+
+QString Config::ocrType() const {
+  return m_ocr["type"].toString("Paddle"); // 기본값은 Paddle
+}
 
 QString Config::ocrModelPath() const {
   const QString path = m_ocr["modelPath"].toString();
@@ -305,6 +302,33 @@ int Config::reidInputWidth() const {
 
 int Config::reidInputHeight() const {
   return std::max(32, m_reid["inputHeight"].toInt(256));
+
+/* =========================
+ * Gemini 관련 설정
+ * ========================= */
+
+QString Config::geminiApiKey() const {
+  // 환경변수 우선 참조
+  QString key = qEnvironmentVariable("GEMINI_API_KEY");
+  if (!key.isEmpty()) {
+    // qInfo() << "[Config] Gemini API Key loaded from Environment (Masked: " << key.left(5) << "...)";
+    return key;
+  }
+  QString jsonKey = m_ocr["gemini"].toObject()["apiKey"].toString();
+  if (jsonKey.isEmpty()) {
+    // qWarning() << "[Config] Gemini API Key is missing!";
+  }
+  return jsonKey;
+}
+
+QString Config::geminiModel() const {
+  return m_ocr["gemini"].toObject()["model"].toString("gemini-1.5-flash");
+}
+
+QString Config::geminiPrompt() const {
+  return m_ocr["gemini"].toObject()["prompt"].toString(
+      "이 이미지는 자동차 번호판의 크롭 본이야. 번호판 숫자와 글자만 정확히 추출해줘. "
+      "다른 설명은 필요 없어. 예: 123가4567");
 }
 
 /* =========================

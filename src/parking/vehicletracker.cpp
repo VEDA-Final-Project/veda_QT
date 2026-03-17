@@ -13,6 +13,16 @@
 // Member initialization is handled in the header or constructor
 void VehicleTracker::setIdPrefix(const QString &prefix) { m_idPrefix = prefix; }
 
+namespace {
+bool isTrackableVehicleType(const QString &type) {
+  return type == QStringLiteral("Vehical") ||
+         type == QStringLiteral("Vehicle") ||
+         type == QStringLiteral("Car") || type == QStringLiteral("Truck") ||
+         type == QStringLiteral("Bus") ||
+         type == QStringLiteral("Motorcycle");
+}
+} // namespace
+
 void VehicleTracker::setRoiPolygons(const QList<QPolygonF> &polygons) {
   m_roiPolygons = polygons;
 }
@@ -239,7 +249,8 @@ const QHash<int, VehicleState> &VehicleTracker::vehicles() const {
   return m_vehicles;
 }
 
-QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs) {
+QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs) 
+{
   QList<VehicleState> departed;
   auto it = m_vehicles.begin();
   while (it != m_vehicles.end()) {

@@ -7,7 +7,10 @@
 #include <functional>
 
 class ParkingService;
-class QDoubleSpinBox;
+class ParkingLogPanelController;
+class UserDbPanelController;
+class VehicleInfoPanelController;
+class ZonePanelController;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -25,9 +28,6 @@ public:
     QPushButton *btnRefreshLogs = nullptr;
     QLineEdit *forcePlateInput = nullptr;
     QSpinBox *forceObjectIdInput = nullptr;
-    QLineEdit *forceTypeInput = nullptr;
-    QDoubleSpinBox *forceScoreInput = nullptr;
-    QLineEdit *forceBBoxInput = nullptr;
     QPushButton *btnForcePlate = nullptr;
     QLineEdit *editPlateInput = nullptr;
     QPushButton *btnEditPlate = nullptr;
@@ -37,10 +37,6 @@ public:
     QPushButton *btnAddUser = nullptr;
     QPushButton *btnEditUser = nullptr;
     QPushButton *btnDeleteUser = nullptr;
-
-    QTableWidget *hwLogTable = nullptr;
-    QPushButton *btnRefreshHwLogs = nullptr;
-    QPushButton *btnClearHwLogs = nullptr;
 
     QTableWidget *vehicleTable = nullptr;
     QPushButton *btnRefreshVehicles = nullptr;
@@ -54,8 +50,9 @@ public:
 
   struct Context {
     std::function<ParkingService *()> parkingServiceProvider;
-    std::function<QVector<QJsonObject>()> primaryZoneRecordsProvider;
-    std::function<QVector<QJsonObject>()> secondaryZoneRecordsProvider;
+    std::function<QVector<ParkingService *>()> allParkingServicesProvider;
+    std::function<ParkingService *(const QString &)> parkingServiceForCameraKeyProvider;
+    std::function<QVector<QJsonObject>()> allZoneRecordsProvider;
     std::function<void(const QString &)> logMessage;
     std::function<void(const QString &)> userDeleted;
   };
@@ -77,16 +74,16 @@ public slots:
   void addUser();
   void editUser();
   void deleteUser();
-  void refreshHwLogs();
-  void clearHwLogs();
   void refreshVehicleTable();
   void deleteVehicle();
 
 private:
-  void appendLog(const QString &message) const;
-
   UiRefs m_ui;
   Context m_context;
+  ParkingLogPanelController *m_parkingLogPanelController = nullptr;
+  UserDbPanelController *m_userDbPanelController = nullptr;
+  VehicleInfoPanelController *m_vehicleInfoPanelController = nullptr;
+  ZonePanelController *m_zonePanelController = nullptr;
   bool m_signalsConnected = false;
 };
 

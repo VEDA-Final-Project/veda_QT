@@ -11,6 +11,7 @@
 #include <QDateTime>
 #include <QJsonObject>
 #include <QVector>
+#include <QStringList>
 
 class TelegramBotAPI;
 
@@ -44,7 +45,8 @@ public:
   /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
    */
-  void updateRoiPolygons(const QList<QPolygonF> &polygons);
+  void updateRoiPolygons(const QList<QPolygonF> &polygons,
+                         const QStringList &zoneNames = QStringList());
 
   /**
    * @brief 새 메타데이터 프레임 처리 (입출차 판단의 진입점)
@@ -56,9 +58,15 @@ public:
   void updateReidFeatures(const QList<ObjectInfo> &objects);
 
   /**
+   * @brief OCR 시작 수신 처리 (인식 중 상태 표시)
+   */
+  void processOcrStarted(int objectId);
+
+  /**
    * @brief OCR 결과 수신 처리
    */
   void processOcrResult(int objectId, const QString &plateNumber);
+
 
   /**
    * @brief 최근 입출차 기록 조회 (UI 표시용)
@@ -75,6 +83,9 @@ public:
    */
   bool updatePlate(int recordId, const QString &newPlate);
   bool deleteLog(int recordId, QString *errorMessage = nullptr);
+  bool updatePayment(const QString &plateNumber, int totalAmount,
+                     const QString &payStatus = QStringLiteral("결제완료"),
+                     QString *errorMessage = nullptr);
 
   /**
    * @brief 수동 번호판 및 객체 정보 강제 지정 (실험용 상세 제어)
@@ -111,10 +122,12 @@ signals:
 private:
   void handleNewEntry(const VehicleState &vs);
   void handleDeparture(const VehicleState &vs);
+  QString zoneNameForIndex(int roiIndex) const;
 
   VehicleTracker m_tracker;
   ParkingRepository m_repository;
   QString m_cameraKey = QStringLiteral("camera");
+  QStringList m_roiZoneNames;
   TelegramBotAPI *m_telegram = nullptr;
 };
 

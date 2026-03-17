@@ -87,10 +87,10 @@ PlateOcrCoordinator::PlateOcrCoordinator(QObject *parent) : QObject(parent) {
   const auto &cfg = Config::instance();
   for (size_t i = 0; i < m_workers.size(); ++i) {
     WorkerState &worker = m_workers[i];
-    if (!worker.ocrManager.init(cfg.ocrModelPath(), cfg.ocrDictPath(),
-                                cfg.ocrInputWidth(), cfg.ocrInputHeight())) {
+    if (!worker.ocrManager.init()) {
       qDebug() << "Could not initialize OCR Manager for worker" << i;
     }
+
 
     connect(&worker.watcher, &QFutureWatcher<OcrFullResult>::finished, this,
             [this, i]() { onWorkerFinished(i); });
@@ -143,7 +143,41 @@ void PlateOcrCoordinator::requestOcr(int objectId, const QImage &crop) {
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+  // API 요청 최적화 로직
+  if (Config::instance().ocrType() == "LLM") {
+    OcrHistory &history = m_histories[objectId];
+    
+    // 1. 이미 인식이 성공적으로 완료된 경우 중단
+    if (history.isFinalized) {
+      return;
+    }
+
+    // 2. 시도 횟수 및 재시도 로직 제어
+    if (history.attemptCount >= 2) {
+      return;
+    }
+
+    if (history.attemptCount == 1) {
+      // 패턴 불일치로 인한 재시도 요청인 경우
+      if (!history.isRetryScheduled) {
+        return;
+      }
+      // 3초 대기 체크 (다른 각도/프레임 확보를 위해 대기)
+      if (nowMs - history.lastFailedMs < 3000) {
+        return;
+      }
+      // 재시도 시작
+      history.isRetryScheduled = false;
+      qDebug() << "[OCR] Starting retry for objectId=" << objectId << "after 3s wait.";
+    }
+
+    history.lastRequestMs = nowMs;
+    history.attemptCount++;
+    emit ocrStarted(objectId);
+  }
   m_pending.enqueue(PendingOcr{objectId, crop, nowMs});
+
   m_pendingObjectIds.insert(objectId);
   qDebug() << "[OCR][Enter] objectId=" << objectId
            << "pending=" << m_pending.size()
@@ -184,14 +218,34 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
   worker.queuedAtMs = 0;
   worker.startedAtMs = 0;
 
+  const bool isLlmMode = (Config::instance().ocrType() == "LLM");
+
   if (!result.filtered.isEmpty()) {
-    const QString stabilized = stabilizeResult(objectId, result.filtered);
-    if (!stabilized.isEmpty()) {
+    const bool isPatternMatch = kPlatePattern.match(result.filtered).hasMatch();
+
+    QString finalizedText;
+    if (isLlmMode && isPatternMatch) {
+      // LLM 모드에서는 유효한 패턴이 나오면 즉시 확정 (API 비용 절감 및 신뢰도 우선)
+      finalizedText = result.filtered;
+      m_histories[objectId].isFinalized = true;
+      m_histories[objectId].lastEmitted = finalizedText;
+      qDebug() << "[OCR] LLM recognition finalized immediately for objectId=" << objectId << "text=" << finalizedText;
+    } else {
+      // 그 외(Paddle 모드 또는 패턴 불일치)에는 기존 안정화 로직 사용
+      finalizedText = stabilizeResult(objectId, result.filtered);
+      
+      // LLM 모드에서 안정화 로직을 통과한 경우에도 확정 처리
+      if (isLlmMode && !finalizedText.isEmpty()) {
+        m_histories[objectId].isFinalized = true;
+      }
+    }
+
+    if (!finalizedText.isEmpty()) {
       OcrFullResult finalRes = result;
-      finalRes.filtered = stabilized; // Use stabilized text
+      finalRes.filtered = finalizedText;
       emit ocrReady(objectId, finalRes);
     } else {
-      qDebug() << "[OCR] Result filtered out by stabilization. filtered="
+      qDebug() << "[OCR] Result filtered out by stabilization or pattern check. filtered="
                << result.filtered;
     }
   } else if (!result.raw.isEmpty()) {
@@ -199,6 +253,17 @@ void PlateOcrCoordinator::onWorkerFinished(const size_t workerIndex) {
              << result.raw;
     if (m_emitPartialResults) {
       emit ocrReady(objectId, result);
+    }
+  }
+
+  // LLM 모드 재시도 로직: 1회차 실패 시 (패턴 불일치 혹은 비어있음) 3초 후 재시도 예약
+  if (isLlmMode && m_histories.contains(objectId)) {
+    OcrHistory &history = m_histories[objectId];
+    if (history.attemptCount == 1 && !history.isFinalized && !history.isRetryScheduled) {
+      history.isRetryScheduled = true;
+      history.lastFailedMs = finishedAtMs;
+      history.lastUpdatedMs = finishedAtMs; // 히스토리 TTL 연장
+      qDebug() << "[OCR] Failed to get valid pattern. Scheduling retry in 3s for objectId=" << objectId;
     }
   }
 

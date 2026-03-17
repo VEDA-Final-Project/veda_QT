@@ -81,8 +81,15 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
       });
   connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
           &CameraSource::onOcrResult);
+  connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrStarted, this,
+          [this](int objectId) {
+            if (m_parkingService) {
+              m_parkingService->processOcrStarted(objectId);
+            }
+          });
   connect(m_parkingService, &ParkingService::logMessage, this,
           &CameraSource::logMessage);
+
 }
 
 bool CameraSource::initialize(TelegramBotAPI *telegramApi) {
@@ -151,7 +158,6 @@ void CameraSource::start() {
 void CameraSource::stop() {
   m_shouldRun = false;
   m_videoReadyNotified = false;
-  m_currentObjects.clear();
   m_latestFrameObjects.clear();
   m_latestFramePtr.reset();
   m_latestBufferedFrameTimestampMs = 0;
@@ -234,8 +240,10 @@ void CameraSource::syncEnabledRoiPolygons() {
 
   const QVector<QJsonObject> &records = m_roiService.records();
   QList<QPolygonF> enabledPolygons;
+  QStringList enabledZoneNames;
   QVector<QString> enabledZoneIds;
   enabledPolygons.reserve(records.size());
+  enabledZoneNames.reserve(records.size());
   enabledZoneIds.reserve(records.size());
 
   for (const QJsonObject &record : records) {
@@ -254,11 +262,14 @@ void CameraSource::syncEnabledRoiPolygons() {
       continue;
     }
     enabledPolygons.append(polygon);
+    const QString zoneName = record.value("zone_name").toString().trimmed();
+    enabledZoneNames.append(zoneName.isEmpty() ? record.value("zone_id").toString()
+                                               : zoneName);
     enabledZoneIds.append(record.value("zone_id").toString());
   }
 
   m_enabledZoneIds = enabledZoneIds;
-  m_parkingService->updateRoiPolygons(enabledPolygons);
+  m_parkingService->updateRoiPolygons(enabledPolygons, enabledZoneNames);
 }
 
 bool CameraSource::isRunning() const {
@@ -270,8 +281,6 @@ QString CameraSource::cameraKey() const { return m_cameraKey; }
 int CameraSource::cardIndex() const { return m_cardIndex; }
 
 QString CameraSource::displayProfile() const { return m_displayProfile; }
-
-QString CameraSource::ocrProfile() const { return m_ocrProfile; }
 
 CameraSource::Status CameraSource::status() const { return m_status; }
 
@@ -372,7 +381,6 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   const QList<ObjectInfo> readyMetadata =
       m_cameraSession.consumeReadyMetadata(QDateTime::currentMSecsSinceEpoch());
-  m_currentObjects = readyMetadata;
   m_latestFramePtr = framePtr;
   m_latestFrameObjects = readyMetadata;
   m_latestBufferedFrameTimestampMs = timestampMs;
@@ -661,7 +669,6 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   }
 
   m_displayProfile = connectionInfo.profile;
-  m_ocrProfile = connectionInfo.profile;
   m_cameraManager->setConnectionInfo(connectionInfo);
   m_cameraManager->setDisabledObjectTypes(m_disabledTypes);
   return true;
