@@ -14,6 +14,8 @@ struct ObjectInfo {
   QString plate;     // Explicit plate number
   float score;       // Confidence score
   QRectF rect;       // 0~1000 Normalized Coordinate or Pixel Coordinate
+  std::vector<float> reidFeatures; // ReID Feature Vector
+  QString reidId;                // Persistent ID from ReID matching
 };
 
 class MetadataThread : public QThread {

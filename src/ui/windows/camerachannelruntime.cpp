@@ -239,9 +239,21 @@ void CameraChannelRuntime::populateReidTable(
 
     const QColor textColor = isStale ? Qt::gray : Qt::black;
 
-    auto *idItem = new QTableWidgetItem(QString::number(vehicle.objectId));
+    QString lowerType = vehicle.type.toLower();
+    bool isVehicle = (lowerType == "vehicle" || lowerType == "car" || lowerType == "vehical");
+
+    const QString displayId = isVehicle 
+        ? (vehicle.reidId.isEmpty() ? "Assigning..." : vehicle.reidId)
+        : QString("-"); // Hide ID for others
+        
+    auto *idItem = new QTableWidgetItem(displayId);
     idItem->setForeground(textColor);
     table->setItem(row, 0, idItem);
+    
+    // If we have a reidId, we could also show the original objectId in tooltips or another column
+    if (!vehicle.reidId.isEmpty()) {
+        idItem->setToolTip(QString("Tracker ID: %1").arg(vehicle.objectId));
+    }
 
     auto *typeItem = new QTableWidgetItem(vehicle.type);
     typeItem->setForeground(textColor);

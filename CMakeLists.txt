@@ -57,6 +57,9 @@ qt_add_executable(rtsp_test
     src/ocr/postprocess/platepostprocessor.h
     src/ocr/debug/ocrdebugdumper.cpp
     src/ocr/debug/ocrdebugdumper.h
+    # Tracking (ReID)
+    src/tracking/reidextractor.cpp
+    src/tracking/reidextractor.h
     # Core
     src/config/config.cpp
     src/config/config.h

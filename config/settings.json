@@ -3,6 +3,11 @@
     "profile": "profile6/media.smp",
     "subProfile": "profile7/media.smp"
   },
+  "reid": {
+    "modelPath": "C:/Users/1-07/Downloads/sbs_R50-ibn.onnx",
+    "inputWidth": 256,
+    "inputHeight": 256
+  },
   "camera": {
     "ip": "192.168.0.23",
     "username": "admin",

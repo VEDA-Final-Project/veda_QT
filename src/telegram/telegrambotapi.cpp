@@ -259,7 +259,7 @@ void TelegramBotAPI::handleReply(QNetworkReply *reply) {
       reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
   if (reply->error() == QNetworkReply::NoError) {
-    emit logMessage("[Telegram] ✅ 메시지 전송 성공!");
+    emit logMessage("[Telegram] Message sent successfully!");
     emit messageSent(true, QString::fromUtf8(responseData));
   } else {
     emit logMessage(QString("[Telegram] ❌ 전송 실패 (HTTP %1): %2")

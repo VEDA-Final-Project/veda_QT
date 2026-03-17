@@ -1,12 +1,15 @@
 #ifndef VEHICLETRACKER_H
 #define VEHICLETRACKER_H
 
-#include "metadata/metadatathread.h"
+#include "../metadata/metadatathread.h"
 #include <QHash>
 #include <QList>
-#include <QPolygon>
+#include <QPolygonF>
 #include <QRectF>
 #include <QString>
+#include <QDateTime>
+#include <mutex>
+#include <vector>
 
 /**
  * @brief 개별 차량의 현재 상태를 나타내는 구조체
@@ -25,6 +28,8 @@ struct VehicleState {
   qint64 lastSeenMs = 0;       // 마지막 감지 시각 (ms)
   qint64 roiEntryMs = 0; // 주차 구역에 진입하여 'Parked' 상태가 된 시점 (ms)
   QList<int> roiHistory; // 최근 N프레임 동안의 점유 상태 (히스테리시스 필터용)
+  std::vector<float> reidFeatures; // ReID Feature Vector
+  QString reidId;                  // Persistent ID from ReID matching
 };
 
 /**
@@ -51,7 +56,11 @@ public:
    */
   QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
                              int effectiveWidth, int sourceHeight,
-                             qint64 nowMs);
+                             qint64 nowMs, qint64 pruneTimeoutMs);
+
+  void updateReidFeatures(const QList<ObjectInfo> &objects, qint64 nowMs);
+
+  void setIdPrefix(const QString &prefix);
 
   /**
    * @brief 특정 차량의 OCR 결과를 반영합니다.
@@ -87,8 +96,25 @@ private:
                                const QPolygonF &roiPolygon,
                                double *dynamicThreshold = nullptr) const;
 
+  struct GalleryEntry {
+    std::vector<float> features;
+    QString persistentId;
+    qint64 lastSeenMs;
+  };
+
+  QString findMatchInGallery(const std::vector<float> &features,
+                             float threshold = 0.83f);
+  void updateGallery(const std::vector<float> &features, const QString &id,
+                     qint64 nowMs);
+
   QHash<int, VehicleState> m_vehicles;
   QList<QPolygonF> m_roiPolygons;
+  QString m_idPrefix;
+
+  // Instance members for channel-wise independent ReID
+  QList<GalleryEntry> m_reidGallery;
+  int m_nextPersistentId = 1001;
+  mutable std::mutex m_galleryMutex;
 };
 
 #endif // VEHICLETRACKER_H

@@ -5,6 +5,7 @@
 #include "ocr/plateocrcoordinator.h"
 #include "parking/parkingservice.h"
 #include "roi/roiservice.h"
+#include "tracking/reidextractor.h"
 #include "ui/video/videoframerenderer.h"
 #include <QElapsedTimer>
 #include <QHash>
@@ -14,6 +15,7 @@
 #include <QSize>
 #include <QStringList>
 #include <QTimer>
+#include <atomic>
 
 class TelegramBotAPI;
 
@@ -74,6 +76,7 @@ private slots:
   void onDisplayRenderTick();
   void onThumbnailRenderTick();
   void onOcrDispatchTick();
+  void onReidDispatchTick();
   void onHealthCheck();
   void onReconnectTimeout();
 
@@ -99,6 +102,7 @@ private:
   ParkingService *m_parkingService = nullptr;
   CameraSessionService m_cameraSession;
   RoiService m_roiService;
+  ReIDFeatureExtractor m_reidExtractor;
   VideoFrameRenderer m_frameRenderer;
   QString m_cameraKey;
   int m_cardIndex = -1;
@@ -129,6 +133,8 @@ private:
   QTimer *m_displayRenderTimer = nullptr;
   QTimer *m_thumbnailRenderTimer = nullptr;
   QTimer *m_ocrDispatchTimer = nullptr;
+  QTimer *m_reidDispatchTimer = nullptr;
+  std::atomic<bool> m_reidProcessing{false};
 };
 
 #endif // CAMERASOURCE_H

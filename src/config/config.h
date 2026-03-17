@@ -42,6 +42,11 @@ public:
   QString ocrDictPath() const;
   int ocrInputWidth() const;
   int ocrInputHeight() const;
+  
+  // ReID
+  QString reidModelPath() const;
+  int reidInputWidth() const;
+  int reidInputHeight() const;
 
   // Sync
   int defaultDelayMs() const;
@@ -62,6 +67,7 @@ private:
   QJsonObject m_cameraDefaults;
   QJsonObject m_video;
   QJsonObject m_ocr;
+  QJsonObject m_reid;
   QJsonObject m_sync;
   QJsonObject m_auth;
   bool m_loaded = false;

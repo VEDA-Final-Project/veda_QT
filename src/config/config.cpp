@@ -151,6 +151,7 @@ bool Config::load(const QString &path) {
   m_cameraDefaults = root["cameraDefaults"].toObject();
   m_video = root["video"].toObject();
   m_ocr = root["ocr"].toObject();
+  m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
   m_loaded = true;
@@ -284,6 +285,26 @@ int Config::ocrInputWidth() const {
 
 int Config::ocrInputHeight() const {
   return std::max(16, m_ocr["inputHeight"].toInt(48));
+}
+
+/* =========================
+ * ReID 관련 설정
+ * ========================= */
+
+QString Config::reidModelPath() const {
+  const QString path = m_reid["modelPath"].toString();
+  if (path.isEmpty() || path == "null") {
+    return QString();
+  }
+  return path;
+}
+
+int Config::reidInputWidth() const {
+  return std::max(32, m_reid["inputWidth"].toInt(256));
+}
+
+int Config::reidInputHeight() const {
+  return std::max(32, m_reid["inputHeight"].toInt(256));
 }
 
 /* =========================

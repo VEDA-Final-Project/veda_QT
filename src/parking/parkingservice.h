@@ -1,10 +1,16 @@
 #ifndef PARKINGSERVICE_H
 #define PARKINGSERVICE_H
 
-#include "parking/parkingrepository.h"
-#include "parking/vehicletracker.h"
+#include "parkingrepository.h"
+#include "vehicletracker.h"
 #include <QObject>
 #include <QString>
+#include <QList>
+#include <QPolygonF>
+#include <QRectF>
+#include <QDateTime>
+#include <QJsonObject>
+#include <QVector>
 
 class TelegramBotAPI;
 
@@ -46,6 +52,8 @@ public:
   void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
                        int effectiveWidth, int sourceHeight,
                        qint64 pruneTimeoutMs = 5000);
+
+  void updateReidFeatures(const QList<ObjectInfo> &objects);
 
   /**
    * @brief OCR 결과 수신 처리
