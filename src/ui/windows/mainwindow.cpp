@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "config/logfilterconfig.h"
 #include "mainwindowcontroller.h"
 #include <QDialog>
@@ -164,6 +164,15 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
 
   uiRefs.btnCaptureManual = m_btnCaptureManual;
   uiRefs.btnRecordManual = m_btnRecordManual;
+
+  // RPi uc81cuc5b4uc2e0ud638 uc218uc2e0 ud074ub77cuc774uc5b8ud2b8
+  uiRefs.rpiHostEdit              = m_rpiHostEdit;
+  uiRefs.rpiPortSpin              = m_rpiPortSpin;
+  uiRefs.btnRpiConnect            = m_btnRpiConnect;
+  uiRefs.btnRpiDisconnect         = m_btnRpiDisconnect;
+  uiRefs.rpiConnectionStatusLabel = m_rpiConnectionStatusLabel;
+  uiRefs.rpiLastCmdLabel          = m_rpiLastCmdLabel;
+  uiRefs.rpiCtrlLogView           = m_rpiCtrlLogView;
 
   return uiRefs;
 }
@@ -485,12 +494,12 @@ void MainWindow::setupUi() {
   splashCardLayout->setSpacing(14);
 
   m_splashTitleLabel =
-      new QLabel(QString::fromUtf8("CCTV 준비 중"), splashCard);
+      new QLabel(QString::fromUtf8("CCTV 준비 중..."), splashCard);
   m_splashTitleLabel->setObjectName("cctvSplashTitle");
   m_splashTitleLabel->setAlignment(Qt::AlignCenter);
 
   m_splashMessageLabel = new QLabel(
-      QString::fromUtf8("카메라 연결을 확인하고 있습니다."), splashCard);
+      QString::fromUtf8("카메라를 확인하고 있습니다."), splashCard);
   m_splashMessageLabel->setObjectName("cctvSplashMessage");
   m_splashMessageLabel->setWordWrap(true);
   m_splashMessageLabel->setAlignment(Qt::AlignCenter);
@@ -633,7 +642,7 @@ void MainWindow::setupUi() {
   channelPanelLayout->addSpacing(4);
 
   // ROI 버튼들
-  m_btnApplyRoi = new QPushButton(QString::fromUtf8("구역 설정"), this);
+  m_btnApplyRoi = new QPushButton(QString::fromUtf8("ROI 추가"), this);
   m_btnFinishRoi = new QPushButton(QString::fromUtf8("ROI 완료"), this);
   m_btnDeleteRoi = new QPushButton(QString::fromUtf8("ROI 삭제"), this);
   channelPanelLayout->addWidget(m_btnApplyRoi);
@@ -672,7 +681,7 @@ void MainWindow::setupUi() {
   channelPanelLayout->addSpacing(4);
 
   m_chkShowFps = new QCheckBox(QString::fromUtf8("FPS 표시"), this);
-  m_lblAvgFps = new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
+  m_lblAvgFps = new QLabel(QString::fromUtf8("평균 FPS: 0.0"), this);
   channelPanelLayout->addWidget(m_chkShowFps);
   channelPanelLayout->addWidget(m_lblAvgFps);
   channelPanelLayout->addSpacing(12);
@@ -899,7 +908,7 @@ void MainWindow::setupUi() {
   QWidget *parkingDbTab = new QWidget(this);
   QVBoxLayout *dbLayout = new QVBoxLayout(parkingDbTab);
 
-  QTabWidget *dbSubTabs = new QTabWidget(this);
+  m_dbSubTabs = new QTabWidget(this);
 
   // --- Sub-Tab 1: 주차 이력 (Parking Logs) ---
   QWidget *logsTab = new QWidget(this);
@@ -929,7 +938,7 @@ void MainWindow::setupUi() {
 
   logsLayout->addLayout(logsToolBar);
   logsLayout->addWidget(m_parkingLogTable);
-  dbSubTabs->addTab(logsTab, "🚗 주차 이력");
+  m_dbSubTabs->addTab(logsTab, "🚗 주차 이력");
 
   // --- Sub-Tab 2: 텔레그램 사용자 (Users) ---
   QWidget *usersTab = new QWidget(this);
@@ -958,7 +967,7 @@ void MainWindow::setupUi() {
 
   usersLayout->addLayout(usersToolBar);
   usersLayout->addWidget(m_userDbTable);
-  dbSubTabs->addTab(usersTab, "👥 사용자");
+  m_dbSubTabs->addTab(usersTab, "👥 사용자");
 
   // --- Sub-Tab 3: 차량 정보 (Vehicles) ---
   QWidget *vhTab = new QWidget(this);
@@ -1042,7 +1051,7 @@ void MainWindow::setupUi() {
   settingsLayout->addStretch();
   settingsGroup->setLayout(settingsLayout);
   vhLayout->addWidget(settingsGroup);
-  dbSubTabs->addTab(vhTab, "🚘 차량 정보");
+  m_dbSubTabs->addTab(vhTab, "🚘 차량 정보");
 
   // --- Sub-Tab 4: 주차구역 현황 (Zones) ---
   QWidget *zoneTab = new QWidget(this);
@@ -1064,9 +1073,9 @@ void MainWindow::setupUi() {
 
   zoneLayout->addLayout(zoneToolBar);
   zoneLayout->addWidget(m_zoneTable);
-  dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
+  m_dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
 
-  dbLayout->addWidget(dbSubTabs);
+  dbLayout->addWidget(m_dbSubTabs);
 
   // ======================
   // Tab 5: 녹화 조회 (Recording Search)
@@ -1354,6 +1363,20 @@ void MainWindow::showCctvPage() {
   }
   if (m_stackedWidget) {
     m_stackedWidget->setCurrentIndex(kCctvPageIndex);
+  }
+}
+
+void MainWindow::navigateToPage(int stackedIndex) {
+  if (m_stackedWidget) {
+    m_stackedWidget->setCurrentIndex(stackedIndex);
+  }
+}
+
+void MainWindow::navigateToDbSubTab(int tabIndex) {
+  // DB 펜이지로 이동 후 해당 서브탭으로 전환
+  navigateToPage(kDbPageIndex);
+  if (m_dbSubTabs && tabIndex >= 0 && tabIndex < m_dbSubTabs->count()) {
+    m_dbSubTabs->setCurrentIndex(tabIndex);
   }
 }
 

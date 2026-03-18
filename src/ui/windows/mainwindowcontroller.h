@@ -25,6 +25,7 @@ class CameraChannelRuntime;
 class CameraSource;
 class DbPanelController;
 class RecordPanelController;
+class RpiPanelController;
 class MediaRepository;
 class VideoBufferManager;
 class MediaRecorderWorker;
@@ -159,6 +160,9 @@ private:
   QTimer *m_cleanupTimer = nullptr;
   QTimer *m_reidTimer = nullptr;
   static constexpr int kRecordPreviewConsumerId = 100;
+
+  // RPi 제어신호 수신 클라이언트
+  RpiPanelController *m_rpiPanelController = nullptr;
 
 };
 
