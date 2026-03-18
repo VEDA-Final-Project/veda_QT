@@ -3,6 +3,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QStringList>
@@ -150,8 +151,10 @@ bool Config::load(const QString &path) {
   m_cameraDefaults = root["cameraDefaults"].toObject();
   m_video = root["video"].toObject();
   m_ocr = root["ocr"].toObject();
+  m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
+  m_loadedConfigPath = loadedPath;
 
   qDebug() << "Config loaded from:" << loadedPath;
   return true;
@@ -264,7 +267,7 @@ QString Config::ocrModelPath() const {
   if (path.isEmpty() || path == "null") {
     return QString();
   }
-  return path;
+  return resolveConfigRelativePath(path);
 }
 
 QString Config::ocrDictPath() const {
@@ -272,7 +275,7 @@ QString Config::ocrDictPath() const {
   if (path.isEmpty() || path == "null") {
     return QString();
   }
-  return path;
+  return resolveConfigRelativePath(path);
 }
 
 int Config::ocrInputWidth() const {
@@ -281,6 +284,50 @@ int Config::ocrInputWidth() const {
 
 int Config::ocrInputHeight() const {
   return std::max(16, m_ocr["inputHeight"].toInt(48));
+}
+
+QString Config::reidModelPath() const {
+  const QString path = m_reid["modelPath"].toString();
+  if (path.isEmpty() || path == "null") {
+    return QString();
+  }
+  return resolveConfigRelativePath(path);
+}
+
+int Config::reidInputWidth() const {
+  return std::max(32, m_reid["inputWidth"].toInt(256));
+}
+
+int Config::reidInputHeight() const {
+  return std::max(32, m_reid["inputHeight"].toInt(256));
+}
+
+QString Config::resolveConfigRelativePath(const QString &path) const {
+  const QString trimmed = path.trimmed();
+  if (trimmed.isEmpty()) {
+    return QString();
+  }
+  if (QDir::isAbsolutePath(trimmed) || m_loadedConfigPath.isEmpty()) {
+    return trimmed;
+  }
+
+  const QFileInfo configInfo(m_loadedConfigPath);
+  const QDir configDir = configInfo.dir();
+  const QString configRelativePath = configDir.absoluteFilePath(trimmed);
+  if (QFileInfo::exists(configRelativePath)) {
+    return configRelativePath;
+  }
+
+  QDir parentDir = configDir;
+  if (parentDir.cdUp()) {
+    const QString parentRelativePath = parentDir.absoluteFilePath(trimmed);
+    if (QFileInfo::exists(parentRelativePath)) {
+      return parentRelativePath;
+    }
+    return parentRelativePath;
+  }
+
+  return configRelativePath;
 }
 
 /* =========================

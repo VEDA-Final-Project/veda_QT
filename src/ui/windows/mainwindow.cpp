@@ -972,9 +972,12 @@ void MainWindow::setupUi() {
   vhLayout->addWidget(reidSectionTitle);
 
   m_reidTable = new QTableWidget(this);
-  m_reidTable->setColumnCount(3);
-  m_reidTable->setHorizontalHeaderLabels(
-      QStringList() << QString::fromUtf8("채널") << "ID" << QString::fromUtf8("번호판"));
+  m_reidTable->setColumnCount(4);
+  m_reidTable->setHorizontalHeaderLabels(QStringList()
+                                         << QString::fromUtf8("채널")
+                                         << "ReID"
+                                         << "Obj ID"
+                                         << QString::fromUtf8("번호판"));
 
   m_reidTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_reidTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -986,7 +989,7 @@ void MainWindow::setupUi() {
   QVBoxLayout *forceLayout = new QVBoxLayout();
 
   QHBoxLayout *labelRow = new QHBoxLayout();
-  labelRow->addWidget(new QLabel("ID", this), 1);
+  labelRow->addWidget(new QLabel("Object ID", this), 1);
   labelRow->addWidget(new QLabel("Plate", this), 4);
   labelRow->addWidget(new QLabel("", this), 1);
 

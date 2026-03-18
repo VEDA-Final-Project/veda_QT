@@ -206,9 +206,13 @@ void CameraChannelRuntime::populateReidTable(
     chItem->setForeground(textColor);
     table->setItem(row, 0, chItem);
 
-
-    auto *idItem = new QTableWidgetItem(QString::number(vehicle.objectId));
+    const QString displayId =
+        (vehicle.reidId.isEmpty() || vehicle.reidId == QStringLiteral("V---"))
+            ? QString("V%1").arg(vehicle.objectId)
+            : vehicle.reidId;
+    auto *idItem = new QTableWidgetItem(displayId);
     idItem->setForeground(textColor);
+    idItem->setToolTip(QString("Tracker ID: %1").arg(vehicle.objectId));
     table->setItem(row, 1, idItem);
 
     auto *typeItem = new QTableWidgetItem(vehicle.type);

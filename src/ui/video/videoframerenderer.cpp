@@ -290,9 +290,26 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     const QRect &uRect = candidate.scaledRect;
     painter.drawRect(uRect);
 
-    QString text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
-    if (!obj.extraInfo.isEmpty()) {
-      text += QString(" [%1]").arg(obj.extraInfo);
+    const QString lowerType = obj.type.toLower();
+    const bool vehicle = lowerType == QStringLiteral("vehicle") ||
+                         lowerType == QStringLiteral("vehical") ||
+                         lowerType == QStringLiteral("car") ||
+                         lowerType == QStringLiteral("truck") ||
+                         lowerType == QStringLiteral("bus");
+
+    QString text;
+    if (vehicle) {
+      const QString displayId =
+          obj.reidId.isEmpty() ? QStringLiteral("V---") : obj.reidId;
+      text = QString("[%1] Vehicle").arg(displayId);
+    } else {
+      text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
+    }
+    if (!obj.extraInfo.isEmpty() && obj.extraInfo != obj.plate) {
+      text += QString(" (%1)").arg(obj.extraInfo);
+    }
+    if (!obj.plate.isEmpty()) {
+      text += QString(" [%1]").arg(obj.plate);
     }
 
     QRect textRect = painter.fontMetrics().boundingRect(text);

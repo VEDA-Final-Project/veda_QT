@@ -43,6 +43,11 @@ public:
   int ocrInputWidth() const;
   int ocrInputHeight() const;
 
+  // ReID
+  QString reidModelPath() const;
+  int reidInputWidth() const;
+  int reidInputHeight() const;
+
   // Gemini
   QString geminiApiKey() const;
   QString geminiModel() const;
@@ -61,14 +66,17 @@ private:
   explicit Config(QObject *parent = nullptr);
   Config(const Config &) = delete;
   Config &operator=(const Config &) = delete;
+  QString resolveConfigRelativePath(const QString &path) const;
 
   QJsonObject m_root;
   QJsonObject m_camera;
   QJsonObject m_cameraDefaults;
   QJsonObject m_video;
   QJsonObject m_ocr;
+  QJsonObject m_reid;
   QJsonObject m_sync;
   QJsonObject m_auth;
+  QString m_loadedConfigPath;
 };
 
 #endif // CONFIG_H

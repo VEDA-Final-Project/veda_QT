@@ -3,6 +3,7 @@
 
 #include "parking/parkingrepository.h"
 #include "parking/vehicletracker.h"
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -39,6 +40,7 @@ public:
   void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
                        int effectiveWidth, int sourceHeight,
                        qint64 pruneTimeoutMs = 5000);
+  void updateReidFeatures(const QList<ObjectInfo> &objects);
 
   /**
    * @brief OCR 시작 수신 처리 (인식 중 상태 표시)
@@ -113,6 +115,8 @@ private:
   QString m_cameraKey = QStringLiteral("camera");
   QStringList m_roiZoneNames;
   TelegramBotAPI *m_telegram = nullptr;
+  QHash<int, QString> m_ocrObjectReidSnapshot;
+  QHash<int, QString> m_lastReidByObjectId;
 };
 
 #endif // PARKINGSERVICE_H

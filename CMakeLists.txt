@@ -61,6 +61,8 @@ qt_add_executable(rtsp_test
     src/ocr/recognition/llmocrrunner.h
     src/ocr/recognition/telegramllmrunner.cpp
     src/ocr/recognition/telegramllmrunner.h
+    src/tracking/reidextractor.cpp
+    src/tracking/reidextractor.h
 
     # Core
     src/config/config.cpp
@@ -103,7 +105,6 @@ qt_add_executable(rtsp_test
     src/database/userrepository.h
     src/database/hardwarelogrepository.cpp
     src/database/hardwarelogrepository.h
-    src/database/vehiclerepository.cpp
     src/database/mediarepository.cpp
     src/database/mediarepository.h
     resources.qrc

@@ -654,8 +654,11 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
   QString selectedCameraKey;
   int selectedObjectId = -1;
   if (const int currentRow = m_ui.reidTable->currentRow(); currentRow >= 0) {
-    if (QTableWidgetItem *idItem = m_ui.reidTable->item(currentRow, 1)) {
-      selectedObjectId = idItem->text().toInt();
+    if (QTableWidgetItem *objectIdItem = m_ui.reidTable->item(currentRow, 2)) {
+      selectedObjectId = objectIdItem->text().toInt();
+      selectedCameraKey = objectIdItem->data(Qt::UserRole).toString();
+    } else if (QTableWidgetItem *idItem = m_ui.reidTable->item(currentRow, 1)) {
+      selectedObjectId = idItem->data(Qt::UserRole + 1).toInt();
       selectedCameraKey = idItem->data(Qt::UserRole).toString();
     }
   }
@@ -682,6 +685,12 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
     const QList<VehicleState> activeVehicles = source->activeVehicles();
     for (const VehicleState &vehicle : activeVehicles) {
       if (vehicle.objectId < 0) {
+        continue;
+      }
+      if (!isVehicleType(vehicle.type)) {
+        continue;
+      }
+      if (vehicle.reidId.isEmpty() || vehicle.reidId == QStringLiteral("V---")) {
         continue;
       }
 
@@ -737,18 +746,31 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
     channelItem->setData(Qt::UserRole, rowData.cameraKey);
     m_ui.reidTable->setItem(row, 0, channelItem);
 
-    auto *idItem =
-        new QTableWidgetItem(QString::number(rowData.state.objectId));
+    const QString displayId =
+        (rowData.state.reidId.isEmpty() ||
+         rowData.state.reidId == QStringLiteral("V---"))
+            ? QString("V%1").arg(rowData.state.objectId)
+            : rowData.state.reidId;
+    auto *idItem = new QTableWidgetItem(displayId);
     idItem->setForeground(textColor);
     idItem->setBackground(rowBackground);
     idItem->setData(Qt::UserRole, rowData.cameraKey);
+    idItem->setData(Qt::UserRole + 1, rowData.state.objectId);
+    idItem->setToolTip(QString("Tracker ID: %1").arg(rowData.state.objectId));
     m_ui.reidTable->setItem(row, 1, idItem);
+
+    auto *objectIdItem =
+        new QTableWidgetItem(QString::number(rowData.state.objectId));
+    objectIdItem->setForeground(textColor);
+    objectIdItem->setBackground(rowBackground);
+    objectIdItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 2, objectIdItem);
 
     auto *plateItem = new QTableWidgetItem(rowData.state.plateNumber);
     plateItem->setForeground(textColor);
     plateItem->setBackground(rowBackground);
     plateItem->setData(Qt::UserRole, rowData.cameraKey);
-    m_ui.reidTable->setItem(row, 2, plateItem);
+    m_ui.reidTable->setItem(row, 3, plateItem);
 
     if (rowData.state.objectId == selectedObjectId &&
         rowData.cameraKey == selectedCameraKey) {
@@ -1512,10 +1534,14 @@ void MainWindowController::onReidTableCellClicked(int row, int column) {
   }
 
   QTableWidgetItem *idItem = m_ui.reidTable->item(row, 1);
-  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 2);
+  QTableWidgetItem *objectIdItem = m_ui.reidTable->item(row, 2);
+  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 3);
 
-  if (idItem && m_ui.forceObjectIdInput) {
-    m_ui.forceObjectIdInput->setValue(idItem->text().toInt());
+  if (m_ui.forceObjectIdInput) {
+    const int objectId =
+        objectIdItem ? objectIdItem->text().toInt()
+                     : (idItem ? idItem->data(Qt::UserRole + 1).toInt() : 0);
+    m_ui.forceObjectIdInput->setValue(objectId);
   }
 
   if (plateItem && m_ui.forcePlateInput) {
