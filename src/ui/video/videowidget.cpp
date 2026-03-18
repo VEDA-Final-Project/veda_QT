@@ -134,6 +134,11 @@ void VideoWidget::updateMetadata(const QList<ObjectInfo> &objects) {
   m_currentObjects = objects;
 }
 
+void VideoWidget::setOccupiedRoiIndices(
+    const QSet<int> &occupiedRoiIndices) {
+  m_occupiedRoiIndices = occupiedRoiIndices;
+}
+
 void VideoWidget::dispatchOcrRequests(const QImage &frame) {
   if (frame.isNull()) {
     return;
@@ -205,6 +210,7 @@ void VideoWidget::renderFrame(const QImage &frame) {
 
   const QImage composed = m_frameRenderer.compose(
       frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
+      m_occupiedRoiIndices,
       m_roiState.roiEnabled(), m_showFps, static_cast<int>(m_currentFps),
       m_profileName, m_zoomFactor, m_zoomCenterX, m_zoomCenterY, nullptr);
 

@@ -16,9 +16,6 @@ class LogFilterConfig {
 public:
   static LogFilterConfig &instance();
 
-  /// 카테고리 목록 반환
-  QStringList categories() const;
-
   /// 해당 카테고리의 활성화 여부
   bool isEnabled(const QString &category) const;
 
@@ -37,7 +34,6 @@ private:
   mutable QMutex m_mutex;
 
   struct CategoryInfo {
-    QString displayName;  // UI에 표시할 이름
     QStringList prefixes; // 매칭할 접두사 목록
     bool enabled;         // 기본 활성화 여부
   };

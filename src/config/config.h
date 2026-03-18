@@ -29,7 +29,6 @@ public:
   QString defaultCameraSubProfile() const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
   QString cameraSubProfile(const QString &cameraKey = QString()) const;
-  QString rtspUrl(const QString &cameraKey = QString()) const;
 
   // Video
   int sourceWidth() const;
@@ -38,10 +37,21 @@ public:
   int cropOffsetX() const;
 
   // OCR
+  QString ocrType() const;
   QString ocrModelPath() const;
   QString ocrDictPath() const;
   int ocrInputWidth() const;
   int ocrInputHeight() const;
+
+  // ReID
+  QString reidModelPath() const;
+  int reidInputWidth() const;
+  int reidInputHeight() const;
+
+  // Gemini
+  QString geminiApiKey() const;
+  QString geminiModel() const;
+  QString geminiPrompt() const;
 
   // Sync
   int defaultDelayMs() const;
@@ -56,15 +66,17 @@ private:
   explicit Config(QObject *parent = nullptr);
   Config(const Config &) = delete;
   Config &operator=(const Config &) = delete;
+  QString resolveConfigRelativePath(const QString &path) const;
 
   QJsonObject m_root;
   QJsonObject m_camera;
   QJsonObject m_cameraDefaults;
   QJsonObject m_video;
   QJsonObject m_ocr;
+  QJsonObject m_reid;
   QJsonObject m_sync;
   QJsonObject m_auth;
-  bool m_loaded = false;
+  QString m_loadedConfigPath;
 };
 
 #endif // CONFIG_H

@@ -10,6 +10,7 @@
 #include <QPaintEvent>
 #include <QPolygonF>
 #include <QQueue>
+#include <QSet>
 #include <QSize>
 #include <QStringList>
 #include <QWidget>
@@ -47,6 +48,7 @@ public:
 public slots:
   void updateFrame(const QImage &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
+  void setOccupiedRoiIndices(const QSet<int> &occupiedRoiIndices);
   void dispatchOcrRequests(const QImage &frame);
   void setShowFps(bool show);
   void setRecording(bool recording);
@@ -77,6 +79,7 @@ private:
   QList<QPolygonF>
       m_normalizedRoiPolygons; // Keep the authoritative normalized polygons
   QStringList m_roiLabels;
+  QSet<int> m_occupiedRoiIndices;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
 
   bool m_showFps = false;

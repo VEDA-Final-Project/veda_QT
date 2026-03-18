@@ -27,6 +27,8 @@ public:
 
 signals:
   void ocrReady(int objectId, const OcrFullResult &result);
+  void ocrStarted(int objectId);
+
 
 private:
   static constexpr size_t kWorkerCount = 2;
@@ -51,7 +53,12 @@ private:
     QQueue<QString> recentResults;
     QString lastEmitted;
     qint64 lastUpdatedMs = 0;
+    qint64 lastRequestMs = 0;  // 마지막 OCR 요청 시각
+    qint64 lastFailedMs = 0;   // 마지막 인식 실패(패턴 불일치) 시각
     int logFrameCount = 0;
+    int attemptCount = 0;      // OCR 시도 횟수
+    bool isFinalized = false;  // 인식 성공 여부 (성공 시 추가 요청 중단)
+    bool isRetryScheduled = false; // 재시도 대기 중 여부
   };
 
   QString restoreDigitOnlyResult(const OcrHistory &history,

@@ -2,7 +2,7 @@
 #define MAINWINDOW_H
 
 #include "mainwindowuirefs.h"
-#include "ui/video/videowidget.h"
+class VideoWidget;
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -41,6 +41,9 @@ public:
   void showCctvSplash(const QString &message = QString());
   void showCctvPage();
 
+  // 페이지 인덱스 (BTN 292/293에서 mainwindowcontroller가 사용)
+  static constexpr int kDbPageIndex = 3;
+
 protected:
   void closeEvent(QCloseEvent *event) override;
   void mousePressEvent(QMouseEvent *event) override;
@@ -58,6 +61,13 @@ private:
 
   void setupUi();
   void openLogFilterSettings();
+
+public slots:
+  // RPi BTN 288~295 페이지 이동용 (mainwindowcontroller에서 호출)
+  void navigateToPage(int stackedIndex);
+  void navigateToDbSubTab(int tabIndex);
+
+private:
 
   VideoWidget *m_videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
   QFrame *m_channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
@@ -83,15 +93,6 @@ private:
   QPushButton *m_btnSendExit = nullptr;
   QTableWidget *m_userTable = nullptr;
 
-  // RPi 제어신호 수신 클라이언트 위젯
-  QLineEdit   *m_rpiHostEdit              = nullptr;
-  QSpinBox    *m_rpiPortSpin              = nullptr;
-  QPushButton *m_btnRpiConnect            = nullptr;
-  QPushButton *m_btnRpiDisconnect         = nullptr;
-  QLabel      *m_rpiConnectionStatusLabel = nullptr;
-  QLabel      *m_rpiLastCmdLabel          = nullptr;
-  QTextEdit   *m_rpiCtrlLogView           = nullptr;
-
   // Parking DB Panel Widgets
   QTableWidget *m_parkingLogTable = nullptr;
   QLineEdit *m_plateSearchInput = nullptr;
@@ -99,9 +100,6 @@ private:
   QPushButton *m_btnRefreshLogs = nullptr;
   QLineEdit *m_forcePlateInput = nullptr;
   QSpinBox *m_forceObjectIdInput = nullptr;
-  QLineEdit *m_forceTypeInput = nullptr;
-  QDoubleSpinBox *m_forceScoreInput = nullptr;
-  QLineEdit *m_forceBBoxInput = nullptr;
   QPushButton *m_btnForcePlate = nullptr;
   QLineEdit *m_editPlateInput = nullptr;
   QPushButton *m_btnEditPlate = nullptr;
@@ -113,17 +111,14 @@ private:
   QPushButton *m_btnEditUser = nullptr;
   QPushButton *m_btnDeleteUser = nullptr;
 
-  QTableWidget *m_hwLogTable = nullptr;
-  QPushButton *m_btnRefreshHwLogs = nullptr;
-  QPushButton *m_btnClearHwLogs = nullptr;
-
   QTableWidget *m_vehicleTable = nullptr;
   QPushButton *m_btnRefreshVehicles = nullptr;
   QPushButton *m_btnDeleteVehicle = nullptr;
 
   QTableWidget *m_zoneTable = nullptr;
-  QPushButton *m_btnRefreshZone = nullptr;
+  QPushButton  *m_btnRefreshZone = nullptr;
 
+  // DB 서브탭 위젯 (BTN 293 탭 전환용)
   QTabWidget *m_dbSubTabs = nullptr;
 
   // Object Type Filter Checkboxes
@@ -137,6 +132,15 @@ private:
   QCheckBox *m_chkShowPlateLogs = nullptr;
   QCheckBox *m_chkShowFps = nullptr;
   QLabel *m_lblAvgFps = nullptr;
+
+  // RPi 제어 패널 UI 요소
+  QLineEdit   *m_rpiHostEdit              = nullptr;
+  QSpinBox    *m_rpiPortSpin              = nullptr;
+  QPushButton *m_btnRpiConnect            = nullptr;
+  QPushButton *m_btnRpiDisconnect         = nullptr;
+  QLabel      *m_rpiConnectionStatusLabel = nullptr;
+  QLabel      *m_rpiLastCmdLabel          = nullptr;
+  QTextEdit   *m_rpiCtrlLogView           = nullptr;
 
   QTableWidget *m_reidTable = nullptr;
   QSpinBox *m_staleTimeoutInput = nullptr;
@@ -152,6 +156,10 @@ private:
 
   QPushButton *m_btnCaptureManual = nullptr;
   QPushButton *m_btnRecordManual = nullptr;
+
+  QPushButton *m_btnRefreshHwLogs = nullptr;
+  QPushButton *m_btnClearHwLogs = nullptr;
+  QTableWidget *m_hwLogTable = nullptr;
 
   // Recording Search Widgets
   QTableWidget *m_recordLogTable = nullptr;

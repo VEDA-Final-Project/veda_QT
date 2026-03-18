@@ -25,13 +25,13 @@ class CameraChannelRuntime;
 class CameraSource;
 class DbPanelController;
 class RecordPanelController;
+class RpiPanelController;
 class MediaRepository;
 class VideoBufferManager;
 class MediaRecorderWorker;
 class QThread;
 class ParkingService;
 class RoiService;
-class RpiPanelController;
 class VideoWidget;
 class QEvent;
 class ControllerDialog;
@@ -76,9 +76,11 @@ public slots:
   void onContinuousRecordTimeout();
   void onCleanupTimeout();
   void onContinuousSettingChanged();
+  void onRefreshReidTableAllChannels();
   void onApplyContinuousSettingClicked();
   void onRawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
                        qint64 timestampMs);
+
 
   void onSendEntry();
   void onSendExit();
@@ -96,6 +98,7 @@ private:
   void reloadRoiForTarget(RoiTarget target, bool writeLog = true);
   void refreshRoiSelectorForTarget();
   void refreshZoneTableAllChannels();
+  void refreshReidTableAllChannels(bool force = false);
   void ensureChannelSelected(int index);
   void rebuildLiveLayout();
   void applyLiveGridLayout(LiveLayoutMode mode);
@@ -122,7 +125,6 @@ private:
   MainWindowUiRefs m_ui;
   RoiTarget m_roiTarget = RoiTarget::Ch1;
   TelegramBotAPI *m_telegramApi = nullptr;
-  RpiPanelController *m_rpiPanelController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
   RecordPanelController *m_recordPanelController = nullptr;
   MediaRepository *m_mediaRepo = nullptr;
@@ -148,6 +150,11 @@ private:
   double m_joystickSpeedY = 0.0;
   void processJoystickMovement();
 
+  // Unified Hardware/GUI Controller Handlers
+  void onHardwareButtonPressed(int btnCode);
+  void onHardwareJoystickMoved(const QString &dir, int state);
+  void onHardwareEncoderRotated(int delta);
+
   std::array<CameraChannelRuntime *, 4> m_channels{
       {nullptr, nullptr, nullptr, nullptr}};
   std::array<CameraSource *, 4> m_cameraSources{
@@ -158,14 +165,21 @@ private:
   QVector<int> m_selectedChannelIndices;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
+  QElapsedTimer m_reidRefreshTimer;
   QTimer *m_resizeDebounceTimer = nullptr;
+
   // Continuous Recording
   VideoBufferManager *m_continuousBuffers[4] = {nullptr, nullptr, nullptr,
-                                                nullptr};
+                                                 nullptr};
   QElapsedTimer m_continuousThrottleTimers[4];
   QTimer *m_continuousRecordTimer = nullptr;
   QTimer *m_cleanupTimer = nullptr;
+  QTimer *m_reidTimer = nullptr;
   static constexpr int kRecordPreviewConsumerId = 100;
+
+  // RPi 제어신호 수신 클라이언트
+  RpiPanelController *m_rpiPanelController = nullptr;
+
 };
 
 #endif // MAINWINDOWCONTROLLER_H

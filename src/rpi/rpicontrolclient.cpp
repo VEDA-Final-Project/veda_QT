@@ -20,8 +20,6 @@ RpiControlClient::RpiControlClient(QObject *parent) : QObject(parent) {
             this, &RpiControlClient::onReconnectTimeout);
 }
 
-// ── 공개 API ─────────────────────────────────────────────────────────────────
-
 void RpiControlClient::setServer(const QString &host, quint16 port) {
     m_host = host;
     m_port = port;
@@ -35,7 +33,7 @@ void RpiControlClient::connectToServer() {
         return;
     }
     emit logMessage(
-        QString("[RPi-CTRL] %1:%2 로 연결 중...").arg(m_host).arg(m_port));
+        QString("[RPi] %1:%2 연결 중...").arg(m_host).arg(m_port));
     m_socket->connectToHost(m_host, m_port);
 }
 
@@ -52,17 +50,15 @@ bool RpiControlClient::isConnected() const {
 QString RpiControlClient::host() const { return m_host; }
 quint16 RpiControlClient::port() const { return m_port; }
 
-// ── 소켓 슬롯 ────────────────────────────────────────────────────────────────
-
 void RpiControlClient::onConnected() {
     resetReconnect();
     emit connectedChanged(true);
-    emit logMessage(QString("[RPi-CTRL] RPi 연결됨 (%1:%2)").arg(m_host).arg(m_port));
+    emit logMessage(QString("[RPi] 연결됨 (%1:%2)").arg(m_host).arg(m_port));
 }
 
 void RpiControlClient::onDisconnected() {
     emit connectedChanged(false);
-    emit logMessage("[RPi-CTRL] 연결 끊김");
+    emit logMessage("[RPi] 연결 끊김");
     if (m_shouldReconnect) {
         scheduleReconnect();
     }
@@ -83,15 +79,15 @@ void RpiControlClient::onReadyRead() {
 
 void RpiControlClient::onSocketError() {
     emit logMessage(
-        QString("[RPi-CTRL] 소켓 오류: %1").arg(m_socket->errorString()));
+        QString("[RPi] 소켓 오류: %1").arg(m_socket->errorString()));
 }
 
 void RpiControlClient::onReconnectTimeout() {
     connectToServer();
 }
 
-// ── 패킷 파싱 ────────────────────────────────────────────────────────────────
-// 형식: $<TYPE>,<ch>,<d1>[,<d2>]\n
+// 패킷 파싱: $<TYPE>[,<d1>[,<d2>]]\n
+// 채널 ID 없음 — 모든 필드가 TYPE 바로 다음부터 시작
 void RpiControlClient::parsePacket(const QByteArray &rawLine) {
     QByteArray line = rawLine;
     if (line.startsWith('$')) {
@@ -99,97 +95,72 @@ void RpiControlClient::parsePacket(const QByteArray &rawLine) {
     }
 
     const QList<QByteArray> parts = line.split(',');
-    if (parts.size() < 3) {
-        emit logMessage(
-            QString("[RPi-CTRL] 잘못된 패킷: %1").arg(QString::fromUtf8(rawLine)));
-        return;
-    }
+    if (parts.isEmpty()) return;
 
     const QString type = QString::fromUtf8(parts[0]).toUpper().trimmed();
-    bool chOk = false;
-    const int ch = parts[1].trimmed().toInt(&chOk);
-    if (!chOk || ch < 1 || ch > 4) {
-        emit logMessage(
-            QString("[RPi-CTRL] 잘못된 채널: %1").arg(QString::fromUtf8(rawLine)));
-        return;
-    }
+    const QString d1   = parts.size() > 1
+                             ? QString::fromUtf8(parts[1]).trimmed()
+                             : QString();
+    const QString d2   = parts.size() > 2
+                             ? QString::fromUtf8(parts[2]).trimmed()
+                             : QString();
 
-    const QString d1 = parts.size() > 2
-                           ? QString::fromUtf8(parts[2]).trimmed()
-                           : QString();
-    const QString d2 = parts.size() > 3
-                           ? QString::fromUtf8(parts[3]).trimmed()
-                           : QString();
-
-    emit logMessage(QString("[RPi-CTRL] RX: $%1,%2,%3%4")
-                        .arg(type).arg(ch).arg(d1)
+    emit logMessage(QString("[RPi] RX: $%1%2%3")
+                        .arg(type)
+                        .arg(d1.isEmpty() ? "" : "," + d1)
                         .arg(d2.isEmpty() ? "" : "," + d2));
 
-    // ── 명령 분기 ──────────────────────────────────────────────────────────
-
-    if (type == QLatin1String("CH")) {
-        // $CH,<ch>,SEL
-        if (d1 == QLatin1String("SEL")) {
-            emit channelSelectRequested(ch);
-        }
-
-    } else if (type == QLatin1String("JOY")) {
-        // $JOY,<ch>,<dir>,<state>    dir=U/D/L/R  state=1/0
+    if (type == QLatin1String("JOY")) {
+        // $JOY,<dir>,<state>
         const bool active = (d2 == QLatin1String("1"));
-        emit joystickMoved(ch, d1, active);
+        emit joystickMoved(d1, active);
 
     } else if (type == QLatin1String("ENC")) {
-        // $ENC,<ch>,+1/-1  or  $ENC,<ch>,CLK
+        // $ENC,+1/-1  or  $ENC,CLK
         if (d1 == QLatin1String("CLK")) {
-            emit encoderClicked(ch);
+            emit encoderClicked();
         } else {
             bool ok = false;
             const int delta = d1.toInt(&ok);
-            if (ok) {
-                emit encoderRotated(ch, delta);
-            } else {
-                emit logMessage(
-                    QString("[RPi-CTRL] ENC 값 오류: %1").arg(d1));
-            }
+            if (ok) emit encoderRotated(delta);
+        }
+
+    } else if (type == QLatin1String("CH")) {
+        // $CH,SEL
+        if (d1 == QLatin1String("SEL")) {
+            emit channelSelectRequested();
         }
 
     } else if (type == QLatin1String("REC")) {
-        // $REC,<ch>,1/0
-        emit recordingChanged(ch, d1 == QLatin1String("1"));
+        // $REC,1/0
+        emit recordingChanged(d1 == QLatin1String("1"));
 
     } else if (type == QLatin1String("CAP")) {
-        // $CAP,<ch>,NOW
-        emit captureRequested(ch);
-
-    } else if (type == QLatin1String("DB")) {
-        // $DB,<ch>,<idx>
-        bool ok = false;
-        const int idx = d1.toInt(&ok);
-        if (ok) {
-            emit dbTabChanged(ch, idx);
-        }
+        // $CAP,NOW
+        emit captureRequested();
 
     } else if (type == QLatin1String("BTN")) {
-        // $BTN,<ch>,<code>
+        // $BTN,<code>
         bool ok = false;
         const int code = d1.toInt(&ok);
-        if (ok) {
-            emit buttonPressed(ch, code);
-        }
+        if (ok) emit buttonPressed(code);
+
+    } else if (type == QLatin1String("DB")) {
+        // $DB,<idx>
+        bool ok = false;
+        const int idx = d1.toInt(&ok);
+        if (ok) emit dbTabChanged(idx);
 
     } else {
-        emit logMessage(
-            QString("[RPi-CTRL] 알 수 없는 타입: %1").arg(type));
+        emit logMessage(QString("[RPi] 알 수 없는 타입: %1").arg(type));
     }
 }
-
-// ── 재연결 ───────────────────────────────────────────────────────────────────
 
 void RpiControlClient::scheduleReconnect() {
     if (m_reconnectTimer->isActive()) return;
     const int ms = qMin(kReconnectBaseMs << m_reconnectAttempt, kReconnectMaxMs);
     m_reconnectAttempt = qMin(m_reconnectAttempt + 1, 3);
-    emit logMessage(QString("[RPi-CTRL] %1 ms 후 재연결 시도...").arg(ms));
+    emit logMessage(QString("[RPi] %1 ms 후 재연결...").arg(ms));
     m_reconnectTimer->start(ms);
 }
 

@@ -273,6 +273,39 @@ QGroupBox::title {
     font-size: 9pt;
 }
 
+/* === Tab Widget === */
+QTabWidget::pane {
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: transparent;
+    color: #CBD5E1;
+    padding: 8px 12px;
+    margin-right: 6px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-weight: 600;
+}
+
+QTabBar::tab:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #F8FAFC;
+    border-bottom-color: rgba(16, 185, 129, 0.45);
+}
+
+QTabBar::tab:selected {
+    color: #F8FAFC;
+    background-color: rgba(16, 185, 129, 0.12);
+    border-bottom-color: #10B981;
+}
+
+QTabBar::tab:!selected {
+    margin-top: 2px;
+}
+
 /* === Table Widget === */
 QTableWidget, QTableView {
     background-color: #0F172A;
@@ -282,12 +315,12 @@ QTableWidget, QTableView {
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 6px;
     selection-background-color: #10B981;
-    selection-color: #0F172A;
+    selection-color: #F8FAFC;
 }
 
 QTableWidget::item:selected {
     background-color: #10B981;
-    color: #0F172A;
+    color: #F8FAFC;
     font-weight: bold;
 }
 

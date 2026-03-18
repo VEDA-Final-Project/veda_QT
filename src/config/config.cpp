@@ -1,9 +1,9 @@
 #include "config.h"
-#include "util/rtspurl.h"
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QStringList>
@@ -151,9 +151,10 @@ bool Config::load(const QString &path) {
   m_cameraDefaults = root["cameraDefaults"].toObject();
   m_video = root["video"].toObject();
   m_ocr = root["ocr"].toObject();
+  m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
-  m_loaded = true;
+  m_loadedConfigPath = loadedPath;
 
   qDebug() << "Config loaded from:" << loadedPath;
   return true;
@@ -226,11 +227,6 @@ QString Config::cameraSubProfile(const QString &cameraKey) const {
 /**
  * @brief RTSP 접속 URL 생성
  */
-QString Config::rtspUrl(const QString &cameraKey) const {
-  return buildRtspUrl(cameraIp(cameraKey), cameraUsername(cameraKey),
-                      cameraPassword(cameraKey), cameraProfile(cameraKey));
-}
-
 /* =========================
  * Video 관련 설정
  * ========================= */
@@ -262,12 +258,16 @@ int Config::cropOffsetX() const { return m_video["cropOffsetX"].toInt(480); }
  * OCR 관련 설정
  * ========================= */
 
+QString Config::ocrType() const {
+  return m_ocr["type"].toString("Paddle"); // 기본값은 Paddle
+}
+
 QString Config::ocrModelPath() const {
   const QString path = m_ocr["modelPath"].toString();
   if (path.isEmpty() || path == "null") {
     return QString();
   }
-  return path;
+  return resolveConfigRelativePath(path);
 }
 
 QString Config::ocrDictPath() const {
@@ -275,7 +275,7 @@ QString Config::ocrDictPath() const {
   if (path.isEmpty() || path == "null") {
     return QString();
   }
-  return path;
+  return resolveConfigRelativePath(path);
 }
 
 int Config::ocrInputWidth() const {
@@ -284,6 +284,78 @@ int Config::ocrInputWidth() const {
 
 int Config::ocrInputHeight() const {
   return std::max(16, m_ocr["inputHeight"].toInt(48));
+}
+
+QString Config::reidModelPath() const {
+  const QString path = m_reid["modelPath"].toString();
+  if (path.isEmpty() || path == "null") {
+    return QString();
+  }
+  return resolveConfigRelativePath(path);
+}
+
+int Config::reidInputWidth() const {
+  return std::max(32, m_reid["inputWidth"].toInt(256));
+}
+
+int Config::reidInputHeight() const {
+  return std::max(32, m_reid["inputHeight"].toInt(256));
+}
+
+QString Config::resolveConfigRelativePath(const QString &path) const {
+  const QString trimmed = path.trimmed();
+  if (trimmed.isEmpty()) {
+    return QString();
+  }
+  if (QDir::isAbsolutePath(trimmed) || m_loadedConfigPath.isEmpty()) {
+    return trimmed;
+  }
+
+  const QFileInfo configInfo(m_loadedConfigPath);
+  const QDir configDir = configInfo.dir();
+  const QString configRelativePath = configDir.absoluteFilePath(trimmed);
+  if (QFileInfo::exists(configRelativePath)) {
+    return configRelativePath;
+  }
+
+  QDir parentDir = configDir;
+  if (parentDir.cdUp()) {
+    const QString parentRelativePath = parentDir.absoluteFilePath(trimmed);
+    if (QFileInfo::exists(parentRelativePath)) {
+      return parentRelativePath;
+    }
+    return parentRelativePath;
+  }
+
+  return configRelativePath;
+}
+
+/* =========================
+ * Gemini 관련 설정
+ * ========================= */
+
+QString Config::geminiApiKey() const {
+  // 환경변수 우선 참조
+  QString key = qEnvironmentVariable("GEMINI_API_KEY");
+  if (!key.isEmpty()) {
+    // qInfo() << "[Config] Gemini API Key loaded from Environment (Masked: " << key.left(5) << "...)";
+    return key;
+  }
+  QString jsonKey = m_ocr["gemini"].toObject()["apiKey"].toString();
+  if (jsonKey.isEmpty()) {
+    // qWarning() << "[Config] Gemini API Key is missing!";
+  }
+  return jsonKey;
+}
+
+QString Config::geminiModel() const {
+  return m_ocr["gemini"].toObject()["model"].toString("gemini-1.5-flash");
+}
+
+QString Config::geminiPrompt() const {
+  return m_ocr["gemini"].toObject()["prompt"].toString(
+      "이 이미지는 자동차 번호판의 크롭 본이야. 번호판 숫자와 글자만 정확히 추출해줘. "
+      "다른 설명은 필요 없어. 예: 123가4567");
 }
 
 /* =========================
