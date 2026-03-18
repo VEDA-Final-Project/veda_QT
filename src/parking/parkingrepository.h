@@ -26,7 +26,7 @@ public:
    */
   int insertEntry(const QString &cameraKey, int objectId,
                   const QString &plateNumber, const QString &zoneName,
-                  int roiIndex,
+                  int roiIndex, const QString &reidId,
                   const QDateTime &entryTime,
                   QString *errorMessage = nullptr);
 
@@ -55,6 +55,14 @@ public:
   bool updateActivePlateByObjectId(const QString &cameraKey, int objectId,
                                    const QString &plateNumber,
                                    QString *errorMessage = nullptr);
+  bool updateActivePlateByReidId(const QString &cameraKey,
+                                 const QString &reidId,
+                                 const QString &plateNumber,
+                                 QString *errorMessage = nullptr);
+
+  bool updateActiveReidByObjectId(const QString &cameraKey, int objectId,
+                                  const QString &reidId,
+                                  QString *errorMessage = nullptr);
 
   /**
    * @brief 번호판으로 현재 입차 중인 레코드 조회

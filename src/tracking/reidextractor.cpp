@@ -129,12 +129,6 @@ std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) {
         f /= norm;
     }
 
-    static int debugCount = 0;
-    if (++debugCount % 20 == 0) {
-      std::cout << "[ReID] Extracted features (norm: " << norm
-                << ", size: " << features.size() << ")" << std::endl;
-    }
-
     return features;
 
   } catch (const Ort::Exception &e) {

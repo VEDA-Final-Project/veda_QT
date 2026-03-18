@@ -508,10 +508,7 @@ void CameraSource::onReidDispatchTick() {
     int vehicleCount = 0;
 
     for (ObjectInfo &obj : processedObjects) {
-      QString lowerType = obj.type.toLower();
-      bool isVehicle = (lowerType == "vehicle" || lowerType == "car" ||
-                        lowerType == "vehical" || lowerType == "truck" ||
-                        lowerType == "bus");
+      bool isVehicle = isVehicleType(obj.type);
       if (!isVehicle)
         continue;
       vehicleCount++;

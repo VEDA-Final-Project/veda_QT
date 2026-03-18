@@ -1,4 +1,6 @@
 #include "parkingservice.h"
+#include "parkingrepository.h"
+#include "database/vehiclerepository.h"
 #include "../telegram/telegrambotapi.h"
 #include "vehicletracker.h"
 #include <QDateTime>
@@ -14,13 +16,26 @@ ParkingService::ParkingService(QObject *parent) : QObject(parent) {}
 
 void ParkingService::processOcrStarted(int objectId)
 {
+  const auto &vehicles = m_tracker.vehicles();
+  if (vehicles.contains(objectId)) {
+    const VehicleState &vs = vehicles[objectId];
+    if (!vs.reidId.isEmpty() && vs.reidId != "V---") {
+      m_ocrObjectReidSnapshot.insert(objectId, vs.reidId);
+    }
+  }
   m_tracker.setPlateNumber(objectId, QStringLiteral("인식중.."));
 }
 
 
 bool ParkingService::init(QString *errorMessage)
 {
-  return m_repository.init(errorMessage);
+  if (!m_repository.init(errorMessage)) {
+    return false;
+  }
+  if (!m_vehicleRepo.init(errorMessage)) {
+    return false;
+  }
+  return true;
 }
 
 void ParkingService::setTelegramApi(TelegramBotAPI *api)
@@ -77,10 +92,7 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
 
   for (const auto &vs : newEntries) {
     if (!vs.ocrRequested) {
-      QString lowerType = vs.type.toLower();
-      bool isVehicle = (lowerType == "vehicle" || lowerType == "car" ||
-                        lowerType == "vehical" || lowerType == "truck" ||
-                        lowerType == "bus");
+      bool isVehicle = isVehicleType(vs.type);
       const QString displayId =
           isVehicle ? (vs.reidId.isEmpty() ? "V---" : vs.reidId) : QString();
 
@@ -106,20 +118,6 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
       handleNewEntry(vs);
     }
   }
-      handleNewEntry(vs);
-    }
-  }
-
-  // 새 진입 이벤트를 놓쳤더라도, 현재 ROI 안에 있고 아직 DB 기록이 없는
-  // 차량은 다음 프레임에서 다시 보정 저장합니다.
-  const auto &activeVehicles = m_tracker.vehicles();
-  for (auto it = activeVehicles.cbegin(); it != activeVehicles.cend(); ++it) {
-    const VehicleState &vs = it.value();
-    if (vs.occupiedRoiIndex >= 0 && !vs.notified &&
-        vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) >= kEntryPersistDelayMs) {
-      handleNewEntry(vs);
-    }
-  }
 
 
   //타임아웃된 차량 정리 (출차 처리)
@@ -133,6 +131,31 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
 void ParkingService::updateReidFeatures(const QList<ObjectInfo> &objects) {
   qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_tracker.updateReidFeatures(objects, nowMs);
+
+  const auto &vehicles = m_tracker.vehicles();
+  for (auto it = vehicles.cbegin(); it != vehicles.cend(); ++it) {
+    const int objectId = it.key();
+    const VehicleState &vs = it.value();
+    if (vs.reidId.isEmpty() || vs.reidId == "V---") {
+      continue;
+    }
+
+    const QString previous = m_lastReidByObjectId.value(objectId);
+    if (previous == vs.reidId) {
+      continue;
+    }
+
+    QString error;
+    if (m_repository.updateActiveReidByObjectId(m_cameraKey, objectId,
+                                                vs.reidId, &error)) {
+      m_lastReidByObjectId.insert(objectId, vs.reidId);
+    }
+
+    if (!vs.plateNumber.isEmpty()) {
+      m_vehicleRepo.upsertVehicle(vs.plateNumber, vs.type, "", false,
+                                  vs.reidId);
+    }
+  }
 }
 
 void ParkingService::processOcrResult(int objectId,
@@ -141,18 +164,43 @@ void ParkingService::processOcrResult(int objectId,
   m_tracker.setPlateNumber(objectId, plateNumber);
 
   const auto &vehicles = m_tracker.vehicles();
-  if (!vehicles.contains(objectId)) {
-    return;
+  QString reidId;
+  VehicleState vs;
+  bool hasVehicle = false;
+  if (vehicles.contains(objectId)) {
+    vs = vehicles[objectId];
+    hasVehicle = true;
+    if (!vs.reidId.isEmpty() && vs.reidId != "V---") {
+      reidId = vs.reidId;
+    }
+  }
+  if (reidId.isEmpty()) {
+    reidId = m_ocrObjectReidSnapshot.value(objectId);
   }
 
-  const VehicleState &vs = vehicles[objectId];
+  if (!reidId.isEmpty()) {
+    m_tracker.setPlateNumberForReid(reidId, plateNumber);
+  }
 
-  if (vs.occupiedRoiIndex >= 0 && !plateNumber.isEmpty()) {
+  m_ocrObjectReidSnapshot.remove(objectId);
+
+  if (hasVehicle && vs.occupiedRoiIndex >= 0 && !plateNumber.isEmpty()) {
     QString error;
-    if (!m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
-                                                  plateNumber, &error)) {
-      handleNewEntry(vs);
+    bool updated = false;
+    if (!reidId.isEmpty()) {
+      updated = m_repository.updateActivePlateByReidId(m_cameraKey, reidId,
+                                                       plateNumber, &error);
     }
+    if (!updated) {
+      if (!m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
+                                                    plateNumber, &error)) {
+        handleNewEntry(vs);
+      }
+    }
+  }
+
+  if (hasVehicle && (!plateNumber.isEmpty() || !reidId.isEmpty())) {
+    m_vehicleRepo.upsertVehicle(plateNumber, vs.type, "", false, reidId);
   }
 }
 
@@ -247,13 +295,18 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
   QDateTime entryTime = vs.roiEntryMs > 0 ? QDateTime::fromMSecsSinceEpoch(vs.roiEntryMs) : now;
   int recordId = m_repository.insertEntry(m_cameraKey, vs.objectId,
                                           vs.plateNumber, zoneName,
-                                          vs.occupiedRoiIndex, entryTime);
+                                          vs.occupiedRoiIndex, vs.reidId, entryTime);
   if (recordId >= 0) {
     emit logMessage(QString("[Parking] Entry recorded: %1 at %2 (DB ID: %3)")
                         .arg(vehicleLabel, zoneName)
                         .arg(recordId));
     emit vehicleEntered(vs.occupiedRoiIndex, vehicleLabel);
     m_tracker.markNotified(vs.objectId);
+
+    // Update Vehicle Master DB
+    if (!vs.plateNumber.isEmpty() || !vs.reidId.isEmpty()) {
+        m_vehicleRepo.upsertVehicle(vs.plateNumber, vs.type, "", false, vs.reidId);
+    }
   }
 }
 

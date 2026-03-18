@@ -21,6 +21,7 @@ public:
    */
   bool upsertVehicle(const QString &plateNumber, const QString &carType,
                      const QString &carColor, bool isAssigned,
+                     const QString &reidId = QString(),
                      QString *errorMessage = nullptr);
 
   /**

@@ -302,6 +302,7 @@ int Config::reidInputWidth() const {
 
 int Config::reidInputHeight() const {
   return std::max(32, m_reid["inputHeight"].toInt(256));
+}
 
 /* =========================
  * Gemini 관련 설정
@@ -311,12 +312,16 @@ QString Config::geminiApiKey() const {
   // 환경변수 우선 참조
   QString key = qEnvironmentVariable("GEMINI_API_KEY");
   if (!key.isEmpty()) {
-    // qInfo() << "[Config] Gemini API Key loaded from Environment (Masked: " << key.left(5) << "...)";
+    qInfo() << "[Config] Gemini API Key loaded from ENV"
+            << "(len=" << key.size() << ")";
     return key;
   }
   QString jsonKey = m_ocr["gemini"].toObject()["apiKey"].toString();
   if (jsonKey.isEmpty()) {
-    // qWarning() << "[Config] Gemini API Key is missing!";
+    qWarning() << "[Config] Gemini API Key is missing! (ENV+JSON empty)";
+  } else {
+    qInfo() << "[Config] Gemini API Key loaded from JSON"
+            << "(len=" << jsonKey.size() << ")";
   }
   return jsonKey;
 }

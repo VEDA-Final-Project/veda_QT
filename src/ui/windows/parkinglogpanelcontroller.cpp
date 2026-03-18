@@ -87,8 +87,11 @@ void populateParkingTable(QTableWidget *table, const QVector<QJsonObject> &logs)
         new QTableWidgetItem(QString::number(row["id"].toInt()));
     idItem->setData(Qt::UserRole, row["camera_key"].toString());
     table->setItem(i, 0, idItem);
-    table->setItem(
-        i, 1, new QTableWidgetItem(QString::number(row["object_id"].toInt())));
+    const QString reidId = row["reid_id"].toString();
+    const QString displayId = (reidId.isEmpty() || reidId == "V---") 
+                                ? QString("V%1").arg(row["object_id"].toInt())
+                                : reidId;
+    table->setItem(i, 1, new QTableWidgetItem(displayId));
     table->setItem(i, 2, new QTableWidgetItem(row["plate_number"].toString()));
     table->setItem(
         i, 3,

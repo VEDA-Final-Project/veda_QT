@@ -27,6 +27,9 @@ OcrResult LlmOcrRunner::runSingleCandidate(const QImage &image, int objectId) {
     return result;
   }
 
+  qDebug() << "[LLM OCR] runSingleCandidate() objectId=" << objectId
+           << "img=" << image.width() << "x" << image.height();
+
   const QString apiKey = Config::instance().geminiApiKey();
   if (apiKey.isEmpty()) {
     qWarning() << "[LLM OCR] API Key is missing!";
@@ -60,6 +63,14 @@ OcrResult LlmOcrRunner::runSingleCandidate(const QImage &image, int objectId) {
 
   if (reply->error() == QNetworkReply::NoError) {
     QByteArray responseData = reply->readAll();
+    const QVariant statusCode =
+        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+    const QVariant contentType =
+        reply->header(QNetworkRequest::ContentTypeHeader);
+    qDebug() << "[LLM OCR] HTTP OK"
+             << "status=" << statusCode.toInt()
+             << "bytes=" << responseData.size()
+             << "contentType=" << contentType.toString();
     result.text = parseResponse(responseData);
     result.selectedRawText = result.text;
   } else {
@@ -122,8 +133,16 @@ QString LlmOcrRunner::buildJsonRequest(const QString &base64Image) const {
 }
 
 QString LlmOcrRunner::parseResponse(const QByteArray &response) const {
-  QJsonDocument doc = QJsonDocument::fromJson(response);
+  QJsonParseError parseError;
+  QJsonDocument doc = QJsonDocument::fromJson(response, &parseError);
+  if (parseError.error != QJsonParseError::NoError) {
+    qWarning() << "[LLM OCR] JSON parse error:" << parseError.errorString();
+  }
   QJsonObject root = doc.object();
+
+  if (root.isEmpty()) {
+    qWarning() << "[LLM OCR] Empty JSON root. bytes=" << response.size();
+  }
 
   // candidates[0].content.parts[0].text 추출
   QJsonArray candidates = root["candidates"].toArray();

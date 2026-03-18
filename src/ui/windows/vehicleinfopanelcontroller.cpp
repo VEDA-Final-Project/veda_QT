@@ -43,13 +43,15 @@ void VehicleInfoPanelController::refreshVehicleTable() {
     m_ui.vehicleTable->setItem(
         i, 0, new QTableWidgetItem(row["plate_number"].toString()));
     m_ui.vehicleTable->setItem(
-        i, 1, new QTableWidgetItem(row["car_type"].toString()));
+        i, 1, new QTableWidgetItem(row["reid_id"].toString()));
     m_ui.vehicleTable->setItem(
-        i, 2, new QTableWidgetItem(row["car_color"].toString()));
+        i, 2, new QTableWidgetItem(row["car_type"].toString()));
     m_ui.vehicleTable->setItem(
-        i, 3, new QTableWidgetItem(row["is_assigned"].toBool() ? "Yes" : "No"));
+        i, 3, new QTableWidgetItem(row["car_color"].toString()));
     m_ui.vehicleTable->setItem(
-        i, 4, new QTableWidgetItem(row["updated_at"].toString()));
+        i, 4, new QTableWidgetItem(row["is_assigned"].toBool() ? "Yes" : "No"));
+    m_ui.vehicleTable->setItem(
+        i, 5, new QTableWidgetItem(row["updated_at"].toString()));
   }
 }
 

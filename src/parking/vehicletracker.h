@@ -12,6 +12,20 @@
 #include <vector>
 
 /**
+ * @brief 차량 타입 여부를 판별하는 공용 유틸리티
+ * 여러 모듈에서 동일한 판별이 필요하므로 헤더에 인라인으로 정의합니다.
+ */
+inline bool isVehicleType(const QString &type) {
+  const QString lower = type.toLower();
+  return lower == QStringLiteral("vehicle") ||
+         lower == QStringLiteral("vehical") ||
+         lower == QStringLiteral("car") ||
+         lower == QStringLiteral("truck") ||
+         lower == QStringLiteral("bus") ||
+         lower == QStringLiteral("motorcycle");
+}
+
+/**
  * @brief 개별 차량의 현재 상태를 나타내는 구조체
  */
 struct VehicleState {
@@ -66,6 +80,7 @@ public:
    * @brief 특정 차량의 OCR 결과를 반영합니다.
    */
   void setPlateNumber(int objectId, const QString &plate);
+  void setPlateNumberForReid(const QString &reidId, const QString &plate);
 
   /**
    * @brief 특정 차량의 상태(메타데이터)를 강제로 업데이트합니다.
@@ -115,6 +130,8 @@ private:
   QList<GalleryEntry> m_reidGallery;
   int m_nextPersistentId = 1001;
   mutable std::mutex m_galleryMutex;
+
+  QHash<QString, QString> m_plateByReid;
 };
 
 #endif // VEHICLETRACKER_H

@@ -2,6 +2,7 @@
 #define PARKINGSERVICE_H
 
 #include "parkingrepository.h"
+#include "database/vehiclerepository.h"
 #include "vehicletracker.h"
 #include <QObject>
 #include <QString>
@@ -126,9 +127,13 @@ private:
 
   VehicleTracker m_tracker;
   ParkingRepository m_repository;
+  VehicleRepository m_vehicleRepo;
   QString m_cameraKey = QStringLiteral("camera");
   QStringList m_roiZoneNames;
   TelegramBotAPI *m_telegram = nullptr;
+
+  QHash<int, QString> m_ocrObjectReidSnapshot;
+  QHash<int, QString> m_lastReidByObjectId;
 };
 
 #endif // PARKINGSERVICE_H

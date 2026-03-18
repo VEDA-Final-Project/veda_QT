@@ -165,8 +165,12 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
     connect(service, &ParkingService::vehicleEntered, m_dbPanelController,
             &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleEntered, m_dbPanelController,
+            &DbPanelController::refreshVehicleTable);
     connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
             &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
+            &DbPanelController::refreshVehicleTable);
   }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();
@@ -654,9 +658,9 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
   QString selectedCameraKey;
   int selectedObjectId = -1;
   if (const int currentRow = m_ui.reidTable->currentRow(); currentRow >= 0) {
-    if (QTableWidgetItem *idItem = m_ui.reidTable->item(currentRow, 1)) {
-      selectedObjectId = idItem->text().toInt();
-      selectedCameraKey = idItem->data(Qt::UserRole).toString();
+    if (QTableWidgetItem *oidItem = m_ui.reidTable->item(currentRow, 2)) {
+      selectedObjectId = oidItem->text().toInt();
+      selectedCameraKey = oidItem->data(Qt::UserRole).toString();
     }
   }
 
@@ -687,6 +691,10 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
 
       const bool isStale = (nowMs - vehicle.lastSeenMs) > staleMs;
       if (isStale && !showStaleObjects) {
+        continue;
+      }
+
+      if (vehicle.reidId.isEmpty() || vehicle.reidId == "V---") {
         continue;
       }
 
@@ -737,18 +745,30 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
     channelItem->setData(Qt::UserRole, rowData.cameraKey);
     m_ui.reidTable->setItem(row, 0, channelItem);
 
-    auto *idItem =
+    const QString displayId =
+        rowData.state.reidId.isEmpty()
+            ? QStringLiteral("V---")
+            : rowData.state.reidId;
+    auto *reidItem = new QTableWidgetItem(displayId);
+    reidItem->setForeground(textColor);
+    reidItem->setBackground(rowBackground);
+    reidItem->setData(Qt::UserRole, rowData.cameraKey);
+    reidItem->setToolTip(
+        QStringLiteral("Object ID: %1").arg(rowData.state.objectId));
+    m_ui.reidTable->setItem(row, 1, reidItem);
+
+    auto *oidItem =
         new QTableWidgetItem(QString::number(rowData.state.objectId));
-    idItem->setForeground(textColor);
-    idItem->setBackground(rowBackground);
-    idItem->setData(Qt::UserRole, rowData.cameraKey);
-    m_ui.reidTable->setItem(row, 1, idItem);
+    oidItem->setForeground(textColor);
+    oidItem->setBackground(rowBackground);
+    oidItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 2, oidItem);
 
     auto *plateItem = new QTableWidgetItem(rowData.state.plateNumber);
     plateItem->setForeground(textColor);
     plateItem->setBackground(rowBackground);
     plateItem->setData(Qt::UserRole, rowData.cameraKey);
-    m_ui.reidTable->setItem(row, 2, plateItem);
+    m_ui.reidTable->setItem(row, 3, plateItem);
 
     if (rowData.state.objectId == selectedObjectId &&
         rowData.cameraKey == selectedCameraKey) {
@@ -757,7 +777,7 @@ void MainWindowController::refreshReidTableAllChannels(bool force) {
   }
 
   if (rowToRestore >= 0) {
-    m_ui.reidTable->setCurrentCell(rowToRestore, 1);
+    m_ui.reidTable->setCurrentCell(rowToRestore, 2);
     m_ui.reidTable->selectRow(rowToRestore);
   } else {
     m_ui.reidTable->clearSelection();
@@ -1511,20 +1531,20 @@ void MainWindowController::onReidTableCellClicked(int row, int column) {
     return;
   }
 
-  QTableWidgetItem *idItem = m_ui.reidTable->item(row, 1);
-  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 2);
+  QTableWidgetItem *oidItem = m_ui.reidTable->item(row, 2);
+  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 3);
 
-  if (idItem && m_ui.forceObjectIdInput) {
-    m_ui.forceObjectIdInput->setValue(idItem->text().toInt());
+  if (oidItem && m_ui.forceObjectIdInput) {
+    m_ui.forceObjectIdInput->setValue(oidItem->text().toInt());
   }
 
   if (plateItem && m_ui.forcePlateInput) {
     m_ui.forcePlateInput->setText(plateItem->text());
   }
 
-  if (m_ui.btnForcePlate && idItem) {
+  if (m_ui.btnForcePlate && oidItem) {
     m_ui.btnForcePlate->setProperty("cameraKey",
-                                    idItem->data(Qt::UserRole).toString());
+                                    oidItem->data(Qt::UserRole).toString());
   }
 
 }

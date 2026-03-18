@@ -196,10 +196,12 @@ void CameraChannelRuntime::populateReidTable(
 
 
     QString lowerType = vehicle.type.toLower();
-    bool isVehicle = (lowerType == "vehicle" || lowerType == "car" || lowerType == "vehical");
+    bool isVehicle = (lowerType == "vehicle" || lowerType == "car" || 
+                      lowerType == "vehical" || lowerType == "truck" || 
+                      lowerType == "bus");
 
     const QString displayId = isVehicle 
-        ? (vehicle.reidId.isEmpty() ? "Assigning..." : vehicle.reidId)
+        ? ((vehicle.reidId.isEmpty() || vehicle.reidId == "V---") ? QString("V%1").arg(vehicle.objectId) : vehicle.reidId)
         : QString("-"); // Hide ID for others
         
     auto *idItem = new QTableWidgetItem(displayId);

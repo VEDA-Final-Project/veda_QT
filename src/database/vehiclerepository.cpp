@@ -21,6 +21,7 @@ bool VehicleRepository::init(QString *errorMessage) {
                      "  car_type TEXT,"
                      "  car_color TEXT,"
                      "  is_assigned INTEGER DEFAULT 0,"
+                     "  reid_id TEXT,"
                      "  updated_at TEXT DEFAULT (datetime('now','localtime'))"
                      ")");
 
@@ -35,6 +36,7 @@ bool VehicleRepository::init(QString *errorMessage) {
 bool VehicleRepository::upsertVehicle(const QString &plateNumber,
                                       const QString &carType,
                                       const QString &carColor, bool isAssigned,
+                                      const QString &reidId,
                                       QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
@@ -43,18 +45,20 @@ bool VehicleRepository::upsertVehicle(const QString &plateNumber,
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "INSERT INTO vehicles (plate_number, car_type, car_color, is_assigned, "
-      "updated_at) "
-      "VALUES (:plate, :type, :color, :assigned, datetime('now','localtime')) "
+      "reid_id, updated_at) "
+      "VALUES (:plate, :type, :color, :assigned, :reid_id, datetime('now','localtime')) "
       "ON CONFLICT(plate_number) DO UPDATE SET "
       "car_type = excluded.car_type, "
       "car_color = excluded.car_color, "
       "is_assigned = excluded.is_assigned, "
+      "reid_id = CASE WHEN excluded.reid_id != '' THEN excluded.reid_id ELSE vehicles.reid_id END, "
       "updated_at = excluded.updated_at"));
 
   query.bindValue(":plate", plateNumber);
   query.bindValue(":type", carType);
   query.bindValue(":color", carColor);
   query.bindValue(":assigned", isAssigned ? 1 : 0);
+  query.bindValue(":reid_id", reidId);
 
   if (!query.exec()) {
     if (errorMessage)
