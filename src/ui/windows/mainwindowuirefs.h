@@ -42,15 +42,6 @@ struct MainWindowUiRefs {
   QPushButton *btnSendExit = nullptr;
   QTableWidget *userTable = nullptr;
 
-  // RPi 제어신호 수신 클라이언트 위젯
-  QLineEdit   *rpiHostEdit              = nullptr; // RPi IP
-  QSpinBox    *rpiPortSpin              = nullptr; // 포트 (기본 12345)
-  QPushButton *btnRpiConnect            = nullptr;
-  QPushButton *btnRpiDisconnect         = nullptr;
-  QLabel      *rpiConnectionStatusLabel = nullptr; // CONNECTED / DISCONNECTED
-  QLabel      *rpiLastCmdLabel          = nullptr; // 마지막 수신 패킷
-  QTextEdit   *rpiCtrlLogView           = nullptr; // 수신 로그
-
   // Parking DB Panel Widgets
   QTableWidget *parkingLogTable = nullptr;
   QLineEdit *plateSearchInput = nullptr;
@@ -58,9 +49,6 @@ struct MainWindowUiRefs {
   QPushButton *btnRefreshLogs = nullptr;
   QLineEdit *forcePlateInput = nullptr;
   QSpinBox *forceObjectIdInput = nullptr;
-  QLineEdit *forceTypeInput = nullptr;
-  QDoubleSpinBox *forceScoreInput = nullptr;
-  QLineEdit *forceBBoxInput = nullptr;
   QPushButton *btnForcePlate = nullptr;
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;
@@ -78,9 +66,6 @@ struct MainWindowUiRefs {
   QPushButton *btnAddUser = nullptr;
   QPushButton *btnEditUser = nullptr;
   QPushButton *btnDeleteUser = nullptr;
-  QTableWidget *hwLogTable = nullptr;
-  QPushButton *btnRefreshHwLogs = nullptr;
-  QPushButton *btnClearHwLogs = nullptr;
   QTableWidget *vehicleTable = nullptr;
   QPushButton *btnRefreshVehicles = nullptr;
   QPushButton *btnDeleteVehicle = nullptr;
@@ -119,6 +104,15 @@ struct MainWindowUiRefs {
   QLabel *lblContinuousStatus = nullptr;
   QPushButton *btnApplyContinuousSetting = nullptr;
   QPushButton *btnViewContinuous = nullptr;
+
+  // RPi 제어신호 수신 클라이언트 UI
+  QLineEdit   *rpiHostEdit              = nullptr;
+  QSpinBox    *rpiPortSpin              = nullptr;
+  QPushButton *btnRpiConnect            = nullptr;
+  QPushButton *btnRpiDisconnect         = nullptr;
+  QLabel      *rpiConnectionStatusLabel = nullptr;
+  QLabel      *rpiLastCmdLabel          = nullptr;
+  QTextEdit   *rpiCtrlLogView           = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

@@ -2,11 +2,23 @@
 #define VEHICLETRACKER_H
 
 #include "metadata/metadatathread.h"
+#include <QDateTime>
 #include <QHash>
 #include <QList>
-#include <QPolygon>
+#include <QPolygonF>
 #include <QRectF>
 #include <QString>
+#include <mutex>
+#include <vector>
+
+inline bool isVehicleType(const QString &type) {
+  const QString lower = type.toLower();
+  return lower == QStringLiteral("vehicle") ||
+         lower == QStringLiteral("vehical") ||
+         lower == QStringLiteral("car") || lower == QStringLiteral("truck") ||
+         lower == QStringLiteral("bus") ||
+         lower == QStringLiteral("motorcycle");
+}
 
 /**
  * @brief 개별 차량의 현재 상태를 나타내는 구조체
@@ -25,6 +37,8 @@ struct VehicleState {
   qint64 lastSeenMs = 0;       // 마지막 감지 시각 (ms)
   qint64 roiEntryMs = 0; // 주차 구역에 진입하여 'Parked' 상태가 된 시점 (ms)
   QList<int> roiHistory; // 최근 N프레임 동안의 점유 상태 (히스테리시스 필터용)
+  std::vector<float> reidFeatures;
+  QString reidId;
 };
 
 /**
@@ -39,6 +53,7 @@ public:
    * @brief ROI 폴리곤 목록을 설정합니다 (주차 구역 정보).
    */
   void setRoiPolygons(const QList<QPolygonF> &polygons);
+  void setIdPrefix(const QString &prefix);
 
   /**
    * @brief 새로운 메타데이터 프레임을 처리하여 차량 상태를 업데이트합니다.
@@ -51,12 +66,16 @@ public:
    */
   QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
                              int effectiveWidth, int sourceHeight,
-                             qint64 nowMs);
+                             qint64 nowMs,
+                             QList<VehicleState> *departedVehicles = nullptr);
+
+  void updateReidFeatures(const QList<ObjectInfo> &objects, qint64 nowMs);
 
   /**
    * @brief 특정 차량의 OCR 결과를 반영합니다.
    */
   void setPlateNumber(int objectId, const QString &plate);
+  void setPlateNumberForReid(const QString &reidId, const QString &plate);
 
   /**
    * @brief 특정 차량의 상태(메타데이터)를 강제로 업데이트합니다.
@@ -83,12 +102,27 @@ public:
   QList<VehicleState> pruneStale(qint64 nowMs, qint64 timeoutMs = 5000);
 
 private:
+  struct GalleryEntry {
+    std::vector<float> features;
+    QString persistentId;
+    qint64 lastSeenMs = 0;
+  };
+
   double computeOccupancyRatio(const QRectF &vehicleRect,
                                const QPolygonF &roiPolygon,
                                double *dynamicThreshold = nullptr) const;
+  QString findMatchInGallery(const std::vector<float> &features,
+                             float threshold = 0.83f);
+  void updateGallery(const std::vector<float> &features, const QString &id,
+                     qint64 nowMs);
 
   QHash<int, VehicleState> m_vehicles;
   QList<QPolygonF> m_roiPolygons;
+  QString m_idPrefix = QStringLiteral("C1");
+  QList<GalleryEntry> m_reidGallery;
+  int m_nextPersistentId = 1001;
+  mutable std::mutex m_galleryMutex;
+  QHash<QString, QString> m_plateByReid;
 };
 
 #endif // VEHICLETRACKER_H

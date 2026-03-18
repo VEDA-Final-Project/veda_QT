@@ -9,13 +9,14 @@
 RpiPanelController::RpiPanelController(const UiRefs &uiRefs, QObject *parent)
     : QObject(parent), m_ui(uiRefs) {
     m_client = new RpiControlClient(this);
+    // 기본 접속 대상: IP는 rpicontrolclient.h 기본값(192.168.0.44:12345) 사용
 }
 
 void RpiPanelController::connectSignals() {
     if (m_signalsConnected) return;
     m_signalsConnected = true;
 
-    // ── UI 버튼 → 클라이언트 연결/해제 ───────────────────────────────────
+    // ── UI 버튼 → 연결/해제 ──────────────────────────────────────────────────
     if (m_ui.btnConnect) {
         connect(m_ui.btnConnect, &QPushButton::clicked,
                 this, &RpiPanelController::onConnect);
@@ -25,44 +26,62 @@ void RpiPanelController::connectSignals() {
                 this, &RpiPanelController::onDisconnect);
     }
 
-    // ── 클라이언트 → 패널 슬롯 ───────────────────────────────────────────
+    // ── 클라이언트 이벤트 ────────────────────────────────────────────────────
     connect(m_client, &RpiControlClient::connectedChanged,
             this, &RpiPanelController::onConnectedChanged);
     connect(m_client, &RpiControlClient::logMessage,
             this, &RpiPanelController::onLogMessage);
-    connect(m_client, &RpiControlClient::channelSelectRequested,
-            this, &RpiPanelController::onChannelSelect);
+
+    // ── 제어신호 re-emit ─────────────────────────────────────────────────────
     connect(m_client, &RpiControlClient::joystickMoved,
-            this, &RpiPanelController::onJoystick);
+            this, &RpiPanelController::joystickMoved);
     connect(m_client, &RpiControlClient::encoderRotated,
-            this, &RpiPanelController::onEncoderRotated);
+            this, &RpiPanelController::encoderRotated);
     connect(m_client, &RpiControlClient::encoderClicked,
-            this, &RpiPanelController::onEncoderClicked);
+            this, &RpiPanelController::encoderClicked);
+    connect(m_client, &RpiControlClient::channelSelectRequested,
+            this, &RpiPanelController::channelSelectRequested);
     connect(m_client, &RpiControlClient::recordingChanged,
-            this, &RpiPanelController::onRecordingChanged);
+            this, &RpiPanelController::recordingChanged);
     connect(m_client, &RpiControlClient::captureRequested,
-            this, &RpiPanelController::onCaptureRequested);
+            this, &RpiPanelController::captureRequested);
+    connect(m_client, &RpiControlClient::buttonPressed,
+            this, &RpiPanelController::buttonPressed);
+    connect(m_client, &RpiControlClient::dbTabChanged,
+            this, &RpiPanelController::dbTabChanged);
 
-    // 초기 상태 반영
+    // ── 초기 상태 표시 ───────────────────────────────────────────────────────
     onConnectedChanged(false);
-}
 
-void RpiPanelController::shutdown() {
-    if (m_client) {
-        m_client->disconnectFromServer();
+    // ── 앱 시작 시 자동 연결 ─────────────────────────────────────────────────
+    // UI의 host/port가 설정돼 있으면 그 값 사용, 없으면 기본값 사용
+    {
+        const QString host = m_ui.hostEdit
+                                 ? m_ui.hostEdit->text().trimmed()
+                                 : QString();
+        const int port = m_ui.portSpin ? m_ui.portSpin->value() : 12345;
+        if (!host.isEmpty()) {
+            m_client->setServer(host, static_cast<quint16>(port));
+        }
+        m_client->connectToServer();
     }
 }
 
-// ── UI 버튼 슬롯 ─────────────────────────────────────────────────────────────
+void RpiPanelController::shutdown() {
+    if (m_client) m_client->disconnectFromServer();
+}
+
+// ── 버튼 슬롯 ────────────────────────────────────────────────────────────────
 
 void RpiPanelController::onConnect() {
     if (!m_client) return;
     const QString host = m_ui.hostEdit
                              ? m_ui.hostEdit->text().trimmed()
-                             : QStringLiteral("192.168.0.100");
+                             : QString();
     const int port = m_ui.portSpin ? m_ui.portSpin->value() : 12345;
-    m_client->setServer(host.isEmpty() ? QStringLiteral("192.168.0.100") : host,
-                        static_cast<quint16>(port));
+    if (!host.isEmpty()) {
+        m_client->setServer(host, static_cast<quint16>(port));
+    }
     m_client->connectToServer();
 }
 
@@ -70,75 +89,27 @@ void RpiPanelController::onDisconnect() {
     if (m_client) m_client->disconnectFromServer();
 }
 
-// ── 클라이언트 이벤트 ────────────────────────────────────────────────────────
+// ── 이벤트 슬롯 ──────────────────────────────────────────────────────────────
 
 void RpiPanelController::onConnectedChanged(bool connected) {
     if (m_ui.connectionStatusLabel) {
-        m_ui.connectionStatusLabel->setText(connected ? "CONNECTED" : "DISCONNECTED");
+        m_ui.connectionStatusLabel->setText(
+            connected ? "CONNECTED" : "DISCONNECTED");
         m_ui.connectionStatusLabel->setStyleSheet(
             connected ? "color: #00ff88; font-weight: bold;"
                       : "color: #ff4d4d; font-weight: bold;");
     }
-    appendLog(connected ? "[RPi-CTRL] 연결됨" : "[RPi-CTRL] 연결 끊김");
 }
 
 void RpiPanelController::onLogMessage(const QString &message) {
     appendLog(message);
-}
-
-void RpiPanelController::onChannelSelect(int ch) {
-    const QString msg =
-        QString("[RPi-CTRL] CH 토글 요청: CH%1").arg(ch);
-    appendLog(msg);
-    if (m_ui.lastCmdLabel)
-        m_ui.lastCmdLabel->setText(QString("$CH,%1,SEL").arg(ch));
-    emit channelSelectRequested(ch);
-}
-
-void RpiPanelController::onJoystick(int ch, const QString &dir, bool active) {
-    const QString msg =
-        QString("[RPi-CTRL] JOY CH%1 %2 %3").arg(ch).arg(dir).arg(active ? "시작" : "정지");
-    appendLog(msg);
-    if (m_ui.lastCmdLabel)
-        m_ui.lastCmdLabel->setText(
-            QString("$JOY,%1,%2,%3").arg(ch).arg(dir).arg(active ? 1 : 0));
-    emit joystickMoved(ch, dir, active);
-}
-
-void RpiPanelController::onEncoderRotated(int ch, int delta) {
-    const QString msg =
-        QString("[RPi-CTRL] ENC CH%1 %2").arg(ch).arg(delta > 0 ? "+1" : "-1");
-    appendLog(msg);
-    if (m_ui.lastCmdLabel)
-        m_ui.lastCmdLabel->setText(
-            QString("$ENC,%1,%2").arg(ch).arg(delta > 0 ? "+1" : "-1"));
-    emit encoderRotated(ch, delta);
-}
-
-void RpiPanelController::onEncoderClicked(int ch) {
-    const QString msg = QString("[RPi-CTRL] ENC CH%1 CLK (줌 리셋)").arg(ch);
-    appendLog(msg);
-    if (m_ui.lastCmdLabel)
-        m_ui.lastCmdLabel->setText(QString("$ENC,%1,CLK").arg(ch));
-    emit encoderClicked(ch);
-}
-
-void RpiPanelController::onRecordingChanged(int ch, bool recording) {
-    const QString msg =
-        QString("[RPi-CTRL] REC CH%1 %2").arg(ch).arg(recording ? "시작" : "정지");
-    appendLog(msg);
-    if (m_ui.lastCmdLabel)
-        m_ui.lastCmdLabel->setText(
-            QString("$REC,%1,%2").arg(ch).arg(recording ? 1 : 0));
-    emit recordingChanged(ch, recording);
-}
-
-void RpiPanelController::onCaptureRequested(int ch) {
-    const QString msg = QString("[RPi-CTRL] CAP CH%1 캡처 요청").arg(ch);
-    appendLog(msg);
-    if (m_ui.lastCmdLabel)
-        m_ui.lastCmdLabel->setText(QString("$CAP,%1,NOW").arg(ch));
-    emit captureRequested(ch);
+    // 수신 명령을 마지막 명령 레이블에도 표시
+    if (m_ui.lastCmdLabel && message.contains("RX:")) {
+        const int rxIdx = message.indexOf("RX: ");
+        if (rxIdx >= 0) {
+            m_ui.lastCmdLabel->setText(message.mid(rxIdx + 4).trimmed());
+        }
+    }
 }
 
 void RpiPanelController::appendLog(const QString &message) {

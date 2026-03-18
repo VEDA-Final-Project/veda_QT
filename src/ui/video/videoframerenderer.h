@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QList>
 #include <QPolygon>
+#include <QSet>
 #include <QStringList>
 
 struct OcrRequest {
@@ -19,8 +20,9 @@ public:
   QImage compose(const QImage &frame, const QSize &targetSize,
                  const QList<ObjectInfo> &objects,
                  const QList<QPolygon> &roiPolygons,
-                 const QStringList &roiLabels, bool roiEnabled, bool showFps,
-                 int currentFps, const QString &profileName,
+                 const QStringList &roiLabels,
+                 const QSet<int> &occupiedRoiIndices, bool roiEnabled,
+                 bool showFps, int currentFps, const QString &profileName,
                  QList<OcrRequest> *ocrRequests) const;
 };
 

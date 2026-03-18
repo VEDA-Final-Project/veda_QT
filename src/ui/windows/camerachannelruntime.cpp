@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QColor>
 #include <QDateTime>
+#include <QSet>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -17,13 +18,11 @@ constexpr qint64 kUiRenderIntervalMs = 33;
 constexpr qint64 kReidRefreshIntervalMs = 300;
 } // namespace
 
-CameraChannelRuntime::CameraChannelRuntime(Slot slot,
-                                           const QString &channelLabel,
-                                           VideoWidget *videoWidget,
+CameraChannelRuntime::CameraChannelRuntime(Slot slot, VideoWidget *videoWidget,
                                            const SharedUiRefs &sharedUi,
                                            QObject *parent)
-    : QObject(parent), m_slot(slot), m_channelLabel(channelLabel),
-      m_videoWidget(videoWidget), m_sharedUi(sharedUi) {}
+    : QObject(parent), m_slot(slot), m_videoWidget(videoWidget),
+      m_sharedUi(sharedUi) {}
 
 void CameraChannelRuntime::connectSignals() {
   if (m_signalsConnected || !m_videoWidget) {
@@ -129,52 +128,7 @@ int CameraChannelRuntime::selectedCardIndex() const {
   return m_selectedCardIndex;
 }
 
-QString CameraChannelRuntime::cameraKey() const {
-  return m_source ? m_source->cameraKey() : QString();
-}
-
-QString CameraChannelRuntime::channelLabel() const { return m_channelLabel; }
-
-QString CameraChannelRuntime::displayProfile() const {
-  return m_source ? m_source->displayProfile() : QString();
-}
-
-QString CameraChannelRuntime::ocrProfile() const {
-  return m_source ? m_source->ocrProfile() : QString();
-}
-
 VideoWidget *CameraChannelRuntime::videoWidget() const { return m_videoWidget; }
-
-bool CameraChannelRuntime::isRunning() const {
-  return m_source && m_source->isRunning();
-}
-
-ParkingService *CameraChannelRuntime::parkingService() {
-  return m_source ? m_source->parkingService() : nullptr;
-}
-
-const ParkingService *CameraChannelRuntime::parkingService() const {
-  return m_source ? m_source->parkingService() : nullptr;
-}
-
-RoiService *CameraChannelRuntime::roiService() {
-  return m_source ? m_source->roiService() : nullptr;
-}
-
-const RoiService *CameraChannelRuntime::roiService() const {
-  return m_source ? m_source->roiService() : nullptr;
-}
-
-const QVector<QJsonObject> &CameraChannelRuntime::roiRecords() const {
-  static const QVector<QJsonObject> kEmptyRecords;
-  return m_source ? m_source->roiRecords() : kEmptyRecords;
-}
-
-QList<VehicleState> CameraChannelRuntime::activeVehicles() const {
-  return m_source ? m_source->activeVehicles() : QList<VehicleState>();
-}
-
-CameraSource *CameraChannelRuntime::source() const { return m_source; }
 
 void CameraChannelRuntime::onSourceDisplayFrameReady(
     const QImage &image, const QList<ObjectInfo> &objects) {
@@ -188,10 +142,21 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
   }
   m_renderTimer.restart();
 
+  QSet<int> occupiedRoiIndices;
+  if (m_source->parkingService()) {
+    const QList<VehicleState> activeVehicles = m_source->parkingService()->activeVehicles();
+    for (const VehicleState &vehicle : activeVehicles) {
+      if (vehicle.occupiedRoiIndex >= 0) {
+        occupiedRoiIndices.insert(vehicle.occupiedRoiIndex);
+      }
+    }
+  }
+
   m_videoWidget->updateMetadata(objects);
+  m_videoWidget->setOccupiedRoiIndices(occupiedRoiIndices);
   m_videoWidget->updateFrame(image);
   m_videoWidget->setProfileName(m_source->displayProfile());
-  refreshReidTable();
+
 
   if (m_slot == Slot::Ch1 && !m_videoReadyNotified) {
     m_videoReadyNotified = true;
@@ -209,13 +174,11 @@ void CameraChannelRuntime::onSourceVideoReady() {
 }
 
 void CameraChannelRuntime::populateReidTable(
-    QTableWidget *table, const QList<VehicleState> &vehicleStates,
+    QTableWidget *table, int channelId, const QList<VehicleState> &vehicleStates,
     int staleTimeoutMs, bool showStaleObjects) {
   if (!table) {
     return;
   }
-
-  table->setRowCount(0);
 
   QList<VehicleState> sortedVehicles = vehicleStates;
   std::sort(sortedVehicles.begin(), sortedVehicles.end(),
@@ -237,24 +200,33 @@ void CameraChannelRuntime::populateReidTable(
     const int row = table->rowCount();
     table->insertRow(row);
 
-    const QColor textColor = isStale ? Qt::gray : Qt::black;
+    const QColor textColor = isStale ? QColor("#94A3B8") : QColor("#FFFFFF");
 
-    auto *idItem = new QTableWidgetItem(QString::number(vehicle.objectId));
+    auto *chItem = new QTableWidgetItem(QString("Ch %1").arg(channelId));
+    chItem->setForeground(textColor);
+    table->setItem(row, 0, chItem);
+
+    const QString displayId =
+        (vehicle.reidId.isEmpty() || vehicle.reidId == QStringLiteral("V---"))
+            ? QString("V%1").arg(vehicle.objectId)
+            : vehicle.reidId;
+    auto *idItem = new QTableWidgetItem(displayId);
     idItem->setForeground(textColor);
-    table->setItem(row, 0, idItem);
+    idItem->setToolTip(QString("Tracker ID: %1").arg(vehicle.objectId));
+    table->setItem(row, 1, idItem);
 
     auto *typeItem = new QTableWidgetItem(vehicle.type);
     typeItem->setForeground(textColor);
-    table->setItem(row, 1, typeItem);
+    table->setItem(row, 2, typeItem);
 
     auto *plateItem = new QTableWidgetItem(vehicle.plateNumber);
     plateItem->setForeground(textColor);
-    table->setItem(row, 2, plateItem);
+    table->setItem(row, 3, plateItem);
 
     auto *scoreItem =
         new QTableWidgetItem(QString::number(vehicle.score, 'f', 2));
     scoreItem->setForeground(textColor);
-    table->setItem(row, 3, scoreItem);
+    table->setItem(row, 4, scoreItem);
 
     const QRectF &rect = vehicle.boundingBox;
     auto *bboxItem = new QTableWidgetItem(QString("x:%1 y:%2 w:%3 h:%4")
@@ -263,9 +235,10 @@ void CameraChannelRuntime::populateReidTable(
                                               .arg(rect.width(), 0, 'f', 1)
                                               .arg(rect.height(), 0, 'f', 1));
     bboxItem->setForeground(textColor);
-    table->setItem(row, 4, bboxItem);
+    table->setItem(row, 5, bboxItem);
   }
 }
+
 
 void CameraChannelRuntime::bindSource(CameraSource *source) {
   if (m_source == source) {
@@ -324,8 +297,9 @@ void CameraChannelRuntime::refreshReidTable() {
                           : 1000;
   const bool showStaleObjects = !m_sharedUi.chkShowStaleObjects ||
                                 m_sharedUi.chkShowStaleObjects->isChecked();
-  populateReidTable(m_sharedUi.reidTable, m_source->activeVehicles(), staleMs,
-                    showStaleObjects);
+  populateReidTable(m_sharedUi.reidTable, slotId(), m_source->activeVehicles(),
+                    staleMs, showStaleObjects);
+
 }
 
 void CameraChannelRuntime::clearWidgetState() {
