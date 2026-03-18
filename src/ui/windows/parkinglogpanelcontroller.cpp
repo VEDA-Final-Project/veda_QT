@@ -1,5 +1,6 @@
 #include "parkinglogpanelcontroller.h"
 
+#include "parking/parkingfeepolicy.h"
 #include "parking/parkingservice.h"
 #include <QDateTime>
 #include <QLineEdit>
@@ -41,20 +42,7 @@ int calculateDisplayedParkingFee(const QJsonObject &row) {
   if (!entryTime.isValid() || now <= entryTime) {
     return row["total_amount"].toInt();
   }
-
-  constexpr qint64 kFreeMinutes = 15;
-  constexpr qint64 kBillingMinutes = 60;
-  constexpr int kHourlyFee = 1000;
-
-  const qint64 totalMinutes = entryTime.secsTo(now) / 60;
-  if (totalMinutes <= kFreeMinutes) {
-    return 0;
-  }
-
-  const qint64 chargedMinutes = totalMinutes - kFreeMinutes;
-  const qint64 billingUnits =
-      (chargedMinutes + kBillingMinutes - 1) / kBillingMinutes;
-  return static_cast<int>(billingUnits) * kHourlyFee;
+  return parking::calculateParkingFee(entryTime, now).totalAmount;
 }
 
 QVector<QJsonObject> combinedRecentLogs(const QVector<ParkingService *> &services,

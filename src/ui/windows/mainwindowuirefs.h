@@ -66,9 +66,6 @@ struct MainWindowUiRefs {
   QPushButton *btnAddUser = nullptr;
   QPushButton *btnEditUser = nullptr;
   QPushButton *btnDeleteUser = nullptr;
-  QTableWidget *vehicleTable = nullptr;
-  QPushButton *btnRefreshVehicles = nullptr;
-  QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
 

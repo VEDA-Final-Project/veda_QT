@@ -27,8 +27,6 @@ qt_add_executable(rtsp_test
     src/ui/windows/parkinglogpanelcontroller.h
     src/ui/windows/userdbpanelcontroller.cpp
     src/ui/windows/userdbpanelcontroller.h
-    src/ui/windows/vehicleinfopanelcontroller.cpp
-    src/ui/windows/vehicleinfopanelcontroller.h
     src/ui/windows/zonepanelcontroller.cpp
     src/ui/windows/zonepanelcontroller.h
     src/ui/windows/rpipanelcontroller.cpp
@@ -94,6 +92,8 @@ qt_add_executable(rtsp_test
     # Parking
     src/parking/vehicletracker.cpp
     src/parking/vehicletracker.h
+    src/parking/parkingfeepolicy.cpp
+    src/parking/parkingfeepolicy.h
     src/parking/parkingservice.cpp
     src/parking/parkingservice.h
     src/parking/parkingrepository.cpp

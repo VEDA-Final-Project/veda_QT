@@ -132,9 +132,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnAddUser = m_btnAddUser;
   uiRefs.btnEditUser = m_btnEditUser;
   uiRefs.btnDeleteUser = m_btnDeleteUser;
-  uiRefs.vehicleTable = m_vehicleTable;
-  uiRefs.btnRefreshVehicles = m_btnRefreshVehicles;
-  uiRefs.btnDeleteVehicle = m_btnDeleteVehicle;
   uiRefs.zoneTable = m_zoneTable;
   uiRefs.btnRefreshZone = m_btnRefreshZone;
   uiRefs.eventListWidget = m_eventListWidget;

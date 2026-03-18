@@ -160,6 +160,7 @@ void ParkingService::processOcrResult(int objectId,
                                       const QString &plateNumber)
 {
   m_tracker.setPlateNumber(objectId, plateNumber);
+  const QString resolvedPlate = resolvedPlateText(plateNumber);
 
   const auto &vehicles = m_tracker.vehicles();
   QString reidId;
@@ -180,18 +181,38 @@ void ParkingService::processOcrResult(int objectId,
   }
   m_ocrObjectReidSnapshot.remove(objectId);
 
-  if (hasVehicle && vs.occupiedRoiIndex >= 0 && !plateNumber.isEmpty()) {
+  bool insertedNewEntry = false;
+  bool updatedActiveEntry = false;
+  QString previousActivePlate;
+  if (hasVehicle && vs.occupiedRoiIndex >= 0 && !resolvedPlate.isEmpty()) {
+    const QJsonObject activeBefore =
+        m_repository.findActiveByObjectId(m_cameraKey, objectId);
+    previousActivePlate =
+        resolvedPlateText(activeBefore["plate_number"].toString());
+
     QString error;
     bool updated = false;
     if (!reidId.isEmpty()) {
       updated = m_repository.updateActivePlateByReidId(m_cameraKey, reidId,
                                                        plateNumber, &error);
     }
-    if (!updated &&
-        !m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
-                                                  plateNumber, &error)) {
-      handleNewEntry(vs);
+    if (!updated) {
+      updated = m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
+                                                         plateNumber, &error);
     }
+
+    if (updated) {
+      updatedActiveEntry = true;
+    } else {
+      handleNewEntry(vs);
+      insertedNewEntry = true;
+    }
+  }
+
+  if (m_telegram && hasVehicle && vs.occupiedRoiIndex >= 0 &&
+      !resolvedPlate.isEmpty() && !insertedNewEntry &&
+      updatedActiveEntry && previousActivePlate != resolvedPlate) {
+    m_telegram->sendEntryNotice(resolvedPlate);
   }
 
 }

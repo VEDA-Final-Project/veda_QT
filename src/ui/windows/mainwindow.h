@@ -100,10 +100,6 @@ private:
   QPushButton *m_btnEditUser = nullptr;
   QPushButton *m_btnDeleteUser = nullptr;
 
-  QTableWidget *m_vehicleTable = nullptr;
-  QPushButton *m_btnRefreshVehicles = nullptr;
-  QPushButton *m_btnDeleteVehicle = nullptr;
-
   QTableWidget *m_zoneTable = nullptr;
   QPushButton *m_btnRefreshZone = nullptr;
 

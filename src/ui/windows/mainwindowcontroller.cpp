@@ -104,9 +104,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnAddUser = m_ui.btnAddUser;
   dbUiRefs.btnEditUser = m_ui.btnEditUser;
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
-  dbUiRefs.vehicleTable = m_ui.vehicleTable;
-  dbUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
-  dbUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
   dbUiRefs.zoneTable = m_ui.zoneTable;
   dbUiRefs.btnRefreshZone = m_ui.btnRefreshZone;
   dbUiRefs.logView = m_ui.logView;
