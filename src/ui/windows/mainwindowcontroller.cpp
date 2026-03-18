@@ -728,11 +728,11 @@ void MainWindowController::onHardwareButtonPressed(int btnCode) {
       onRoiTargetChanged(ch);
   } else if (btnCode == 292) {
       if (m_ui.stackedWidget) {
-          m_ui.stackedWidget->setCurrentIndex(4);
+          m_ui.stackedWidget->setCurrentIndex(3);
           onLogMessage("[Controller] Moved to DB Tab.");
       }
   } else if (btnCode == 293) {
-      if (m_ui.stackedWidget && m_ui.stackedWidget->currentIndex() == 4 && m_ui.dbSubTabs) {
+      if (m_ui.stackedWidget && m_ui.stackedWidget->currentIndex() == 3 && m_ui.dbSubTabs) {
           int nextIndex = (m_ui.dbSubTabs->currentIndex() + 1) % m_ui.dbSubTabs->count();
           m_ui.dbSubTabs->setCurrentIndex(nextIndex);
           onLogMessage(QString("[Controller] Cycled DB SubTab to %1").arg(nextIndex));
@@ -1756,12 +1756,12 @@ void MainWindowController::processJoystickMovement() {
     if (channel && channel->videoWidget()) {
         const double accel = 0.08; // 8% approach per tick (smooth acceleration)
         
-        m_joystickSpeedX += (m_joystickTargetX - m_joystickSpeedX) * accel;
-        m_joystickSpeedY += (m_joystickTargetY - m_joystickSpeedY) * accel;
-        
-        // Deadzone check to completely stop
-        if (std::abs(m_joystickSpeedX) < 0.001) m_joystickSpeedX = 0;
-        if (std::abs(m_joystickSpeedY) < 0.001) m_joystickSpeedY = 0;
+        // ?쇰읇?? ?떼씇?쇰㈃(Target?? 0?대㈃) 利됱떆  ucfirst? ?꾨땲硫? 媛€? ucfirst 적용
+        if (m_joystickTargetX == 0) m_joystickSpeedX = 0;
+        else m_joystickSpeedX += (m_joystickTargetX - m_joystickSpeedX) * accel;
+
+        if (m_joystickTargetY == 0) m_joystickSpeedY = 0;
+        else m_joystickSpeedY += (m_joystickTargetY - m_joystickSpeedY) * accel;
         
         if (m_joystickSpeedX != 0 || m_joystickSpeedY != 0) {
             channel->videoWidget()->panZoom(m_joystickSpeedX * 0.4, m_joystickSpeedY * 0.4);
@@ -1874,7 +1874,6 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     QString camId = QString("Ch %1").arg(idx + 1);
 
     onLogMessage(
-<<<<<<< HEAD
         QString("[Recorder] [%1] 녹화 중지 요청 - 저장 중...").arg(camId));
     
     // UI 피드백 (REC 제거)
@@ -1882,9 +1881,11 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     if (vw) {
         vw->setRecording(false);
     }
+    /*
 =======
-        QString("[Recorder] [%1] ?뱁솕 以묒? ?붿껌 - ???以?..").arg(camId));
+        QString("[Recorder] [%1] ?뱁솕 以묒? ?붿껌 - ?€??以?..").arg(camId));
 >>>>>>> remotes/origin/feature/tcp-comm
+    */
 
     if (!targetBuffer) {
       onLogMessage(QString("[Recorder] [%1] 踰꾪띁 媛앹껜媛 ?놁뒿?덈떎.").arg(camId));
