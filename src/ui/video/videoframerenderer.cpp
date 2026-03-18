@@ -10,15 +10,13 @@
 namespace {
 QRect sourceRectForObject(const QImage &frame, const ObjectInfo &obj) {
   const auto &cfg = Config::instance();
+  const double sourceWidth = static_cast<double>(cfg.sourceWidth());
   const double sourceHeight = static_cast<double>(cfg.sourceHeight());
-  const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
-  const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
   const QRectF &nsRect = obj.rect;
 
-  const double srcX =
-      ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
+  const double srcX = (nsRect.x() / sourceWidth) * frame.width();
   const double srcY = (nsRect.y() / sourceHeight) * frame.height();
-  const double srcW = (nsRect.width() / effectiveWidth) * frame.width();
+  const double srcW = (nsRect.width() / sourceWidth) * frame.width();
   const double srcH = (nsRect.height() / sourceHeight) * frame.height();
 
   return QRect(static_cast<int>(srcX), static_cast<int>(srcY),
@@ -169,7 +167,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    bool roiEnabled, bool showFps,
                                    int currentFps, const QString &profileName,
                                    QList<OcrRequest> *ocrRequests) const {
-  (void)ocrRequests;
+
   if (targetSize.isEmpty()) {
     return frame;
   }
@@ -192,6 +190,10 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   QPen pen(Qt::green, 3);
   painter.setPen(pen);
 
+  const auto &cfg = Config::instance();
+  const double sourceWidth = static_cast<double>(cfg.sourceWidth());
+  const double sourceHeight = static_cast<double>(cfg.sourceHeight());
+
   QFont font = painter.font();
   font.setPointSize(14);
   font.setBold(true);
@@ -200,8 +202,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   const QList<QPolygon> scaledRoiPolygons =
       scaleRoiPolygons(roiPolygons, frame.size(), scaledFrame.size());
 
-  const auto &cfg = Config::instance();
-  const double sourceHeight = static_cast<double>(cfg.sourceHeight());
   const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
   const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
   const QRegion roiRegion =
@@ -220,21 +220,17 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
 
   for (const ObjectInfo &obj : objects) {
     const QRectF &nsRect = obj.rect;
-    const double scaledX =
-        ((nsRect.x() - cropOffsetX) / effectiveWidth) * scaledFrame.width();
+    const double scaledX = (nsRect.x() / sourceWidth) * scaledFrame.width();
     const double scaledY = (nsRect.y() / sourceHeight) * scaledFrame.height();
-    const double scaledW =
-        (nsRect.width() / effectiveWidth) * scaledFrame.width();
-    const double scaledH =
-        (nsRect.height() / sourceHeight) * scaledFrame.height();
+    const double scaledW = (nsRect.width() / sourceWidth) * scaledFrame.width();
+    const double scaledH = (nsRect.height() / sourceHeight) * scaledFrame.height();
 
     const QRect uRect(static_cast<int>(scaledX), static_cast<int>(scaledY),
                       static_cast<int>(scaledW), static_cast<int>(scaledH));
 
-    const double srcX =
-        ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
+    const double srcX = (nsRect.x() / sourceWidth) * frame.width();
     const double srcY = (nsRect.y() / sourceHeight) * frame.height();
-    const double srcW = (nsRect.width() / effectiveWidth) * frame.width();
+    const double srcW = (nsRect.width() / sourceWidth) * frame.width();
     const double srcH = (nsRect.height() / sourceHeight) * frame.height();
 
     const QRect fullSrcRect(static_cast<int>(srcX), static_cast<int>(srcY),
@@ -251,6 +247,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
       if (polygon.size() < 3)
         continue;
 
+      const QRegion singleRoiRegion(polygon, Qt::WindingFill);
       const bool occupied = occupiedRoiIndices.contains(i);
 
       if (occupied) {
@@ -290,32 +287,44 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     const QRect &uRect = candidate.scaledRect;
     painter.drawRect(uRect);
 
-    const QString lowerType = obj.type.toLower();
-    const bool vehicle = lowerType == QStringLiteral("vehicle") ||
-                         lowerType == QStringLiteral("vehical") ||
-                         lowerType == QStringLiteral("car") ||
-                         lowerType == QStringLiteral("truck") ||
-                         lowerType == QStringLiteral("bus");
+    // Conditional ID display: V-ID for vehicles, numeric ID for others
+    QString lowerType = obj.type.toLower();
+    bool isVehicle = (lowerType == "vehicle" || lowerType == "car" ||
+                      lowerType == "vehical" || lowerType == "truck" ||
+                      lowerType == "bus");
 
+    // Hide ID for non-vehicle objects (person, plate, etc.)
     QString text;
-    if (vehicle) {
-      const QString displayId =
-          obj.reidId.isEmpty() ? QStringLiteral("V---") : obj.reidId;
+    if (isVehicle) {
+      const QString displayId = obj.reidId.isEmpty() ? "V---" : obj.reidId;
       text = QString("[%1] Vehicle").arg(displayId);
     } else {
-      text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
+      text = obj.type; // No ID for others
     }
     if (!obj.extraInfo.isEmpty() && obj.extraInfo != obj.plate) {
       text += QString(" (%1)").arg(obj.extraInfo);
     }
-    if (!obj.plate.isEmpty()) {
-      text += QString(" [%1]").arg(obj.plate);
-    }
 
     QRect textRect = painter.fontMetrics().boundingRect(text);
-    textRect.moveTopLeft(uRect.topLeft() - QPoint(0, textRect.height() + 5));
+    textRect.adjust(-4, -2, 4, 2); // Add small padding for background box
 
-    painter.fillRect(textRect, Qt::black);
+    // Calculate position: Above box by default
+    QPoint targetPos = uRect.topLeft() - QPoint(0, textRect.height());
+    
+    // Boundary check: If would clip at top, move inside the box
+    if (targetPos.y() < 0) {
+      targetPos.setY(uRect.top() + 2); // 2px margin inside
+    }
+    // Left boundary check
+    if (targetPos.x() < 0) targetPos.setX(0);
+    // Right boundary check
+    if (targetPos.x() + textRect.width() > scaledFrame.width()) {
+      targetPos.setX(scaledFrame.width() - textRect.width());
+    }
+
+    textRect.moveTopLeft(targetPos);
+
+    painter.fillRect(textRect, QColor(0, 0, 0, 180)); // Semi-transparent black
     painter.setPen(Qt::white);
     painter.drawText(textRect, Qt::AlignCenter, text);
     painter.setPen(pen);

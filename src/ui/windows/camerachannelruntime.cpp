@@ -7,7 +7,6 @@
 #include <QCheckBox>
 #include <QColor>
 #include <QDateTime>
-#include <QSet>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -142,18 +141,7 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
   }
   m_renderTimer.restart();
 
-  QSet<int> occupiedRoiIndices;
-  if (m_source->parkingService()) {
-    const QList<VehicleState> activeVehicles = m_source->parkingService()->activeVehicles();
-    for (const VehicleState &vehicle : activeVehicles) {
-      if (vehicle.occupiedRoiIndex >= 0) {
-        occupiedRoiIndices.insert(vehicle.occupiedRoiIndex);
-      }
-    }
-  }
-
   m_videoWidget->updateMetadata(objects);
-  m_videoWidget->setOccupiedRoiIndices(occupiedRoiIndices);
   m_videoWidget->updateFrame(image);
   m_videoWidget->setProfileName(m_source->displayProfile());
 
@@ -206,14 +194,24 @@ void CameraChannelRuntime::populateReidTable(
     chItem->setForeground(textColor);
     table->setItem(row, 0, chItem);
 
-    const QString displayId =
-        (vehicle.reidId.isEmpty() || vehicle.reidId == QStringLiteral("V---"))
-            ? QString("V%1").arg(vehicle.objectId)
-            : vehicle.reidId;
+
+    QString lowerType = vehicle.type.toLower();
+    bool isVehicle = (lowerType == "vehicle" || lowerType == "car" || 
+                      lowerType == "vehical" || lowerType == "truck" || 
+                      lowerType == "bus");
+
+    const QString displayId = isVehicle 
+        ? ((vehicle.reidId.isEmpty() || vehicle.reidId == "V---") ? QString("V%1").arg(vehicle.objectId) : vehicle.reidId)
+        : QString("-"); // Hide ID for others
+        
     auto *idItem = new QTableWidgetItem(displayId);
     idItem->setForeground(textColor);
-    idItem->setToolTip(QString("Tracker ID: %1").arg(vehicle.objectId));
     table->setItem(row, 1, idItem);
+    
+    // If we have a reidId, we could also show the original objectId in tooltips or another column
+    if (!vehicle.reidId.isEmpty()) {
+        idItem->setToolTip(QString("Tracker ID: %1").arg(vehicle.objectId));
+    }
 
     auto *typeItem = new QTableWidgetItem(vehicle.type);
     typeItem->setForeground(textColor);

@@ -9,27 +9,24 @@
 #include <QtConcurrent>
 #include <algorithm>
 
-namespace
-{
-  constexpr qint64 kUiFrameStaleMs = 120;
-  constexpr qint64 kThumbnailFrameStaleMs = 300;
-  constexpr qint64 kUiRenderIntervalMs = 33;
-  constexpr qint64 kThumbnailRenderIntervalMs = 200;
-  constexpr qint64 kOcrFrameStaleMs = 250;
-  constexpr qint64 kOcrDispatchIntervalMs = 200;
-  constexpr qint64 kReidDispatchIntervalMs = 800;
-  constexpr qint64 kZoneSyncIntervalMs = 500;
-  constexpr qint64 kRoiSyncIntervalMs = 1000;
-  constexpr int kIdleTargetFps = 5;
-  constexpr qint64 kDisplayFrameTimeoutMs = 4000;
-  constexpr qint64 kConnectingTimeoutMs = 5000;
-  constexpr int kReconnectBaseDelayMs = 1000;
-  constexpr int kReconnectMaxDelayMs = 30000;
+namespace {
+constexpr qint64 kUiFrameStaleMs = 120;
+constexpr qint64 kThumbnailFrameStaleMs = 300;
+constexpr qint64 kUiRenderIntervalMs = 33;
+constexpr qint64 kThumbnailRenderIntervalMs = 200;
+constexpr qint64 kOcrFrameStaleMs = 250;
+constexpr qint64 kOcrDispatchIntervalMs = 200;
+constexpr qint64 kZoneSyncIntervalMs = 500;
+constexpr qint64 kRoiSyncIntervalMs = 1000;
+constexpr int kIdleTargetFps = 5;
+constexpr qint64 kDisplayFrameTimeoutMs = 4000;
+constexpr qint64 kConnectingTimeoutMs = 5000;
+constexpr int kReconnectBaseDelayMs = 1000;
+constexpr int kReconnectMaxDelayMs = 30000;
 
-  QString normalizedProfileName(const QString &profile)
-  {
-    return profile.trimmed().toLower();
-  }
+QString normalizedProfileName(const QString &profile) {
+  return profile.trimmed().toLower();
+}
 } // namespace
 
 CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
@@ -37,8 +34,7 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
     : QObject(parent), m_cameraManager(new CameraManager(this)),
       m_ocrCoordinator(new PlateOcrCoordinator(this)),
       m_parkingService(new ParkingService(this)),
-      m_cameraKey(cameraKey.trimmed()), m_cardIndex(cardIndex)
-{
+      m_cameraKey(cameraKey.trimmed()), m_cardIndex(cardIndex) {
   m_healthTimer = new QTimer(this);
   m_healthTimer->setInterval(1000);
   connect(m_healthTimer, &QTimer::timeout, this, &CameraSource::onHealthCheck);
@@ -66,7 +62,7 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
           &CameraSource::onOcrDispatchTick);
 
   m_reidDispatchTimer = new QTimer(this);
-  m_reidDispatchTimer->setInterval(static_cast<int>(kReidDispatchIntervalMs));
+  m_reidDispatchTimer->setInterval(800); // ReID 주기를 0.8초로 상향 (렉 방지)
   connect(m_reidDispatchTimer, &QTimer::timeout, this,
           &CameraSource::onReidDispatchTick);
 
@@ -79,8 +75,7 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
           &CameraSource::onFrameCaptured);
   connect(
       m_cameraManager, &CameraManager::logMessage, this,
-      [this](const QString &msg)
-      {
+      [this](const QString &msg) {
         emit logMessage(
             QString("[CameraSource][Ch %1] %2").arg(m_cardIndex + 1).arg(msg));
       });
@@ -97,79 +92,70 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
 
 }
 
-bool CameraSource::initialize(TelegramBotAPI *telegramApi)
-{
-  if (m_initialized)
-  {
+bool CameraSource::initialize(TelegramBotAPI *telegramApi) {
+  if (m_initialized) {
     return true;
   }
 
-  if (!m_parkingService)
-  {
+  if (!m_parkingService) {
     return false;
   }
 
   QString parkingError;
-  if (!m_parkingService->init(&parkingError))
-  {
+  if (!m_parkingService->init(&parkingError)) {
     emit logMessage(QString("[Parking][%1] Service init failed: %2")
                         .arg(m_cameraKey, parkingError));
     return false;
   }
 
-  if (telegramApi)
-  {
+  if (telegramApi) {
     m_parkingService->setTelegramApi(telegramApi);
   }
   m_parkingService->setCameraKey(m_cameraKey);
 
-  const QString reidModelPath = Config::instance().reidModelPath();
+  // ReID 모델 로드
+  QString reidModelPath = Config::instance().reidModelPath();
   if (!reidModelPath.isEmpty()) {
     if (m_reidExtractor.loadModel(reidModelPath)) {
-      emit logMessage(QString("[ReID] Model Load Success: %1").arg(reidModelPath));
+      emit logMessage(
+          QString("[ReID] Model Load Success: %1").arg(reidModelPath));
     } else {
-      emit logMessage(QString("[ReID] Model Load Failed: %1").arg(reidModelPath));
+      emit logMessage(
+          QString("[ReID] Model Load Failed: %1").arg(reidModelPath));
     }
   }
+
   m_initialized = true;
   return reloadRoi(false);
 }
 
-void CameraSource::start()
-{
+void CameraSource::start() {
   m_shouldRun = true;
   m_lastDisplayRenderedTimestampMs = 0;
   m_lastThumbnailRenderedTimestampMs = 0;
   m_lastOcrProcessedTimestampMs = 0;
-  if (m_cameraKey.isEmpty())
-  {
+  if (m_cameraKey.isEmpty()) {
     return;
   }
-  if (m_displayRenderTimer && !m_displayRenderTimer->isActive())
-  {
+  if (m_displayRenderTimer && !m_displayRenderTimer->isActive()) {
     m_displayRenderTimer->start();
   }
-  if (m_thumbnailRenderTimer && !m_thumbnailRenderTimer->isActive())
-  {
+  if (m_thumbnailRenderTimer && !m_thumbnailRenderTimer->isActive()) {
     m_thumbnailRenderTimer->start();
   }
-  if (m_ocrDispatchTimer && !m_ocrDispatchTimer->isActive())
-  {
+  if (m_ocrDispatchTimer && !m_ocrDispatchTimer->isActive()) {
     m_ocrDispatchTimer->start();
   }
-  if (m_reidDispatchTimer && !m_reidDispatchTimer->isActive())
-  {
+  if (m_reidDispatchTimer && !m_reidDispatchTimer->isActive()) {
     m_reidDispatchTimer->start();
   }
   startDisplayStream(false, true, QStringLiteral("initial start"));
-  if (!m_cameraManager->isAnalyticsRunning())
-  {
+  if (!m_cameraManager->isAnalyticsRunning()) {
     m_cameraManager->startAnalytics();
   }
 }
 
-void CameraSource::stop()
-{
+void CameraSource::stop() {
   m_shouldRun = false;
   m_videoReadyNotified = false;
   m_latestFrameObjects.clear();
@@ -179,72 +165,57 @@ void CameraSource::stop()
   m_lastThumbnailRenderedTimestampMs = 0;
   m_lastOcrProcessedTimestampMs = 0;
   clearReconnect();
-  if (m_healthTimer)
-  {
+  if (m_healthTimer) {
     m_healthTimer->stop();
   }
-  if (m_displayRenderTimer)
-  {
+  if (m_displayRenderTimer) {
     m_displayRenderTimer->stop();
   }
-  if (m_thumbnailRenderTimer)
-  {
+  if (m_thumbnailRenderTimer) {
     m_thumbnailRenderTimer->stop();
   }
-  if (m_ocrDispatchTimer)
-  {
+  if (m_ocrDispatchTimer) {
     m_ocrDispatchTimer->stop();
   }
-  if (m_reidDispatchTimer)
-  {
+  if (m_reidDispatchTimer) {
     m_reidDispatchTimer->stop();
   }
-  if (m_cameraManager)
-  {
+  if (m_cameraManager) {
     m_cameraManager->stop();
   }
   setStatus(Status::Stopped);
 }
 
-void CameraSource::attachDisplayConsumer(int slotId, const QSize &size)
-{
+void CameraSource::attachDisplayConsumer(int slotId, const QSize &size) {
   m_consumerSizes.insert(slotId, size);
   updateDisplayProfileForConsumers();
 }
 
-void CameraSource::detachDisplayConsumer(int slotId)
-{
+void CameraSource::detachDisplayConsumer(int slotId) {
   m_consumerSizes.remove(slotId);
   updateDisplayProfileForConsumers();
 }
 
-void CameraSource::updateConsumerSize(int slotId, const QSize &size)
-{
-  if (slotId < 0)
-  {
+void CameraSource::updateConsumerSize(int slotId, const QSize &size) {
+  if (slotId < 0) {
     return;
   }
   m_consumerSizes.insert(slotId, size);
   updateDisplayProfileForConsumers();
 }
 
-void CameraSource::updateObjectFilter(const QSet<QString> &disabledTypes)
-{
+void CameraSource::updateObjectFilter(const QSet<QString> &disabledTypes) {
   m_disabledTypes = disabledTypes;
-  if (m_cameraManager)
-  {
+  if (m_cameraManager) {
     m_cameraManager->setDisabledObjectTypes(m_disabledTypes);
   }
 }
 
-bool CameraSource::reloadRoi(bool writeLog)
-{
+bool CameraSource::reloadRoi(bool writeLog) {
   const Result<RoiService::RoiInitData> initResult =
       m_roiService.init(m_cameraKey);
-  if (!initResult.isOk())
-  {
-    if (writeLog)
-    {
+  if (!initResult.isOk()) {
+    if (writeLog) {
       emit logMessage(QString("[ROI][DB] %1 초기화 실패: %2")
                           .arg(m_cameraKey, initResult.error));
     }
@@ -253,8 +224,7 @@ bool CameraSource::reloadRoi(bool writeLog)
 
   syncEnabledRoiPolygons();
 
-  if (writeLog)
-  {
+  if (writeLog) {
     emit logMessage(QString("[ROI][DB] 채널 '%1' ROI %2개 로드 완료")
                         .arg(m_cameraKey)
                         .arg(initResult.data.loadedCount));
@@ -263,10 +233,8 @@ bool CameraSource::reloadRoi(bool writeLog)
   return true;
 }
 
-void CameraSource::syncEnabledRoiPolygons()
-{
-  if (!m_parkingService)
-  {
+void CameraSource::syncEnabledRoiPolygons() {
+  if (!m_parkingService) {
     return;
   }
 
@@ -278,23 +246,19 @@ void CameraSource::syncEnabledRoiPolygons()
   enabledZoneNames.reserve(records.size());
   enabledZoneIds.reserve(records.size());
 
-  for (const QJsonObject &record : records)
-  {
+  for (const QJsonObject &record : records) {
     const QJsonArray points = record.value("zone_points").toArray();
-    if (points.size() < 3)
-    {
+    if (points.size() < 3) {
       continue;
     }
     QPolygonF polygon;
     polygon.reserve(points.size());
-    for (const QJsonValue &value : points)
-    {
+    for (const QJsonValue &value : points) {
       const QJsonObject point = value.toObject();
       polygon << QPointF(point.value("x").toDouble(),
                          point.value("y").toDouble());
     }
-    if (polygon.size() < 3)
-    {
+    if (polygon.size() < 3) {
       continue;
     }
     enabledPolygons.append(polygon);
@@ -308,8 +272,7 @@ void CameraSource::syncEnabledRoiPolygons()
   m_parkingService->updateRoiPolygons(enabledPolygons, enabledZoneNames);
 }
 
-bool CameraSource::isRunning() const
-{
+bool CameraSource::isRunning() const {
   return m_cameraManager && m_cameraManager->isRunning();
 }
 
@@ -321,15 +284,13 @@ QString CameraSource::displayProfile() const { return m_displayProfile; }
 
 CameraSource::Status CameraSource::status() const { return m_status; }
 
-qint64 CameraSource::lastFrameTimestampMs() const
-{
+qint64 CameraSource::lastFrameTimestampMs() const {
   return m_lastFrameTimestampMs;
 }
 
 ParkingService *CameraSource::parkingService() { return m_parkingService; }
 
-const ParkingService *CameraSource::parkingService() const
-{
+const ParkingService *CameraSource::parkingService() const {
   return m_parkingService;
 }
 
@@ -337,97 +298,81 @@ RoiService *CameraSource::roiService() { return &m_roiService; }
 
 const RoiService *CameraSource::roiService() const { return &m_roiService; }
 
-const QVector<QJsonObject> &CameraSource::roiRecords() const
-{
+const QVector<QJsonObject> &CameraSource::roiRecords() const {
   return m_roiService.records();
 }
 
-QList<VehicleState> CameraSource::activeVehicles() const
-{
+QList<VehicleState> CameraSource::activeVehicles() const {
   return m_parkingService ? m_parkingService->activeVehicles()
                           : QList<VehicleState>();
 }
 
-QList<QPolygonF> CameraSource::normalizedRoiPolygons() const
-{
+QList<QPolygonF> CameraSource::normalizedRoiPolygons() const {
   QList<QPolygonF> polygons;
   const QVector<QJsonObject> &records = m_roiService.records();
   polygons.reserve(records.size());
-  for (const QJsonObject &record : records)
-  {
+  for (const QJsonObject &record : records) {
     const QJsonArray points = record.value("zone_points").toArray();
-    if (points.size() < 3)
-    {
+    if (points.size() < 3) {
       continue;
     }
     QPolygonF polygon;
     polygon.reserve(points.size());
-    for (const QJsonValue &value : points)
-    {
+    for (const QJsonValue &value : points) {
       const QJsonObject point = value.toObject();
       polygon << QPointF(point.value("x").toDouble(),
                          point.value("y").toDouble());
     }
-    if (polygon.size() >= 3)
-    {
+    if (polygon.size() >= 3) {
       polygons.append(polygon);
     }
   }
   return polygons;
 }
 
-QStringList CameraSource::roiLabels() const
-{
+QStringList CameraSource::roiLabels() const {
   QStringList labels;
   const QVector<QJsonObject> &records = m_roiService.records();
   labels.reserve(records.size());
-  for (const QJsonObject &record : records)
-  {
+  for (const QJsonObject &record : records) {
     labels.append(record.value("zone_name").toString().trimmed());
   }
   return labels;
 }
 
-void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects)
-{
+void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects) {
   m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
 
   if ((!m_roiSyncTimer.isValid() ||
        m_roiSyncTimer.elapsed() >= kRoiSyncIntervalMs) &&
-      m_parkingService)
-  {
+      m_parkingService) {
     m_roiSyncTimer.restart();
     syncEnabledRoiPolygons();
   }
 
-  const auto &cfg = Config::instance();
-  if (m_parkingService)
-  {
-    m_parkingService->processMetadata(objects, 0, cfg.effectiveWidth(),
-                                      cfg.sourceHeight(), 5000);
-  }
+  // Metadata is now pushed to session and processed in onFrameCaptured at 30fps
+  // for sync. if (m_parkingService) {
+  //   m_parkingService->processMetadata(objects, 0, cfg.effectiveWidth(),
+  //                                     cfg.sourceHeight(), 5000);
+  // }
 
   if (!m_zoneStatusTimer.isValid() ||
-      m_zoneStatusTimer.elapsed() >= kZoneSyncIntervalMs)
-  {
+      m_zoneStatusTimer.elapsed() >= kZoneSyncIntervalMs) {
     m_zoneStatusTimer.restart();
     syncZoneOccupancyFromActiveVehicles();
   }
 }
 
 void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
-                                   qint64 timestampMs)
-{
-  if (!framePtr || framePtr->empty())
-  {
+                                   qint64 timestampMs) {
+  if (!framePtr || framePtr->empty()) {
     return;
   }
 
   emit rawFrameReady(m_cardIndex, framePtr, timestampMs);
 
   m_lastFrameTimestampMs = timestampMs;
-  if (m_healthTimer && !m_healthTimer->isActive())
-  {
+  if (m_healthTimer && !m_healthTimer->isActive()) {
     m_healthTimer->start();
   }
   clearReconnect();
@@ -439,32 +384,37 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
   m_latestFramePtr = framePtr;
   m_latestFrameObjects = readyMetadata;
   m_latestBufferedFrameTimestampMs = timestampMs;
+
+  // Restore 30fps tracking update
+  if (m_parkingService && !readyMetadata.isEmpty()) {
+    const auto &cfg = Config::instance();
+    m_parkingService->processMetadata(readyMetadata, 0, cfg.effectiveWidth(),
+                                      cfg.sourceHeight(), 5000);
+  }
 }
 
-void CameraSource::onDisplayRenderTick()
-{
-  if (!m_shouldRun || !m_latestFramePtr || m_latestFramePtr->empty())
-  {
+void CameraSource::onDisplayRenderTick() {
+  if (!m_shouldRun || !m_latestFramePtr || m_latestFramePtr->empty()) {
     return;
   }
 
   const qint64 timestampMs = m_latestBufferedFrameTimestampMs;
-  if (timestampMs <= m_lastDisplayRenderedTimestampMs)
-  {
+  if (timestampMs <= m_lastDisplayRenderedTimestampMs) {
     return;
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > kUiFrameStaleMs)
-  {
+  if ((nowMs - timestampMs) > kUiFrameStaleMs) {
     return;
   }
 
   const auto framePtr = m_latestFramePtr;
   QList<ObjectInfo> readyMetadata = m_latestFrameObjects;
+
+  // Decorate objects with persistent ReID IDs from ParkingService
   if (m_parkingService) {
     for (ObjectInfo &obj : readyMetadata) {
-      const VehicleState vs = m_parkingService->getVehicleState(obj.id);
+      VehicleState vs = m_parkingService->getVehicleState(obj.id);
       if (vs.objectId >= 0 && !vs.reidId.isEmpty()) {
         obj.reidId = vs.reidId;
       }
@@ -472,33 +422,28 @@ void CameraSource::onDisplayRenderTick()
   }
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_BGR888);
-  const QImage copiedFrame = qimg.copy();
+  const QImage copiedFrame = qimg.copy(); // Keep copy for UI stability
 
   m_lastDisplayRenderedTimestampMs = timestampMs;
   emit displayFrameReady(copiedFrame, readyMetadata);
-  if (!m_videoReadyNotified)
-  {
+  if (!m_videoReadyNotified) {
     m_videoReadyNotified = true;
     emit videoReady();
   }
 }
 
-void CameraSource::onThumbnailRenderTick()
-{
-  if (!m_shouldRun || !m_latestFramePtr || m_latestFramePtr->empty())
-  {
+void CameraSource::onThumbnailRenderTick() {
+  if (!m_shouldRun || !m_latestFramePtr || m_latestFramePtr->empty()) {
     return;
   }
 
   const qint64 timestampMs = m_latestBufferedFrameTimestampMs;
-  if (timestampMs <= m_lastThumbnailRenderedTimestampMs)
-  {
+  if (timestampMs <= m_lastThumbnailRenderedTimestampMs) {
     return;
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > kThumbnailFrameStaleMs)
-  {
+  if ((nowMs - timestampMs) > kThumbnailFrameStaleMs) {
     return;
   }
 
@@ -510,26 +455,21 @@ void CameraSource::onThumbnailRenderTick()
   emit thumbnailFrameReady(m_cardIndex, qimg.copy());
 }
 
-void CameraSource::onOcrDispatchTick()
-{
-  if (!m_shouldRun || !m_latestFramePtr || m_latestFramePtr->empty())
-  {
+void CameraSource::onOcrDispatchTick() {
+  if (!m_shouldRun || !m_latestFramePtr || m_latestFramePtr->empty()) {
     return;
   }
-  if (!m_parkingService || m_parkingService->activeVehicles().isEmpty())
-  {
+  if (!m_parkingService || m_parkingService->activeVehicles().isEmpty()) {
     return;
   }
 
   const qint64 timestampMs = m_latestBufferedFrameTimestampMs;
-  if (timestampMs <= m_lastOcrProcessedTimestampMs)
-  {
+  if (timestampMs <= m_lastOcrProcessedTimestampMs) {
     return;
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > kOcrFrameStaleMs)
-  {
+  if ((nowMs - timestampMs) > kOcrFrameStaleMs) {
     return;
   }
 
@@ -538,45 +478,46 @@ void CameraSource::onOcrDispatchTick()
               QImage::Format_BGR888);
   QList<OcrRequest> ocrRequests;
   m_frameRenderer.collectOcrRequests(qimg, m_latestFrameObjects, &ocrRequests);
-  for (const OcrRequest &request : ocrRequests)
-  {
+  for (const OcrRequest &request : ocrRequests) {
     m_ocrCoordinator->requestOcr(request.objectId, request.crop);
   }
   m_lastOcrProcessedTimestampMs = timestampMs;
 }
 
-void CameraSource::onReidDispatchTick()
-{
+void CameraSource::onReidDispatchTick() {
   if (!m_shouldRun || m_reidProcessing || !m_latestFramePtr ||
       m_latestFramePtr->empty() || m_latestFrameObjects.isEmpty()) {
     return;
   }
 
   m_reidProcessing = true;
-  const QList<ObjectInfo> objects = m_latestFrameObjects;
-  const QSharedPointer<cv::Mat> framePtr = m_latestFramePtr;
+  QList<ObjectInfo> objects = m_latestFrameObjects;
+  QSharedPointer<cv::Mat> framePtr = m_latestFramePtr;
 
   (void)QtConcurrent::run([this, objects, framePtr]() {
     QList<ObjectInfo> processedObjects = objects;
-    const cv::Mat frame = *framePtr;
+    cv::Mat frame = *framePtr; // Swallow copy (ref-counted)
     const int frameW = frame.cols;
     const int frameH = frame.rows;
 
     const auto &cfg = Config::instance();
-    const double srcWCfg =
-        std::max(1.0, static_cast<double>(cfg.sourceWidth()));
-    const double srcHCfg =
-        std::max(1.0, static_cast<double>(cfg.sourceHeight()));
+    const double srcW_cfg = std::max(1.0, static_cast<double>(cfg.sourceWidth()));
+    const double srcH_cfg = std::max(1.0, static_cast<double>(cfg.sourceHeight()));
+
+    bool extractedAny = false;
+    int vehicleCount = 0;
 
     for (ObjectInfo &obj : processedObjects) {
-      if (!isVehicleType(obj.type)) {
+      bool isVehicle = isVehicleType(obj.type);
+      if (!isVehicle)
         continue;
-      }
+      vehicleCount++;
 
-      const double srcX = (obj.rect.x() / srcWCfg) * frameW;
-      const double srcY = (obj.rect.y() / srcHCfg) * frameH;
-      const double srcW = (obj.rect.width() / srcWCfg) * frameW;
-      const double srcH = (obj.rect.height() / srcHCfg) * frameH;
+      // Use same scaling as VideoFrameRenderer to ensure correct cropping
+      const double srcX = (obj.rect.x() / srcW_cfg) * frameW;
+      const double srcY = (obj.rect.y() / srcH_cfg) * frameH;
+      const double srcW = (obj.rect.width() / srcW_cfg) * frameW;
+      const double srcH = (obj.rect.height() / srcH_cfg) * frameH;
 
       cv::Rect roi(static_cast<int>(srcX), static_cast<int>(srcY),
                    static_cast<int>(srcW), static_cast<int>(srcH));
@@ -586,10 +527,17 @@ void CameraSource::onReidDispatchTick()
         continue;
       }
 
-      const cv::Mat vehicleCrop = frame(roi).clone();
+      // Partial Clone: Only clone the small vehicle area, not the whole 4K frame!
+      cv::Mat vehicleCrop = frame(roi).clone(); 
       obj.reidFeatures = m_reidExtractor.extract(vehicleCrop);
+
+      if (!obj.reidFeatures.empty()) {
+        extractedAny = true;
+      }
     }
 
+    // Update ReID features asynchronously without blocking or slowing down main
+    // tracking (30fps)
     QMetaObject::invokeMethod(
         this,
         [this, processedObjects]() {
@@ -602,8 +550,7 @@ void CameraSource::onReidDispatchTick()
   });
 }
 
-void CameraSource::onOcrResult(int objectId, const OcrFullResult &result)
-{
+void CameraSource::onOcrResult(int objectId, const OcrFullResult &result) {
   const QString displayText =
       !result.filtered.isEmpty() ? result.filtered : result.raw;
   emit logMessage(QString("[OCR][%1] ID:%2 Result:%3 (Latency:%4ms)")
@@ -612,98 +559,77 @@ void CameraSource::onOcrResult(int objectId, const OcrFullResult &result)
                       .arg(displayText)
                       .arg(result.latencyMs));
 
-  if (m_parkingService && !result.filtered.isEmpty())
-  {
+  if (m_parkingService && !result.filtered.isEmpty()) {
     m_parkingService->processOcrResult(objectId, result.filtered);
   }
 }
 
-QString CameraSource::bestProfileForSize(const QSize &size)
-{
+QString CameraSource::bestProfileForSize(const QSize &size) {
   const int effectiveWidth = std::min(size.width(), size.height() * 16 / 9);
 
-  if (effectiveWidth > 3072)
-  {
+  if (effectiveWidth > 3072) {
     return QStringLiteral("profile2/media.smp");
   }
-  if (effectiveWidth > 2560)
-  {
+  if (effectiveWidth > 2560) {
     return QStringLiteral("profile3/media.smp");
   }
-  if (effectiveWidth > 1920)
-  {
+  if (effectiveWidth > 1920) {
     return QStringLiteral("profile4/media.smp");
   }
-  if (effectiveWidth > 1280)
-  {
+  if (effectiveWidth > 1280) {
     return QStringLiteral("profile5/media.smp");
   }
-  if (effectiveWidth > 640)
-  {
+  if (effectiveWidth > 640) {
     return QStringLiteral("profile6/media.smp");
   }
   return QStringLiteral("profile7/media.smp");
 }
 
-QString CameraSource::ocrMasterProfile()
-{
+QString CameraSource::ocrMasterProfile() {
   const QString profile = Config::instance().defaultCameraProfile().trimmed();
   return profile.isEmpty() ? QStringLiteral("profile6/media.smp") : profile;
 }
 
-int CameraSource::profileRank(const QString &profile)
-{
+int CameraSource::profileRank(const QString &profile) {
   const QString normalized = normalizedProfileName(profile);
-  if (normalized == QStringLiteral("profile2/media.smp"))
-  {
+  if (normalized == QStringLiteral("profile2/media.smp")) {
     return 2;
   }
-  if (normalized == QStringLiteral("profile3/media.smp"))
-  {
+  if (normalized == QStringLiteral("profile3/media.smp")) {
     return 3;
   }
-  if (normalized == QStringLiteral("profile4/media.smp"))
-  {
+  if (normalized == QStringLiteral("profile4/media.smp")) {
     return 4;
   }
-  if (normalized == QStringLiteral("profile5/media.smp"))
-  {
+  if (normalized == QStringLiteral("profile5/media.smp")) {
     return 5;
   }
-  if (normalized == QStringLiteral("profile6/media.smp"))
-  {
+  if (normalized == QStringLiteral("profile6/media.smp")) {
     return 6;
   }
-  if (normalized == QStringLiteral("profile7/media.smp"))
-  {
+  if (normalized == QStringLiteral("profile7/media.smp")) {
     return 7;
   }
   return 99;
 }
 
-QString CameraSource::higherQualityProfile(const QString &a, const QString &b)
-{
-  if (a.trimmed().isEmpty())
-  {
+QString CameraSource::higherQualityProfile(const QString &a, const QString &b) {
+  if (a.trimmed().isEmpty()) {
     return b;
   }
-  if (b.trimmed().isEmpty())
-  {
+  if (b.trimmed().isEmpty()) {
     return a;
   }
   return profileRank(a) <= profileRank(b) ? a : b;
 }
 
 bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
-                                               bool reloadConfig)
-{
-  if (!m_cameraManager)
-  {
+                                               bool reloadConfig) {
+  if (!m_cameraManager) {
     return false;
   }
 
-  if (reloadConfig && !Config::instance().load())
-  {
+  if (reloadConfig && !Config::instance().load()) {
     emit logMessage("Warning: could not reload config; using existing values.");
   }
 
@@ -716,27 +642,24 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   connectionInfo.profile = displayProfile.trimmed().isEmpty()
                                ? cfg.cameraProfile(m_cameraKey).trimmed()
                                : displayProfile.trimmed();
-  if (connectionInfo.profile.isEmpty())
-  {
+  if (connectionInfo.profile.isEmpty()) {
     connectionInfo.profile = cfg.defaultCameraProfile();
   }
-  const QString configuredVideoProfile = cfg.cameraProfile(m_cameraKey).trimmed();
+  const QString configuredVideoProfile =
+      cfg.cameraProfile(m_cameraKey).trimmed();
   connectionInfo.profile = higherQualityProfile(
       connectionInfo.profile,
       higherQualityProfile(configuredVideoProfile, ocrMasterProfile()));
 
   connectionInfo.subProfile = cfg.cameraSubProfile(m_cameraKey).trimmed();
-  if (connectionInfo.subProfile.isEmpty())
-  {
+  if (connectionInfo.subProfile.isEmpty()) {
     connectionInfo.subProfile = cfg.cameraProfile(m_cameraKey).trimmed();
   }
-  if (connectionInfo.subProfile.isEmpty())
-  {
+  if (connectionInfo.subProfile.isEmpty()) {
     connectionInfo.subProfile = cfg.defaultCameraSubProfile();
   }
 
-  if (!connectionInfo.isValid())
-  {
+  if (!connectionInfo.isValid()) {
     emit logMessage(QString("[Camera] '%1' 설정이 유효하지 않습니다. (ip/user)")
                         .arg(m_cameraKey));
     return false;
@@ -748,20 +671,16 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   return true;
 }
 
-QString CameraSource::desiredProfile() const
-{
+QString CameraSource::desiredProfile() const {
   QSize bestSize;
-  for (auto it = m_consumerSizes.begin(); it != m_consumerSizes.end(); ++it)
-  {
+  for (auto it = m_consumerSizes.begin(); it != m_consumerSizes.end(); ++it) {
     if (it.value().width() * it.value().height() >
-        bestSize.width() * bestSize.height())
-    {
+        bestSize.width() * bestSize.height()) {
       bestSize = it.value();
     }
   }
-  const QString sizeDrivenProfile = bestSize.isEmpty()
-                                        ? QString()
-                                        : bestProfileForSize(bestSize);
+  const QString sizeDrivenProfile =
+      bestSize.isEmpty() ? QString() : bestProfileForSize(bestSize);
   const QString configuredProfile =
       Config::instance().cameraProfile(m_cameraKey).trimmed();
   return higherQualityProfile(
@@ -769,81 +688,65 @@ QString CameraSource::desiredProfile() const
       ocrMasterProfile());
 }
 
-void CameraSource::updateDisplayProfileForConsumers()
-{
+void CameraSource::updateDisplayProfileForConsumers() {
   const QString profile = desiredProfile();
-  if (profile.isEmpty())
-  {
+  if (profile.isEmpty()) {
     return;
   }
 
   const bool profileChanged = (profile != m_displayProfile);
-  if (!refreshConnectionFromConfig(profile, false))
-  {
+  if (!refreshConnectionFromConfig(profile, false)) {
     scheduleReconnect(QStringLiteral("config refresh failed"));
     return;
   }
 
-  if (!m_cameraManager->isDisplayRunning())
-  {
+  if (!m_cameraManager->isDisplayRunning()) {
     startDisplayStream(false, false, QStringLiteral("display was not running"));
     return;
   }
 
-  if (profileChanged)
-  {
+  if (profileChanged) {
     startDisplayStream(true, false, QStringLiteral("profile change"));
-  }
-  else
-  {
+  } else {
     m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps
                                                             : 0);
   }
 }
 
-void CameraSource::syncZoneOccupancyFromActiveVehicles()
-{
-  if (!m_parkingService || m_enabledZoneIds.isEmpty())
-  {
+void CameraSource::syncZoneOccupancyFromActiveVehicles() {
+  if (!m_parkingService || m_enabledZoneIds.isEmpty()) {
     return;
   }
 
   QHash<QString, int> occupancyByZoneId;
-  for (const VehicleState &state : m_parkingService->activeVehicles())
-  {
+  for (const VehicleState &state : m_parkingService->activeVehicles()) {
     const int roiIndex = state.occupiedRoiIndex;
-    if (roiIndex < 0 || roiIndex >= m_enabledZoneIds.size())
-    {
+    if (roiIndex < 0 || roiIndex >= m_enabledZoneIds.size()) {
       continue;
     }
     const QString zoneId = m_enabledZoneIds[roiIndex].trimmed();
-    if (!zoneId.isEmpty())
-    {
+    if (!zoneId.isEmpty()) {
       occupancyByZoneId.insert(zoneId, occupancyByZoneId.value(zoneId, 0) + 1);
     }
   }
 
   bool changed = false;
   const QVector<QJsonObject> &records = m_roiService.records();
-  for (const QJsonObject &record : records)
-  {
+  for (const QJsonObject &record : records) {
     const QString zoneId = record.value("zone_id").toString().trimmed();
-    if (!m_enabledZoneIds.contains(zoneId))
-    {
+    if (!m_enabledZoneIds.contains(zoneId)) {
       continue;
     }
 
     const bool currentEmptyState = record.value("zone_enable").toBool(true);
     const bool shouldBeEmpty = occupancyByZoneId.value(zoneId, 0) == 0;
-    if (currentEmptyState == shouldBeEmpty)
-    {
+    if (currentEmptyState == shouldBeEmpty) {
       continue;
     }
 
     const Result<QJsonObject> updateResult =
         m_roiService.setZoneEnabled(zoneId, shouldBeEmpty);
-    if (!updateResult.isOk())
-    {
+    if (!updateResult.isOk()) {
       emit logMessage(
           QString("[ROI] 점유 상태 저장 실패 (%1 / %2): %3")
               .arg(m_roiService.cameraKey(), zoneId, updateResult.error));
@@ -852,55 +755,44 @@ void CameraSource::syncZoneOccupancyFromActiveVehicles()
     changed = true;
   }
 
-  if (changed)
-  {
+  if (changed) {
     emit zoneStateChanged();
   }
 }
 
-void CameraSource::onHealthCheck()
-{
-  if (!m_shouldRun)
-  {
+void CameraSource::onHealthCheck() {
+  if (!m_shouldRun) {
     return;
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if (m_status == Status::Connecting)
-  {
+  if (m_status == Status::Connecting) {
     if (m_lastStartAttemptMs > 0 &&
-        (nowMs - m_lastStartAttemptMs) >= kConnectingTimeoutMs)
-    {
+        (nowMs - m_lastStartAttemptMs) >= kConnectingTimeoutMs) {
       scheduleReconnect(QStringLiteral("display connect timeout"));
     }
     return;
   }
 
-  if (m_status != Status::Live)
-  {
+  if (m_status != Status::Live) {
     return;
   }
 
   if (m_lastFrameTimestampMs <= 0 ||
-      (nowMs - m_lastFrameTimestampMs) >= kDisplayFrameTimeoutMs)
-  {
+      (nowMs - m_lastFrameTimestampMs) >= kDisplayFrameTimeoutMs) {
     scheduleReconnect(QStringLiteral("display frame timeout"));
   }
 }
 
-void CameraSource::onReconnectTimeout()
-{
-  if (!m_shouldRun)
-  {
+void CameraSource::onReconnectTimeout() {
+  if (!m_shouldRun) {
     return;
   }
   startDisplayStream(true, true, QStringLiteral("backoff reconnect"));
 }
 
-void CameraSource::setStatus(Status status, const QString &detail)
-{
-  if (m_status == status && m_statusDetail == detail)
-  {
+void CameraSource::setStatus(Status status, const QString &detail) {
+  if (m_status == status && m_statusDetail == detail) {
     return;
   }
 
@@ -909,10 +801,8 @@ void CameraSource::setStatus(Status status, const QString &detail)
   emit statusChanged(m_cardIndex, m_status, m_statusDetail);
 }
 
-void CameraSource::scheduleReconnect(const QString &reason)
-{
-  if (!m_shouldRun || !m_cameraManager)
-  {
+void CameraSource::scheduleReconnect(const QString &reason) {
+  if (!m_shouldRun || !m_cameraManager) {
     return;
   }
 
@@ -921,13 +811,11 @@ void CameraSource::scheduleReconnect(const QString &reason)
                kReconnectMaxDelayMs);
   ++m_reconnectAttempt;
 
-  if (m_healthTimer && !m_healthTimer->isActive())
-  {
+  if (m_healthTimer && !m_healthTimer->isActive()) {
     m_healthTimer->start();
   }
 
-  if (m_cameraManager->isDisplayRunning())
-  {
+  if (m_cameraManager->isDisplayRunning()) {
     m_cameraManager->restartDisplayPipeline();
   }
 
@@ -937,31 +825,25 @@ void CameraSource::scheduleReconnect(const QString &reason)
                       .arg(m_cameraKey, reason)
                       .arg(delayMs));
 
-  if (m_reconnectTimer)
-  {
+  if (m_reconnectTimer) {
     m_reconnectTimer->start(delayMs);
   }
 }
 
-void CameraSource::clearReconnect()
-{
-  if (m_reconnectTimer && m_reconnectTimer->isActive())
-  {
+void CameraSource::clearReconnect() {
+  if (m_reconnectTimer && m_reconnectTimer->isActive()) {
     m_reconnectTimer->stop();
   }
 }
 
 void CameraSource::startDisplayStream(bool forceRestart, bool reloadConfig,
-                                      const QString &reason)
-{
-  if (!m_shouldRun || !m_cameraManager)
-  {
+                                      const QString &reason) {
+  if (!m_shouldRun || !m_cameraManager) {
     return;
   }
 
   const QString profile = desiredProfile();
-  if (!refreshConnectionFromConfig(profile, reloadConfig))
-  {
+  if (!refreshConnectionFromConfig(profile, reloadConfig)) {
     setStatus(Status::Error, QStringLiteral("invalid camera config"));
     scheduleReconnect(QStringLiteral("invalid camera config"));
     return;
@@ -971,21 +853,18 @@ void CameraSource::startDisplayStream(bool forceRestart, bool reloadConfig,
   m_cameraManager->setTargetFps(m_consumerSizes.isEmpty() ? kIdleTargetFps : 0);
 
   setStatus(Status::Connecting, reason);
-  if (m_healthTimer && !m_healthTimer->isActive())
-  {
+  if (m_healthTimer && !m_healthTimer->isActive()) {
     m_healthTimer->start();
   }
 
-  if (forceRestart && m_cameraManager->isDisplayRunning())
-  {
+  if (forceRestart && m_cameraManager->isDisplayRunning()) {
     m_cameraManager->restartDisplayPipeline();
     emit logMessage(QString("[Camera] %1 display 재연결: %2 (%3)")
                         .arg(m_cameraKey, m_displayProfile, reason));
     return;
   }
 
-  if (!m_cameraManager->isDisplayRunning())
-  {
+  if (!m_cameraManager->isDisplayRunning()) {
     m_cameraManager->startDisplayOnly();
     emit logMessage(QString("[Camera] %1 display 연결 시작: %2 (%3)")
                         .arg(m_cameraKey, m_displayProfile, reason));

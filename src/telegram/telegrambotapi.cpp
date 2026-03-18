@@ -94,7 +94,7 @@ void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee) {
 
   int resolvedFee = fee;
   const QJsonObject pendingLog =
-      m_parkingRepository.findLatestPendingPaymentByPlate("camera",
+      m_parkingRepository.findActiveByPlate("camera",
                                                           plateNumber);
   if (!pendingLog.isEmpty()) {
     resolvedFee = pendingLog["total_amount"].toInt();
@@ -275,7 +275,7 @@ void TelegramBotAPI::handleReply(QNetworkReply *reply) {
       reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
   if (reply->error() == QNetworkReply::NoError) {
-    emit logMessage("[Telegram] ✅ 메시지 전송 성공!");
+    emit logMessage("[Telegram] Message sent successfully!");
     emit messageSent(true, QString::fromUtf8(responseData));
   } else {
     emit logMessage(QString("[Telegram] ❌ 전송 실패 (HTTP %1): %2")
@@ -402,7 +402,7 @@ void TelegramBotAPI::pollUpdates() {
             QString plate = parts[1];
             int amount = 0;
             const QJsonObject pendingLog =
-                m_parkingRepository.findLatestPendingPaymentByPlate("camera",
+                m_parkingRepository.findActiveByPlate("camera",
                                                                     plate);
             if (!pendingLog.isEmpty()) {
               amount = pendingLog["total_amount"].toInt();
@@ -938,8 +938,8 @@ void TelegramBotAPI::handleFeeInquiry(const QString &chatId) {
     return;
   }
 
-  QJsonObject pendingLog =
-      m_parkingRepository.findLatestPendingPaymentByPlate("camera", plate);
+  const QJsonObject pendingLog =
+      m_parkingRepository.findActiveByPlate("camera", plate);
   if (!pendingLog.isEmpty()) {
     const int fee = pendingLog["total_amount"].toInt();
     const QString exitTime = pendingLog["exit_time"].toString();

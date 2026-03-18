@@ -973,11 +973,9 @@ void MainWindow::setupUi() {
 
   m_reidTable = new QTableWidget(this);
   m_reidTable->setColumnCount(4);
-  m_reidTable->setHorizontalHeaderLabels(QStringList()
-                                         << QString::fromUtf8("채널")
-                                         << "ReID"
-                                         << "Obj ID"
-                                         << QString::fromUtf8("번호판"));
+  m_reidTable->setHorizontalHeaderLabels(
+      QStringList() << QString::fromUtf8("채널") << "ReID" << "OID"
+                    << QString::fromUtf8("번호판"));
 
   m_reidTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_reidTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -989,7 +987,7 @@ void MainWindow::setupUi() {
   QVBoxLayout *forceLayout = new QVBoxLayout();
 
   QHBoxLayout *labelRow = new QHBoxLayout();
-  labelRow->addWidget(new QLabel("Object ID", this), 1);
+  labelRow->addWidget(new QLabel("ID", this), 1);
   labelRow->addWidget(new QLabel("Plate", this), 4);
   labelRow->addWidget(new QLabel("", this), 1);
 
@@ -1054,9 +1052,9 @@ void MainWindow::setupUi() {
   zoneToolBar->addStretch();
 
   m_zoneTable = new QTableWidget(this);
-  m_zoneTable->setColumnCount(4);
+  m_zoneTable->setColumnCount(5);
   m_zoneTable->setHorizontalHeaderLabels(QStringList()
-                                         << "카메라" << "이름"
+                                         << "카메라" << "구역 ID" << "이름"
                                          << "점유" << "생성일");
   m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

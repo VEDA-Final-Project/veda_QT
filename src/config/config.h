@@ -42,11 +42,12 @@ public:
   QString ocrDictPath() const;
   int ocrInputWidth() const;
   int ocrInputHeight() const;
-
+  
   // ReID
   QString reidModelPath() const;
   int reidInputWidth() const;
   int reidInputHeight() const;
+
 
   // Gemini
   QString geminiApiKey() const;
