@@ -30,6 +30,33 @@ QString formatParkingDateTime(const QString &rawIsoText) {
   return dt.toLocalTime().toString(QStringLiteral("yyyy/MM/dd HH:mm"));
 }
 
+int calculateDisplayedParkingFee(const QJsonObject &row) {
+  const QString exitTimeText = row["exit_time"].toString().trimmed();
+  if (!exitTimeText.isEmpty()) {
+    return row["total_amount"].toInt();
+  }
+
+  const QDateTime entryTime = parseParkingDateTime(row["entry_time"].toString());
+  const QDateTime now = QDateTime::currentDateTime();
+  if (!entryTime.isValid() || now <= entryTime) {
+    return row["total_amount"].toInt();
+  }
+
+  constexpr qint64 kFreeMinutes = 15;
+  constexpr qint64 kBillingMinutes = 60;
+  constexpr int kHourlyFee = 1000;
+
+  const qint64 totalMinutes = entryTime.secsTo(now) / 60;
+  if (totalMinutes <= kFreeMinutes) {
+    return 0;
+  }
+
+  const qint64 chargedMinutes = totalMinutes - kFreeMinutes;
+  const qint64 billingUnits =
+      (chargedMinutes + kBillingMinutes - 1) / kBillingMinutes;
+  return static_cast<int>(billingUnits) * kHourlyFee;
+}
+
 QVector<QJsonObject> combinedRecentLogs(const QVector<ParkingService *> &services,
                                         int limitPerService) {
   QVector<QJsonObject> logs;
@@ -106,7 +133,8 @@ void populateParkingTable(QTableWidget *table, const QVector<QJsonObject> &logs)
             row["exit_time"].toString())));
     table->setItem(i, 6, new QTableWidgetItem(row["pay_status"].toString()));
     table->setItem(
-        i, 7, new QTableWidgetItem(QString::number(row["total_amount"].toInt())));
+        i, 7,
+        new QTableWidgetItem(QString::number(calculateDisplayedParkingFee(row))));
   }
 }
 } // namespace

@@ -9,15 +9,6 @@
 
 class TelegramBotAPI;
 
-/**
- * @brief 주차 관리 시스템의 중앙 비즈니스 로직 서비스
- *
- * 차량 추적(VehicleTracker), DB 관리(ParkingRepository),
- * 알림(TelegramBotAPI)을 통합하여 입출차 이벤트를 처리합니다.
- *
- * MainWindowController는 이 서비스에 메타데이터와 OCR 결과를
- * 전달하고, 결과 시그널을 받아 UI에 반영하기만 하면 됩니다.
- */
 class ParkingService : public QObject {
   Q_OBJECT
 
@@ -114,6 +105,7 @@ signals:
 private:
   void handleNewEntry(const VehicleState &vs);
   void handleDeparture(const VehicleState &vs);
+  void syncActivePlateIfNeeded(const VehicleState &vs);
   QString zoneNameForIndex(int roiIndex) const;
 
   VehicleTracker m_tracker;

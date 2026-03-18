@@ -21,7 +21,8 @@ void VehicleTracker::setRoiPolygons(const QList<QPolygonF> &polygons) {
 
 QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
                                            int cropOffsetX, int effectiveWidth,
-                                           int sourceHeight, qint64 nowMs) {
+                                           int sourceHeight, qint64 nowMs,
+                                           QList<VehicleState> *departedVehicles) {
   // 방어 코드
   if (effectiveWidth <= 0)
     effectiveWidth = 1;
@@ -113,6 +114,18 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     if (prevRoi < 0 && vs.occupiedRoiIndex >= 0) {
       vs.roiEntryMs = nowMs;
       newEntries.append(vs);
+    } else if (prevRoi >= 0 && vs.occupiedRoiIndex < 0) {
+      if (departedVehicles) {
+        VehicleState departedState = vs;
+        departedState.occupiedRoiIndex = prevRoi;
+        departedVehicles->append(departedState);
+      }
+
+      // ROI를 벗어나면 기존 주차 상태를 초기화해 재입차를 새 이벤트로 다룹니다.
+      vs.notified = false;
+      vs.roiEntryMs = 0;
+      vs.roiHistory.clear();
+      vs.roiHistory.append(-1);
     }
   }
 

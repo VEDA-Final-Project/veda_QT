@@ -165,6 +165,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
+                                   const QSet<int> &occupiedRoiIndices,
                                    bool roiEnabled, bool showFps,
                                    int currentFps, const QString &profileName,
                                    QList<OcrRequest> *ocrRequests) const {
@@ -250,20 +251,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
       if (polygon.size() < 3)
         continue;
 
-      const QRegion singleRoiRegion(polygon, Qt::WindingFill);
-      const double roiArea = regionPixelArea(singleRoiRegion);
-      bool occupied = false;
-      for (const RenderCandidate &c : candidates) {
-        if (!c.obj.type.startsWith("Vehic"))
-          continue;
-        const QRegion intersection =
-            singleRoiRegion.intersected(QRegion(c.scaledRect));
-        const double interArea = regionPixelArea(intersection);
-        if (roiArea > 0 && (interArea / roiArea) >= 0.5) {
-          occupied = true;
-          break;
-        }
-      }
+      const bool occupied = occupiedRoiIndices.contains(i);
 
       if (occupied) {
         painter.setPen(QPen(QColor(255, 59, 48), 2, Qt::SolidLine));

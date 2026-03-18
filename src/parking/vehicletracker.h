@@ -51,7 +51,8 @@ public:
    */
   QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
                              int effectiveWidth, int sourceHeight,
-                             qint64 nowMs);
+                             qint64 nowMs,
+                             QList<VehicleState> *departedVehicles = nullptr);
 
   /**
    * @brief 특정 차량의 OCR 결과를 반영합니다.

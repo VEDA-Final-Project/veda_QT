@@ -34,6 +34,7 @@ public:
    * @brief 출차 기록 업데이트
    */
   bool updateExit(int recordId, const QDateTime &exitTime,
+                  int *totalAmount = nullptr,
                   QString *errorMessage = nullptr);
 
   /**
@@ -63,6 +64,14 @@ public:
   QJsonObject findActiveByPlate(const QString &cameraKey,
                                 const QString &plateNumber,
                                 QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief 번호판 기준으로 최근 정산대기 출차 레코드 조회
+   * @return 최근 정산대기 출차 레코드 (없으면 빈 QJsonObject)
+   */
+  QJsonObject findLatestPendingPaymentByPlate(
+      const QString &cameraKey, const QString &plateNumber,
+      QString *errorMessage = nullptr) const;
 
   /**
    * @brief 최근 N건의 입출차 기록 조회

@@ -162,6 +162,7 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
 }
 
 bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
+                                   int *totalAmount,
                                    QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
@@ -186,14 +187,17 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
     entryTime = QDateTime::fromString(selectQuery.value(0).toString(),
                                       Qt::ISODate);
   }
-  const int totalAmount = calculateParkingFee(entryTime, exitTime);
+  const int calculatedTotalAmount = calculateParkingFee(entryTime, exitTime);
+  if (totalAmount) {
+    *totalAmount = calculatedTotalAmount;
+  }
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "UPDATE parking_logs SET exit_time = :exit, total_amount = :total_amount, "
       "pay_status = :pay_status WHERE id = :id"));
   query.bindValue(":exit", exitTime.toString(Qt::ISODate));
-  query.bindValue(":total_amount", totalAmount);
+  query.bindValue(":total_amount", calculatedTotalAmount);
   query.bindValue(":pay_status", kPendingPayStatus);
   query.bindValue(":id", recordId);
 
@@ -218,31 +222,52 @@ bool ParkingRepository::updatePayment(const QString &cameraKey,
   if (!db.isOpen())
     return false;
 
-  QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "UPDATE parking_logs SET pay_status = :pay_status, "
-      "total_amount = :total_amount "
-      "WHERE id = ("
-      "  SELECT id FROM parking_logs WHERE camera_key = :camera_key "
-      "  AND plate_number = :plate AND exit_time IS NULL "
-      "  ORDER BY entry_time DESC LIMIT 1"
-      ")"));
-  query.bindValue(":pay_status", normalizedPayStatus(payStatus, true));
-  query.bindValue(":total_amount", std::max(0, totalAmount));
-  query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
-  query.bindValue(":plate", plateNumber);
+  const QString normalizedKey = normalizedCameraKey(cameraKey);
+  const QString normalizedStatus = normalizedPayStatus(payStatus, true);
+  const int normalizedAmount = std::max(0, totalAmount);
 
-  if (!query.exec()) {
-    const QString err =
-        QStringLiteral("Update payment error: ") + query.lastError().text();
-    qWarning() << err;
-    if (errorMessage) {
-      *errorMessage = err;
+  auto updateTarget = [&](const QString &idQuerySql) -> int {
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "UPDATE parking_logs SET pay_status = :pay_status, "
+        "total_amount = :total_amount "
+        "WHERE id = (") +
+                  idQuerySql + QStringLiteral(")"));
+    query.bindValue(":pay_status", normalizedStatus);
+    query.bindValue(":total_amount", normalizedAmount);
+    query.bindValue(":camera_key", normalizedKey);
+    query.bindValue(":plate", plateNumber);
+
+    if (!query.exec()) {
+      const QString err =
+          QStringLiteral("Update payment error: ") + query.lastError().text();
+      qWarning() << err;
+      if (errorMessage) {
+        *errorMessage = err;
+      }
+      return -1;
     }
+
+    return query.numRowsAffected();
+  };
+
+  const int pendingExitUpdated = updateTarget(QStringLiteral(
+      "SELECT id FROM parking_logs WHERE camera_key = :camera_key "
+      "AND plate_number = :plate AND exit_time IS NOT NULL "
+      "AND pay_status != '결제완료' "
+      "ORDER BY exit_time DESC LIMIT 1"));
+  if (pendingExitUpdated < 0) {
     return false;
   }
+  if (pendingExitUpdated > 0) {
+    return true;
+  }
 
-  return query.numRowsAffected() > 0;
+  const int activeUpdated = updateTarget(QStringLiteral(
+      "SELECT id FROM parking_logs WHERE camera_key = :camera_key "
+      "AND plate_number = :plate AND exit_time IS NULL "
+      "ORDER BY entry_time DESC LIMIT 1"));
+  return activeUpdated > 0;
 }
 
 QJsonObject ParkingRepository::findActiveByObjectId(const QString &cameraKey,
@@ -347,6 +372,45 @@ QJsonObject ParkingRepository::findActiveByPlate(const QString &cameraKey,
   record["zone_name"] = query.value("zone_name").toString();
   record["roi_index"] = query.value("roi_index").toInt();
   record["entry_time"] = query.value("entry_time").toString();
+  record["pay_status"] = query.value("pay_status").toString();
+  record["total_amount"] = query.value("total_amount").toInt();
+  return record;
+}
+
+QJsonObject ParkingRepository::findLatestPendingPaymentByPlate(
+    const QString &cameraKey, const QString &plateNumber,
+    QString *errorMessage) const {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return QJsonObject();
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
+      "entry_time, exit_time, pay_status, total_amount "
+      "FROM parking_logs WHERE camera_key = :camera_key "
+      "AND plate_number = :plate AND exit_time IS NOT NULL "
+      "AND pay_status != '결제완료' "
+      "ORDER BY exit_time DESC LIMIT 1"));
+  query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
+  query.bindValue(":plate", plateNumber);
+
+  if (!query.exec() || !query.next()) {
+    if (errorMessage && query.lastError().isValid()) {
+      *errorMessage = query.lastError().text();
+    }
+    return QJsonObject();
+  }
+
+  QJsonObject record;
+  record["id"] = query.value("id").toInt();
+  record["camera_key"] = query.value("camera_key").toString();
+  record["object_id"] = query.value("object_id").toInt();
+  record["plate_number"] = query.value("plate_number").toString();
+  record["zone_name"] = query.value("zone_name").toString();
+  record["roi_index"] = query.value("roi_index").toInt();
+  record["entry_time"] = query.value("entry_time").toString();
+  record["exit_time"] = query.value("exit_time").toString();
   record["pay_status"] = query.value("pay_status").toString();
   record["total_amount"] = query.value("total_amount").toInt();
   return record;

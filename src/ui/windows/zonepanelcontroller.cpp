@@ -77,16 +77,14 @@ void ZonePanelController::refreshZoneTable() {
     m_ui.zoneTable->setItem(
         row, 0, new QTableWidgetItem(record["camera_key"].toString()));
     m_ui.zoneTable->setItem(
-        row, 1, new QTableWidgetItem(record["zone_id"].toString()));
-    m_ui.zoneTable->setItem(
-        row, 2, new QTableWidgetItem(record["zone_name"].toString()));
+        row, 1, new QTableWidgetItem(record["zone_name"].toString()));
     const bool isEmpty = record["zone_enable"].toBool(true);
     m_ui.zoneTable->setItem(
-        row, 3,
+        row, 2,
         new QTableWidgetItem(isEmpty ? QStringLiteral("빈자리")
                                      : QStringLiteral("주차중")));
     m_ui.zoneTable->setItem(
-        row, 4,
+        row, 3,
         new QTableWidgetItem(
             formatDisplayDateTime(record["created_at"].toString())));
   }

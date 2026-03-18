@@ -5,12 +5,29 @@
 
 namespace {
 constexpr qint64 kEntryPersistDelayMs = 5000;
+
+bool isPendingPlateText(const QString &plateNumber)
+{
+  const QString trimmed = plateNumber.trimmed();
+  return trimmed.isEmpty() || trimmed.contains(QStringLiteral("인식중"));
+}
+
+QString resolvedPlateText(const QString &plateNumber)
+{
+  return isPendingPlateText(plateNumber) ? QString() : plateNumber.trimmed();
+}
 }
 
 ParkingService::ParkingService(QObject *parent) : QObject(parent) {}
 
 void ParkingService::processOcrStarted(int objectId)
 {
+  const auto &vehicles = m_tracker.vehicles();
+  if (vehicles.contains(objectId) &&
+      !resolvedPlateText(vehicles[objectId].plateNumber).isEmpty()) {
+    return;
+  }
+
   m_tracker.setPlateNumber(objectId, QStringLiteral("인식중.."));
 }
 
@@ -50,14 +67,21 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
   // 1. 차량 추적 업데이트 → 새로 ROI에 진입한 차량 감지
+  QList<VehicleState> roiDepartures;
   const QList<VehicleState> newEntries = m_tracker.update(
-      objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs);
+      objects, cropOffsetX, effectiveWidth, sourceHeight, nowMs,
+      &roiDepartures);
 
   for (const VehicleState &vs : newEntries) {
+    syncActivePlateIfNeeded(vs);
     if (vs.occupiedRoiIndex >= 0 && !vs.notified &&
         vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) >= kEntryPersistDelayMs) {
       handleNewEntry(vs);
     }
+  }
+
+  for (const VehicleState &vs : roiDepartures) {
+    handleDeparture(vs);
   }
 
   // 새 진입 이벤트를 놓쳤더라도, 현재 ROI 안에 있고 아직 DB 기록이 없는
@@ -65,6 +89,7 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
   const auto &activeVehicles = m_tracker.vehicles();
   for (auto it = activeVehicles.cbegin(); it != activeVehicles.cend(); ++it) {
     const VehicleState &vs = it.value();
+    syncActivePlateIfNeeded(vs);
     if (vs.occupiedRoiIndex >= 0 && !vs.notified &&
         vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) >= kEntryPersistDelayMs) {
       handleNewEntry(vs);
@@ -171,17 +196,18 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
 
   const QDateTime now = QDateTime::currentDateTime();
   const QString zoneName = zoneNameForIndex(vs.occupiedRoiIndex);
+  const QString resolvedPlate = resolvedPlateText(vs.plateNumber);
   const QString vehicleLabel =
-      !vs.plateNumber.isEmpty() ? vs.plateNumber
-                                : QStringLiteral("OBJ#%1").arg(vs.objectId);
+      !resolvedPlate.isEmpty() ? resolvedPlate
+                               : QStringLiteral("OBJ#%1").arg(vs.objectId);
 
   QJsonObject existing =
       m_repository.findActiveByObjectId(m_cameraKey, vs.objectId);
   if (!existing.isEmpty()) {
-    if (existing["plate_number"].toString().trimmed().isEmpty() &&
-        !vs.plateNumber.isEmpty()) {
+    if (resolvedPlateText(existing["plate_number"].toString()).isEmpty() &&
+        !resolvedPlate.isEmpty()) {
       m_repository.updateActivePlateByObjectId(m_cameraKey, vs.objectId,
-                                               vs.plateNumber);
+                                               resolvedPlate);
     }
     emit logMessage(QString("[Parking] %1 — already has active entry, skipping")
                         .arg(vehicleLabel));
@@ -191,13 +217,16 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
 
   QDateTime entryTime = vs.roiEntryMs > 0 ? QDateTime::fromMSecsSinceEpoch(vs.roiEntryMs) : now;
   int recordId = m_repository.insertEntry(m_cameraKey, vs.objectId,
-                                          vs.plateNumber, zoneName,
+                                          resolvedPlate, zoneName,
                                           vs.occupiedRoiIndex, entryTime);
   if (recordId >= 0) {
     emit logMessage(QString("[Parking] Entry recorded: %1 at %2 (DB ID: %3)")
                         .arg(vehicleLabel, zoneName)
                         .arg(recordId));
     emit vehicleEntered(vs.occupiedRoiIndex, vehicleLabel);
+    if (m_telegram && !resolvedPlate.isEmpty()) {
+      m_telegram->sendEntryNotice(resolvedPlate);
+    }
     m_tracker.markNotified(vs.objectId);
   }
 }
@@ -205,9 +234,10 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
 void ParkingService::handleDeparture(const VehicleState &vs)
 {
   const QDateTime now = QDateTime::currentDateTime();
+  const QString resolvedPlate = resolvedPlateText(vs.plateNumber);
   const QString vehicleLabel =
-      !vs.plateNumber.isEmpty() ? vs.plateNumber
-                                : QStringLiteral("OBJ#%1").arg(vs.objectId);
+      !resolvedPlate.isEmpty() ? resolvedPlate
+                               : QStringLiteral("OBJ#%1").arg(vs.objectId);
 
   // DB에서 활성 레코드 찾아 출차 시각 업데이트
   QJsonObject active =
@@ -215,14 +245,40 @@ void ParkingService::handleDeparture(const VehicleState &vs)
   if (!active.isEmpty()) 
   {
     int recordId = active["id"].toInt();
-    m_repository.updateExit(recordId, now);
+    int totalAmount = active["total_amount"].toInt();
+    if (!m_repository.updateExit(recordId, now, &totalAmount)) {
+      emit logMessage(QString("[Parking] Exit update failed: %1")
+                          .arg(vehicleLabel));
+      return;
+    }
 
     emit logMessage(QString("[Parking] Exit recorded: %1 from %2")
                         .arg(vehicleLabel, zoneNameForIndex(vs.occupiedRoiIndex)));
     emit vehicleDeparted(vs.occupiedRoiIndex, vehicleLabel);
-
-    // TODO: 텔레그램 출차 알림 + 요금 정보 전송
+    if (m_telegram && !resolvedPlate.isEmpty()) {
+      m_telegram->sendExitNotice(resolvedPlate, totalAmount);
+    }
   }
+}
+
+void ParkingService::syncActivePlateIfNeeded(const VehicleState &vs)
+{
+  const QString resolvedPlate = resolvedPlateText(vs.plateNumber);
+  if (vs.objectId < 0 || resolvedPlate.isEmpty()) {
+    return;
+  }
+
+  QJsonObject active = m_repository.findActiveByObjectId(m_cameraKey, vs.objectId);
+  if (active.isEmpty()) {
+    return;
+  }
+
+  if (!resolvedPlateText(active["plate_number"].toString()).isEmpty()) {
+    return;
+  }
+
+  m_repository.updateActivePlateByObjectId(m_cameraKey, vs.objectId,
+                                           resolvedPlate);
 }
 
 QString ParkingService::zoneNameForIndex(int roiIndex) const

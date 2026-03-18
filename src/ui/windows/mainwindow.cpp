@@ -1051,9 +1051,9 @@ void MainWindow::setupUi() {
   zoneToolBar->addStretch();
 
   m_zoneTable = new QTableWidget(this);
-  m_zoneTable->setColumnCount(5);
+  m_zoneTable->setColumnCount(4);
   m_zoneTable->setHorizontalHeaderLabels(QStringList()
-                                         << "카메라" << "구역 ID" << "이름"
+                                         << "카메라" << "이름"
                                          << "점유" << "생성일");
   m_zoneTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_zoneTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

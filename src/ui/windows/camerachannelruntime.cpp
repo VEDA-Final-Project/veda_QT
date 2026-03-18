@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QColor>
 #include <QDateTime>
+#include <QSet>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -141,7 +142,18 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
   }
   m_renderTimer.restart();
 
+  QSet<int> occupiedRoiIndices;
+  if (m_source->parkingService()) {
+    const QList<VehicleState> activeVehicles = m_source->parkingService()->activeVehicles();
+    for (const VehicleState &vehicle : activeVehicles) {
+      if (vehicle.occupiedRoiIndex >= 0) {
+        occupiedRoiIndices.insert(vehicle.occupiedRoiIndex);
+      }
+    }
+  }
+
   m_videoWidget->updateMetadata(objects);
+  m_videoWidget->setOccupiedRoiIndices(occupiedRoiIndices);
   m_videoWidget->updateFrame(image);
   m_videoWidget->setProfileName(m_source->displayProfile());
 
