@@ -42,6 +42,7 @@ qt_add_executable(rtsp_test
     # Video
     src/video/videothread.cpp
     src/video/videothread.h
+    src/video/sharedvideoframe.h
     src/video/videobuffermanager.cpp
     src/video/videobuffermanager.h
     src/video/mediarecorderworker.cpp

@@ -1110,9 +1110,9 @@ void MainWindowController::bindRecordPreviewSource(int index) {
   m_recordPreviewSource = source;
   m_recordPreviewConnection = connect(
       source, &CameraSource::displayFrameReady, this,
-      [this](const QImage &image, const QList<ObjectInfo> &) {
+      [this](SharedVideoFrame frame, const QList<ObjectInfo> &) {
         if (m_recordPanelController) {
-          m_recordPanelController->updateLiveFrame(image);
+          m_recordPanelController->updateLiveFrame(frame);
         }
       });
   source->attachDisplayConsumer(kRecordPreviewConsumerId,
@@ -1406,14 +1406,13 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
 }
 
 void MainWindowController::onRawFrameReady(int cardIndex,
-                                           QSharedPointer<cv::Mat> framePtr,
-                                           qint64 timestampMs) {
-  if (cardIndex < 0 || cardIndex >= 4 || !framePtr || framePtr->empty()) {
+                                           SharedVideoFrame frame) {
+  if (cardIndex < 0 || cardIndex >= 4 || !frame.isValid()) {
     return;
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if ((nowMs - timestampMs) > 100) {
+  if ((nowMs - frame.timestampMs) > 100) {
     return;
   }
 
@@ -1421,7 +1420,7 @@ void MainWindowController::onRawFrameReady(int cardIndex,
   if (m_continuousBuffers[cardIndex]) {
     if (!m_continuousThrottleTimers[cardIndex].isValid() ||
         m_continuousThrottleTimers[cardIndex].elapsed() >= 200) {
-      m_continuousBuffers[cardIndex]->addFrame(framePtr);
+      m_continuousBuffers[cardIndex]->addFrame(frame.mat);
       m_continuousThrottleTimers[cardIndex].restart();
     }
   }
@@ -1429,7 +1428,7 @@ void MainWindowController::onRawFrameReady(int cardIndex,
   // 매뉴얼 캡쳐/이벤트 구간 저장을 위한 버퍼 추가
   VideoBufferManager *targetBuffer = getBufferByIndex(cardIndex);
   if (targetBuffer) {
-    targetBuffer->addFrame(framePtr);
+    targetBuffer->addFrame(frame.mat);
   }
 
   refreshReidTableAllChannels(false);
@@ -1923,8 +1922,8 @@ QString MainWindowController::roiTargetLabel(RoiTarget target) const {
 }
 
 void MainWindowController::updateThumbnailForCard(int cardIndex,
-                                                  const QImage &image) {
-  if (cardIndex < 0 || cardIndex >= 4 || image.isNull() ||
+                                                  SharedVideoFrame frame) {
+  if (cardIndex < 0 || cardIndex >= 4 || !frame.isValid() ||
       !m_ui.thumbnailLabels[cardIndex]) {
     return;
   }
@@ -1936,12 +1935,22 @@ void MainWindowController::updateThumbnailForCard(int cardIndex,
   m_renderTimerThumbs[cardIndex].restart();
 
   const QSize targetSize = m_ui.thumbnailLabels[cardIndex]->size();
-  const QImage scaledImg =
-      image.scaled(targetSize, Qt::KeepAspectRatio, Qt::FastTransformation);
-  const QPixmap pixmap = QPixmap::fromImage(scaledImg);
+  ThumbnailCache &cache = m_thumbnailCaches[cardIndex];
+  const cv::Mat *frameIdentity = frame.mat.data();
+  if (cache.frameIdentity != frameIdentity || cache.labelSize != targetSize ||
+      cache.pixmap.isNull()) {
+    QImage image(frame.mat->data, frame.mat->cols, frame.mat->rows,
+                 frame.mat->step, QImage::Format_BGR888);
+    const QImage scaledImg =
+        image.scaled(targetSize, Qt::KeepAspectRatio, Qt::FastTransformation);
+    cache.frameIdentity = frameIdentity;
+    cache.labelSize = targetSize;
+    cache.pixmap = QPixmap::fromImage(scaledImg);
+  }
   m_ui.thumbnailLabels[cardIndex]->setText(QString());
   QMetaObject::invokeMethod(m_ui.thumbnailLabels[cardIndex], "setPixmap",
-                            Qt::QueuedConnection, Q_ARG(QPixmap, pixmap));
+                            Qt::QueuedConnection,
+                            Q_ARG(QPixmap, cache.pixmap));
 }
 
 bool MainWindowController::isCameraSourceRunning(int cardIndex) const {

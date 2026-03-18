@@ -7,6 +7,7 @@
 #include "roi/roiservice.h"
 #include "tracking/reidextractor.h"
 #include "ui/video/videoframerenderer.h"
+#include "video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QHash>
 #include <QImage>
@@ -57,10 +58,10 @@ public:
   QStringList roiLabels() const;
 
 signals:
-  void thumbnailFrameReady(int cardIndex, const QImage &image);
-  void displayFrameReady(const QImage &image, const QList<ObjectInfo> &objects);
-  void rawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
-                     qint64 timestampMs);
+  void thumbnailFrameReady(int cardIndex, SharedVideoFrame frame);
+  void displayFrameReady(SharedVideoFrame frame,
+                         const QList<ObjectInfo> &objects);
+  void rawFrameReady(int cardIndex, SharedVideoFrame frame);
   void roiDataChanged();
   void videoReady();
   void zoneStateChanged();
@@ -70,7 +71,7 @@ signals:
 
 private slots:
   void onMetadataReceived(const QList<ObjectInfo> &objects);
-  void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
+  void onFrameCaptured(SharedVideoFrame frame);
   void onOcrResult(int objectId, const OcrFullResult &result);
   void onDisplayRenderTick();
   void onThumbnailRenderTick();

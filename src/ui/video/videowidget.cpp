@@ -148,11 +148,75 @@ void VideoWidget::dispatchOcrRequests(const QImage &frame) {
   }
 }
 
-void VideoWidget::updateFrame(const QImage &frame) { renderFrame(frame); }
+void VideoWidget::updateFrame(const QImage &frame) {
+  invalidateLiveFrameCache();
+  if (frame.isNull()) {
+    return;
+  }
 
-void VideoWidget::renderFrame(const QImage &frame) {
-  const bool sizeChanged = (m_lastFrameSize != frame.size());
-  m_lastFrameSize = frame.size();
+  const QSize scaledSize = frame.size().scaled(size(), Qt::KeepAspectRatio);
+  const QImage scaledBaseFrame =
+      scaledSize.isEmpty()
+          ? frame
+          : frame.scaled(scaledSize, Qt::IgnoreAspectRatio,
+                         Qt::FastTransformation);
+  renderFrame(frame, scaledBaseFrame);
+}
+
+void VideoWidget::updateLiveFrame(const SharedVideoFrame &frame) {
+  if (!frame.isValid()) {
+    return;
+  }
+
+  m_liveFrame = frame;
+  const QSize targetSize = size();
+  const cv::Mat *frameIdentity = frame.mat.data();
+  const bool frameChanged = (m_cachedLiveFrameIdentity != frameIdentity);
+  const bool targetSizeChanged = (m_cachedLiveTargetSize != targetSize);
+
+  if (frameChanged || targetSizeChanged || m_cachedScaledLiveFrame.isNull()) {
+    QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
+                      frame.mat->step, QImage::Format_BGR888);
+    const QSize scaledSize =
+        sourceView.size().scaled(targetSize, Qt::KeepAspectRatio);
+    m_cachedScaledLiveFrame =
+        scaledSize.isEmpty()
+            ? sourceView.copy()
+            : sourceView.scaled(scaledSize, Qt::IgnoreAspectRatio,
+                                Qt::FastTransformation);
+    m_cachedLiveFrameIdentity = frameIdentity;
+    m_cachedLiveTargetSize = targetSize;
+  }
+
+  QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
+                    frame.mat->step, QImage::Format_BGR888);
+  renderFrame(sourceView, m_cachedScaledLiveFrame);
+}
+
+void VideoWidget::renderFrame(const QImage &sourceFrame,
+                              const QImage &scaledBaseFrame) {
+  syncRoiStateToFrameSize(sourceFrame.size());
+
+  const int roiCount = m_roiState.roiCount();
+  if (m_roiLabels.size() != roiCount) {
+    m_roiLabels.resize(roiCount);
+  }
+
+  updateFrameRateStats();
+
+  const QImage composed = m_frameRenderer.compose(
+      sourceFrame, scaledBaseFrame, m_currentObjects, m_roiState.roiPolygons(),
+      m_roiLabels, m_occupiedRoiIndices, m_roiState.roiEnabled(), m_showFps,
+      static_cast<int>(m_currentFps), m_profileName);
+
+  // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
+  m_currentFrame = composed;
+  update(); // paintEvent 트리거
+}
+
+void VideoWidget::syncRoiStateToFrameSize(const QSize &frameSize) {
+  const bool sizeChanged = (m_lastFrameSize != frameSize);
+  m_lastFrameSize = frameSize;
 
   if (sizeChanged || m_roiState.roiCount() != m_normalizedRoiPolygons.size()) {
     while (m_roiState.roiCount() > 0) {
@@ -176,12 +240,9 @@ void VideoWidget::renderFrame(const QImage &frame) {
       }
     }
   }
+}
 
-  const int roiCount = m_roiState.roiCount();
-  if (m_roiLabels.size() != roiCount) {
-    m_roiLabels.resize(roiCount);
-  }
-
+void VideoWidget::updateFrameRateStats() {
   // --- FPS Calculation ---
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_fpsHistory1s.enqueue(nowMs);
@@ -204,15 +265,13 @@ void VideoWidget::renderFrame(const QImage &frame) {
   }
   emit avgFpsUpdated(avgFps);
   // -----------------------
+}
 
-  const QImage composed = m_frameRenderer.compose(
-      frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
-      m_occupiedRoiIndices, m_roiState.roiEnabled(), m_showFps,
-      static_cast<int>(m_currentFps), m_profileName, nullptr);
-
-  // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
-  m_currentFrame = composed;
-  update(); // paintEvent 트리거
+void VideoWidget::invalidateLiveFrameCache() {
+  m_liveFrame = SharedVideoFrame{};
+  m_cachedLiveFrameIdentity = nullptr;
+  m_cachedLiveTargetSize = QSize();
+  m_cachedScaledLiveFrame = QImage();
 }
 
 void VideoWidget::paintEvent(QPaintEvent *event) {

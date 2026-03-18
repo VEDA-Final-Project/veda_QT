@@ -161,23 +161,20 @@ void VideoFrameRenderer::collectOcrRequests(
   }
 }
 
-QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
+QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
+                                   const QImage &scaledBaseFrame,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
                                    const QSet<int> &occupiedRoiIndices,
                                    bool roiEnabled, bool showFps,
-                                   int currentFps, const QString &profileName,
-                                   QList<OcrRequest> *ocrRequests) const {
-  (void)ocrRequests;
-  if (targetSize.isEmpty()) {
-    return frame;
+                                   int currentFps,
+                                   const QString &profileName) const {
+  if (scaledBaseFrame.isNull()) {
+    return sourceFrame;
   }
 
-  // 1. Qt 네이티브 기반 고속 축소 (UI 스레드 병목 및 메모리 복사 제거)
-  const QSize scaledSize = frame.size().scaled(targetSize, Qt::KeepAspectRatio);
-  QImage scaledFrame =
-      frame.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  QImage scaledFrame = scaledBaseFrame.copy();
 
   // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장 (대부분
   // BGR888/RGB888이므로 변환 패스됨)
@@ -198,7 +195,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   painter.setFont(font);
 
   const QList<QPolygon> scaledRoiPolygons =
-      scaleRoiPolygons(roiPolygons, frame.size(), scaledFrame.size());
+      scaleRoiPolygons(roiPolygons, sourceFrame.size(), scaledFrame.size());
 
   const auto &cfg = Config::instance();
   const double sourceHeight = static_cast<double>(cfg.sourceHeight());
@@ -232,10 +229,12 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                       static_cast<int>(scaledW), static_cast<int>(scaledH));
 
     const double srcX =
-        ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
-    const double srcY = (nsRect.y() / sourceHeight) * frame.height();
-    const double srcW = (nsRect.width() / effectiveWidth) * frame.width();
-    const double srcH = (nsRect.height() / sourceHeight) * frame.height();
+        ((nsRect.x() - cropOffsetX) / effectiveWidth) * sourceFrame.width();
+    const double srcY = (nsRect.y() / sourceHeight) * sourceFrame.height();
+    const double srcW =
+        (nsRect.width() / effectiveWidth) * sourceFrame.width();
+    const double srcH =
+        (nsRect.height() / sourceHeight) * sourceFrame.height();
 
     const QRect fullSrcRect(static_cast<int>(srcX), static_cast<int>(srcY),
                             static_cast<int>(srcW), static_cast<int>(srcH));
@@ -329,8 +328,8 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     }
     const QString overlayText = QString("%1(%2x%3) , FPS: %4")
                                     .arg(shortProfileName)
-                                    .arg(frame.width())
-                                    .arg(frame.height())
+                                    .arg(sourceFrame.width())
+                                    .arg(sourceFrame.height())
                                     .arg(currentFps);
 
     QFont fpsFont = painter.font();

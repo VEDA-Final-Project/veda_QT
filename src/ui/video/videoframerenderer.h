@@ -17,13 +17,13 @@ class VideoFrameRenderer {
 public:
   void collectOcrRequests(const QImage &frame, const QList<ObjectInfo> &objects,
                           QList<OcrRequest> *ocrRequests) const;
-  QImage compose(const QImage &frame, const QSize &targetSize,
+  QImage compose(const QImage &sourceFrame, const QImage &scaledBaseFrame,
                  const QList<ObjectInfo> &objects,
                  const QList<QPolygon> &roiPolygons,
                  const QStringList &roiLabels,
                  const QSet<int> &occupiedRoiIndices, bool roiEnabled,
-                 bool showFps, int currentFps, const QString &profileName,
-                 QList<OcrRequest> *ocrRequests) const;
+                 bool showFps, int currentFps,
+                 const QString &profileName) const;
 };
 
 #endif // VIDEOFRAMERENDERER_H

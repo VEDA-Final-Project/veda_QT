@@ -5,19 +5,14 @@
 #include <QUrl>
 #include <QtGlobal>
 
-/**
- * @brief VideoThread 생성자
- * - OpenCV 기반 RTSP 비디오 수신 전용 스레드
- */
-VideoThread::VideoThread(QObject *parent) : QThread(parent), m_stop(false) {}
 
-/**
- * @brief VideoThread 소멸자
- * - 실행 중인 스레드를 안전하게 종료
- */
+VideoThread::VideoThread(QObject *parent) : QThread(parent), m_stop(false) {
+  qRegisterMetaType<SharedVideoFrame>("SharedVideoFrame");
+}
+
 VideoThread::~VideoThread() {
-  stop(); // 종료 플래그 설정
-  wait(); // 스레드 종료 대기
+  stop();
+  wait(); 
 }
 
 /**
@@ -37,10 +32,6 @@ void VideoThread::setTargetFps(int fps) {
   m_targetFps = fps;
 }
 
-/**
- * @brief 비디오 스레드 종료 요청
- * - run() 루프에서 주기적으로 플래그 확인
- */
 void VideoThread::stop() {
   QMutexLocker locker(&m_mutex);
   m_stop = true;
@@ -159,8 +150,7 @@ void VideoThread::run() {
       if (shouldStop())
         break;
       const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-      if (lastReadErrorLogMs == 0 ||
-          (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
+      if (lastReadErrorLogMs == 0 ||(nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
         if (suppressedReadErrors > 0) {
           emit logMessage(
               QString("Error: Cannot read frame (repeated %1 times)")
@@ -219,10 +209,12 @@ void VideoThread::run() {
     }
 
     // 내부 파이프라인은 BGR 원본을 유지하고, UI/OCR 직전에만 QImage 변환한다.
-    auto sharedFrame = QSharedPointer<cv::Mat>::create(std::move(frame));
+    SharedVideoFrame sharedFrame;
+    sharedFrame.mat = QSharedPointer<cv::Mat>::create(std::move(frame));
+    sharedFrame.timestampMs = QDateTime::currentMSecsSinceEpoch();
 
     // === 프레임 전달 (UI 등 외부로) ===
-    emit frameCaptured(sharedFrame, QDateTime::currentMSecsSinceEpoch());
+    emit frameCaptured(sharedFrame);
   }
 
   // === 스트림 정리 ===

@@ -131,8 +131,8 @@ int CameraChannelRuntime::selectedCardIndex() const {
 VideoWidget *CameraChannelRuntime::videoWidget() const { return m_videoWidget; }
 
 void CameraChannelRuntime::onSourceDisplayFrameReady(
-    const QImage &image, const QList<ObjectInfo> &objects) {
-  if (!m_source || !m_videoWidget || image.isNull()) {
+    SharedVideoFrame frame, const QList<ObjectInfo> &objects) {
+  if (!m_source || !m_videoWidget || !frame.isValid()) {
     return;
   }
 
@@ -154,7 +154,7 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
 
   m_videoWidget->updateMetadata(objects);
   m_videoWidget->setOccupiedRoiIndices(occupiedRoiIndices);
-  m_videoWidget->updateFrame(image);
+  m_videoWidget->updateLiveFrame(frame);
   m_videoWidget->setProfileName(m_source->displayProfile());
 
 

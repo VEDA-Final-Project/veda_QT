@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QJsonObject>
 #include <QObject>
+#include <QPixmap>
 #include <QPolygon>
 #include <QRect>
 #include <QSet>
@@ -20,6 +21,7 @@
 #include "logging/logdeduplicator.h"
 #include "mainwindowuirefs.h"
 #include "telegram/telegrambotapi.h"
+#include "video/sharedvideoframe.h"
 
 class CameraChannelRuntime;
 class CameraSource;
@@ -74,8 +76,7 @@ public slots:
   void onContinuousSettingChanged();
   void onRefreshReidTableAllChannels();
   void onApplyContinuousSettingClicked();
-  void onRawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
-                       qint64 timestampMs);
+  void onRawFrameReady(int cardIndex, SharedVideoFrame frame);
 
 
   void onSendEntry();
@@ -102,7 +103,7 @@ private:
   void startCameraSources();
   void bindRecordPreviewSource(int index);
   void updateRecordPreviewSourceSize();
-  void updateThumbnailForCard(int cardIndex, const QImage &image);
+  void updateThumbnailForCard(int cardIndex, SharedVideoFrame frame);
   bool isChannelSelected(int index) const;
   bool isCameraSourceRunning(int cardIndex) const;
   int primarySelectedChannelIndex() const;
@@ -148,6 +149,12 @@ private:
   QVector<int> m_selectedChannelIndices;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
+  struct ThumbnailCache {
+    const cv::Mat *frameIdentity = nullptr;
+    QSize labelSize;
+    QPixmap pixmap;
+  };
+  ThumbnailCache m_thumbnailCaches[4];
   QElapsedTimer m_reidRefreshTimer;
   QTimer *m_resizeDebounceTimer = nullptr;
 

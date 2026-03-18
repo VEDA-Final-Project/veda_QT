@@ -4,6 +4,7 @@
 #include "metadata/metadatathread.h"
 #include "ui/roi/roiinteractionstate.h"
 #include "ui/video/videoframerenderer.h"
+#include "video/sharedvideoframe.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -43,6 +44,7 @@ public:
 
 public slots:
   void updateFrame(const QImage &frame);
+  void updateLiveFrame(const SharedVideoFrame &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
   void setOccupiedRoiIndices(const QSet<int> &occupiedRoiIndices);
   void dispatchOcrRequests(const QImage &frame);
@@ -64,7 +66,10 @@ private:
   void mouseMoveEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
   void mouseDoubleClickEvent(QMouseEvent *event) override;
-  void renderFrame(const QImage &frame);
+  void renderFrame(const QImage &sourceFrame, const QImage &scaledBaseFrame);
+  void syncRoiStateToFrameSize(const QSize &frameSize);
+  void updateFrameRateStats();
+  void invalidateLiveFrameCache();
 
   QList<ObjectInfo> m_currentObjects;
   QSize m_lastFrameSize;
@@ -75,6 +80,10 @@ private:
   QStringList m_roiLabels;
   QSet<int> m_occupiedRoiIndices;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
+  SharedVideoFrame m_liveFrame;
+  const cv::Mat *m_cachedLiveFrameIdentity = nullptr;
+  QSize m_cachedLiveTargetSize;
+  QImage m_cachedScaledLiveFrame;
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
