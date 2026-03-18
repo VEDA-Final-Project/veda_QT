@@ -82,20 +82,13 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   }
 
   RpiPanelController::UiRefs rpiUiRefs;
-  rpiUiRefs.hostEdit = m_ui.rpiHostEdit;
-  rpiUiRefs.portSpin = m_ui.rpiPortSpin;
-  rpiUiRefs.btnConnect = m_ui.btnRpiConnect;
-  rpiUiRefs.btnDisconnect = m_ui.btnRpiDisconnect;
-  rpiUiRefs.btnBarrierUp = m_ui.btnBarrierUp;
-  rpiUiRefs.btnBarrierDown = m_ui.btnBarrierDown;
-  rpiUiRefs.btnLedOn = m_ui.btnLedOn;
-  rpiUiRefs.btnLedOff = m_ui.btnLedOff;
+  rpiUiRefs.hostEdit              = m_ui.rpiHostEdit;
+  rpiUiRefs.portSpin              = m_ui.rpiPortSpin;
+  rpiUiRefs.btnConnect            = m_ui.btnRpiConnect;
+  rpiUiRefs.btnDisconnect         = m_ui.btnRpiDisconnect;
   rpiUiRefs.connectionStatusLabel = m_ui.rpiConnectionStatusLabel;
-  rpiUiRefs.vehicleStatusLabel = m_ui.rpiVehicleStatusLabel;
-  rpiUiRefs.ledStatusLabel = m_ui.rpiLedStatusLabel;
-  rpiUiRefs.irRawLabel = m_ui.rpiIrRawLabel;
-  rpiUiRefs.servoAngleLabel = m_ui.rpiServoAngleLabel;
-  rpiUiRefs.logView = m_ui.logView;
+  rpiUiRefs.lastCmdLabel          = m_ui.rpiLastCmdLabel;
+  rpiUiRefs.logView               = m_ui.rpiCtrlLogView;
   m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
 
   const QString dbPath =
@@ -539,6 +532,31 @@ void MainWindowController::connectSignals() {
 
   if (m_rpiPanelController) {
     m_rpiPanelController->connectSignals();
+
+    // $CH: 채널 토글 확률 (ch 1-based → index 0-based)
+    connect(m_rpiPanelController, &RpiPanelController::channelSelectRequested,
+            this, [this](int ch) {
+              const int idx = ch - 1;
+              if (idx < 0 || idx >= kMaxLiveSlots) return;
+              onChannelCardClicked(idx);
+            });
+
+    // $CAP: 수동 캡처
+    connect(m_rpiPanelController, &RpiPanelController::captureRequested,
+            this, [this](int /*ch*/) {
+              onCaptureManual();
+            });
+
+    // $REC: 녹화 시작/정지 (m_btnRecordManual 토글 상태를 동기화)
+    connect(m_rpiPanelController, &RpiPanelController::recordingChanged,
+            this, [this](int /*ch*/, bool recording) {
+              if (m_ui.btnRecordManual &&
+                  m_ui.btnRecordManual->isChecked() != recording) {
+                m_ui.btnRecordManual->setChecked(recording);
+              } else {
+                onRecordManualToggled(recording);
+              }
+            });
   }
 
   if (m_dbPanelController) {

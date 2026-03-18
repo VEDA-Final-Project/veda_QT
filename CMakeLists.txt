@@ -80,8 +80,8 @@ qt_add_executable(rtsp_test
     src/roi/roiservice.h
     src/rpi/rpiauthclient.cpp
     src/rpi/rpiauthclient.h
-    src/rpi/rpitcpclient.cpp
-    src/rpi/rpitcpclient.h
+    src/rpi/rpicontrolclient.cpp
+    src/rpi/rpicontrolclient.h
     src/telegram/telegrambotapi.cpp
     src/telegram/telegrambotapi.h
     # Parking

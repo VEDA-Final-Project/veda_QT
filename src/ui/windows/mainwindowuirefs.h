@@ -42,20 +42,14 @@ struct MainWindowUiRefs {
   QPushButton *btnSendExit = nullptr;
   QTableWidget *userTable = nullptr;
 
-  // RPi Widgets
-  QLineEdit *rpiHostEdit = nullptr;
-  QSpinBox *rpiPortSpin = nullptr;
-  QPushButton *btnRpiConnect = nullptr;
-  QPushButton *btnRpiDisconnect = nullptr;
-  QPushButton *btnBarrierUp = nullptr;
-  QPushButton *btnBarrierDown = nullptr;
-  QPushButton *btnLedOn = nullptr;
-  QPushButton *btnLedOff = nullptr;
-  QLabel *rpiConnectionStatusLabel = nullptr;
-  QLabel *rpiVehicleStatusLabel = nullptr;
-  QLabel *rpiLedStatusLabel = nullptr;
-  QLabel *rpiIrRawLabel = nullptr;
-  QLabel *rpiServoAngleLabel = nullptr;
+  // RPi 제어신호 수신 클라이언트 위젯
+  QLineEdit   *rpiHostEdit              = nullptr; // RPi IP
+  QSpinBox    *rpiPortSpin              = nullptr; // 포트 (기본 12345)
+  QPushButton *btnRpiConnect            = nullptr;
+  QPushButton *btnRpiDisconnect         = nullptr;
+  QLabel      *rpiConnectionStatusLabel = nullptr; // CONNECTED / DISCONNECTED
+  QLabel      *rpiLastCmdLabel          = nullptr; // 마지막 수신 패킷
+  QTextEdit   *rpiCtrlLogView           = nullptr; // 수신 로그
 
   // Parking DB Panel Widgets
   QTableWidget *parkingLogTable = nullptr;

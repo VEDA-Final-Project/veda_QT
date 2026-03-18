@@ -110,19 +110,13 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnSendExit = m_btnSendExit;
   uiRefs.userTable = m_userTable;
 
-  uiRefs.rpiHostEdit = m_rpiHostEdit;
-  uiRefs.rpiPortSpin = m_rpiPortSpin;
-  uiRefs.btnRpiConnect = m_btnRpiConnect;
-  uiRefs.btnRpiDisconnect = m_btnRpiDisconnect;
-  uiRefs.btnBarrierUp = m_btnBarrierUp;
-  uiRefs.btnBarrierDown = m_btnBarrierDown;
-  uiRefs.btnLedOn = m_btnLedOn;
-  uiRefs.btnLedOff = m_btnLedOff;
+  uiRefs.rpiHostEdit              = m_rpiHostEdit;
+  uiRefs.rpiPortSpin              = m_rpiPortSpin;
+  uiRefs.btnRpiConnect            = m_btnRpiConnect;
+  uiRefs.btnRpiDisconnect         = m_btnRpiDisconnect;
   uiRefs.rpiConnectionStatusLabel = m_rpiConnectionStatusLabel;
-  uiRefs.rpiVehicleStatusLabel = m_rpiVehicleStatusLabel;
-  uiRefs.rpiLedStatusLabel = m_rpiLedStatusLabel;
-  uiRefs.rpiIrRawLabel = m_rpiIrRawLabel;
-  uiRefs.rpiServoAngleLabel = m_rpiServoAngleLabel;
+  uiRefs.rpiLastCmdLabel          = m_rpiLastCmdLabel;
+  uiRefs.rpiCtrlLogView           = m_rpiCtrlLogView;
 
   uiRefs.parkingLogTable = m_parkingLogTable;
   uiRefs.plateSearchInput = m_plateSearchInput;
@@ -917,26 +911,28 @@ void MainWindow::setupUi() {
   tgLayout->addStretch();
 
   // ======================
-  // Tab 3: RPi 제어
+  // Tab 3: RPi 제어신호 수신
   // ======================
   QWidget *rpiTab = new QWidget(this);
   QVBoxLayout *rpiLayout = new QVBoxLayout(rpiTab);
+  rpiLayout->setContentsMargins(12, 12, 12, 12);
+  rpiLayout->setSpacing(10);
 
-  // 1. 연결 설정
+  // 1. 연결 설정 ─────────────────────────────────────────────────────────────
   QGroupBox *rpiConnGroup =
-      new QGroupBox(QString::fromUtf8("RPi 연결 설정"), this);
+      new QGroupBox(QString::fromUtf8("RPi VmsController 연결 설정"), this);
   QHBoxLayout *rpiConnRow = new QHBoxLayout();
   m_rpiHostEdit = new QLineEdit(this);
   m_rpiHostEdit->setPlaceholderText(
-      QStringLiteral("RPi Host (예: 192.168.0.50)"));
-  m_rpiHostEdit->setText(QStringLiteral("127.0.0.1"));
+      QStringLiteral("RPi IP (예: 192.168.0.100)"));
+  m_rpiHostEdit->setText(QStringLiteral("192.168.0.100"));
   m_rpiPortSpin = new QSpinBox(this);
   m_rpiPortSpin->setRange(1, 65535);
-  m_rpiPortSpin->setValue(5000);
-  m_btnRpiConnect = new QPushButton(QString::fromUtf8("연결"), this);
+  m_rpiPortSpin->setValue(12345);
+  m_btnRpiConnect    = new QPushButton(QString::fromUtf8("연결"), this);
   m_btnRpiDisconnect = new QPushButton(QString::fromUtf8("해제"), this);
   rpiConnRow->addWidget(new QLabel(QString::fromUtf8("Host:"), this));
-  rpiConnRow->addWidget(m_rpiHostEdit);
+  rpiConnRow->addWidget(m_rpiHostEdit, 1);
   rpiConnRow->addWidget(new QLabel(QString::fromUtf8("Port:"), this));
   rpiConnRow->addWidget(m_rpiPortSpin);
   rpiConnRow->addWidget(m_btnRpiConnect);
@@ -944,40 +940,42 @@ void MainWindow::setupUi() {
   rpiConnGroup->setLayout(rpiConnRow);
   rpiLayout->addWidget(rpiConnGroup);
 
-  // 2. 제어
-  QGroupBox *rpiControlGroup =
-      new QGroupBox(QString::fromUtf8("차단봉 / LED 제어"), this);
-  QHBoxLayout *rpiControlRow = new QHBoxLayout();
-  m_btnBarrierUp = new QPushButton(QString::fromUtf8("차단봉 올리기"), this);
-  m_btnBarrierDown = new QPushButton(QString::fromUtf8("차단봉 내리기"), this);
-  m_btnLedOn = new QPushButton(QString::fromUtf8("LED ON"), this);
-  m_btnLedOff = new QPushButton(QString::fromUtf8("LED OFF"), this);
-  rpiControlRow->addWidget(m_btnBarrierUp);
-  rpiControlRow->addWidget(m_btnBarrierDown);
-  rpiControlRow->addSpacing(20);
-  rpiControlRow->addWidget(m_btnLedOn);
-  rpiControlRow->addWidget(m_btnLedOff);
-  rpiControlGroup->setLayout(rpiControlRow);
-  rpiLayout->addWidget(rpiControlGroup);
-
-  // 3. 상태
-  QGroupBox *rpiStatusGroup = new QGroupBox(QString::fromUtf8("상태"), this);
+  // 2. 수신 상태 ─────────────────────────────────────────────────────────────
+  QGroupBox *rpiStatusGroup =
+      new QGroupBox(QString::fromUtf8("수신 상태"), this);
   QFormLayout *rpiStatusForm = new QFormLayout();
   m_rpiConnectionStatusLabel =
-      new QLabel(QString::fromUtf8("Disconnected"), this);
-  m_rpiVehicleStatusLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiLedStatusLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiIrRawLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiServoAngleLabel = new QLabel(QString::fromUtf8("-"), this);
+      new QLabel(QString::fromUtf8("DISCONNECTED"), this);
+  m_rpiConnectionStatusLabel->setStyleSheet(
+      "color: #ff4d4d; font-weight: bold;");
+  m_rpiLastCmdLabel =
+      new QLabel(QString::fromUtf8("-"), this);
+  m_rpiLastCmdLabel->setStyleSheet(
+      "font-family: monospace; color: #00e5ff;");
   rpiStatusForm->addRow(QString::fromUtf8("연결 상태:"),
                         m_rpiConnectionStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("차량 감지(IR):"),
-                        m_rpiVehicleStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("LED 상태:"), m_rpiLedStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("IR Raw:"), m_rpiIrRawLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("서보 각도:"), m_rpiServoAngleLabel);
+  rpiStatusForm->addRow(QString::fromUtf8("마지막 명령:"),
+                        m_rpiLastCmdLabel);
   rpiStatusGroup->setLayout(rpiStatusForm);
   rpiLayout->addWidget(rpiStatusGroup);
+
+  // 3. 수신 로그 ─────────────────────────────────────────────────────────────
+  QGroupBox *rpiLogGroup =
+      new QGroupBox(QString::fromUtf8("수신 로그"), this);
+  QVBoxLayout *rpiLogLayout = new QVBoxLayout();
+  m_rpiCtrlLogView = new QTextEdit(this);
+  m_rpiCtrlLogView->setReadOnly(true);
+  m_rpiCtrlLogView->setFixedHeight(200);
+  m_rpiCtrlLogView->setStyleSheet(
+      "font-family: monospace; font-size: 11px; background: #1a1a2e;");
+  QPushButton *btnClearLog =
+      new QPushButton(QString::fromUtf8("로그 지우기"), this);
+  connect(btnClearLog, &QPushButton::clicked, this,
+          [this]() { m_rpiCtrlLogView->clear(); });
+  rpiLogLayout->addWidget(m_rpiCtrlLogView);
+  rpiLogLayout->addWidget(btnClearLog);
+  rpiLogGroup->setLayout(rpiLogLayout);
+  rpiLayout->addWidget(rpiLogGroup);
 
   rpiLayout->addStretch();
 

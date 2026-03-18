@@ -82,20 +82,14 @@ private:
   QPushButton *m_btnSendExit = nullptr;
   QTableWidget *m_userTable = nullptr;
 
-  // RPi Widgets
-  QLineEdit *m_rpiHostEdit = nullptr;
-  QSpinBox *m_rpiPortSpin = nullptr;
-  QPushButton *m_btnRpiConnect = nullptr;
-  QPushButton *m_btnRpiDisconnect = nullptr;
-  QPushButton *m_btnBarrierUp = nullptr;
-  QPushButton *m_btnBarrierDown = nullptr;
-  QPushButton *m_btnLedOn = nullptr;
-  QPushButton *m_btnLedOff = nullptr;
-  QLabel *m_rpiConnectionStatusLabel = nullptr;
-  QLabel *m_rpiVehicleStatusLabel = nullptr;
-  QLabel *m_rpiLedStatusLabel = nullptr;
-  QLabel *m_rpiIrRawLabel = nullptr;
-  QLabel *m_rpiServoAngleLabel = nullptr;
+  // RPi 제어신호 수신 클라이언트 위젯
+  QLineEdit   *m_rpiHostEdit              = nullptr;
+  QSpinBox    *m_rpiPortSpin              = nullptr;
+  QPushButton *m_btnRpiConnect            = nullptr;
+  QPushButton *m_btnRpiDisconnect         = nullptr;
+  QLabel      *m_rpiConnectionStatusLabel = nullptr;
+  QLabel      *m_rpiLastCmdLabel          = nullptr;
+  QTextEdit   *m_rpiCtrlLogView           = nullptr;
 
   // Parking DB Panel Widgets
   QTableWidget *m_parkingLogTable = nullptr;
