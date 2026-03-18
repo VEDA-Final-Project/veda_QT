@@ -15,6 +15,8 @@ qt_add_executable(rtsp_test
     src/ui/windows/mainwindow.cpp
     src/ui/windows/mainwindow.h
     src/ui/windows/mainwindowuirefs.h
+    src/ui/windows/controllerdialog.cpp
+    src/ui/windows/controllerdialog.h
     src/ui/windows/loginpage.cpp
     src/ui/windows/loginpage.h
     src/ui/windows/camerachannelruntime.cpp

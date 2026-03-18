@@ -26,6 +26,7 @@
 #include <QToolButton>
 
 class MainWindowController;
+class ControllerDialog;
 class QGridLayout;
 class QSplitter;
 
@@ -123,6 +124,8 @@ private:
   QTableWidget *m_zoneTable = nullptr;
   QPushButton *m_btnRefreshZone = nullptr;
 
+  QTabWidget *m_dbSubTabs = nullptr;
+
   // Object Type Filter Checkboxes
   QCheckBox *m_chkVehicle = nullptr;
   QCheckBox *m_chkPerson = nullptr;
@@ -189,6 +192,7 @@ private:
   QPoint m_dragPosition;
 
   MainWindowController *m_controller = nullptr;
+  ControllerDialog *m_controllerDialog = nullptr;
 };
 
 #endif // MAINWINDOW_H

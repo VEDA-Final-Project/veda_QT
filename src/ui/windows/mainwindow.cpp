@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "config/logfilterconfig.h"
 #include "mainwindowcontroller.h"
+#include "controllerdialog.h"
 #include <QDialog>
 
 #ifdef Q_OS_WIN
@@ -152,6 +153,9 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.zoneTable = m_zoneTable;
   uiRefs.btnRefreshZone = m_btnRefreshZone;
   uiRefs.eventListWidget = m_eventListWidget;
+
+  uiRefs.stackedWidget = m_stackedWidget;
+  uiRefs.dbSubTabs = m_dbSubTabs;
 
   uiRefs.recordLogTable = m_recordLogTable;
   uiRefs.btnRefreshRecordLogs = m_btnRefreshRecordLogs;
@@ -415,6 +419,21 @@ void MainWindow::setupUi() {
     connect(action, &QAction::triggered, this,
             [=]() { stackedWidget->setCurrentIndex(menuIndices[i]); });
   }
+
+  // Controller UI Action
+  m_navMenu->addSeparator();
+  QAction *ctrlAction = m_navMenu->addAction(QString::fromUtf8("\xF0\x9F\x8E\xAE 컨트롤러"));
+  connect(ctrlAction, &QAction::triggered, this, [this]() {
+      if (!m_controllerDialog) {
+          m_controllerDialog = new ControllerDialog(this);
+          if (m_controller) {
+              m_controller->connectControllerDialog(m_controllerDialog);
+          }
+      }
+      m_controllerDialog->show();
+      m_controllerDialog->raise();
+      m_controllerDialog->activateWindow();
+  });
 
   m_menuButton->setMenu(m_navMenu);
   headerLayout->addWidget(m_menuButton);
@@ -984,7 +1003,7 @@ void MainWindow::setupUi() {
   QWidget *parkingDbTab = new QWidget(this);
   QVBoxLayout *dbLayout = new QVBoxLayout(parkingDbTab);
 
-  QTabWidget *dbSubTabs = new QTabWidget(this);
+  m_dbSubTabs = new QTabWidget(this);
 
   // --- Sub-Tab 1: 주차 이력 (Parking Logs) ---
   QWidget *logsTab = new QWidget(this);
@@ -1011,7 +1030,7 @@ void MainWindow::setupUi() {
 
   logsLayout->addLayout(logsToolBar);
   logsLayout->addWidget(m_parkingLogTable);
-  dbSubTabs->addTab(logsTab, "🚗 주차 이력");
+  m_dbSubTabs->addTab(logsTab, "🚗 주차 이력");
 
   // --- Sub-Tab 2: 텔레그램 사용자 (Users) ---
   QWidget *usersTab = new QWidget(this);
@@ -1040,7 +1059,7 @@ void MainWindow::setupUi() {
 
   usersLayout->addLayout(usersToolBar);
   usersLayout->addWidget(m_userDbTable);
-  dbSubTabs->addTab(usersTab, "👥 사용자");
+  m_dbSubTabs->addTab(usersTab, "👥 사용자");
 
   // --- Sub-Tab 3: 장치 로그 (Hardware Logs) ---
   QWidget *hwTab = new QWidget(this);
@@ -1062,7 +1081,7 @@ void MainWindow::setupUi() {
 
   hwLayout->addLayout(hwToolBar);
   hwLayout->addWidget(m_hwLogTable);
-  dbSubTabs->addTab(hwTab, "🔧 장치 로그");
+  m_dbSubTabs->addTab(hwTab, "🔧 장치 로그");
 
   // --- Sub-Tab 4: 차량 정보 (Vehicles) ---
   QWidget *vhTab = new QWidget(this);
@@ -1087,7 +1106,7 @@ void MainWindow::setupUi() {
 
   vhLayout->addLayout(vhToolBar);
   vhLayout->addWidget(m_vehicleTable);
-  dbSubTabs->addTab(vhTab, "🚘 차량 정보");
+  m_dbSubTabs->addTab(vhTab, "🚘 차량 정보");
 
   // --- Sub-Tab 5: 주차구역 현황 (Zones) ---
   QWidget *zoneTab = new QWidget(this);
@@ -1109,9 +1128,9 @@ void MainWindow::setupUi() {
 
   zoneLayout->addLayout(zoneToolBar);
   zoneLayout->addWidget(m_zoneTable);
-  dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
+  m_dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
 
-  dbLayout->addWidget(dbSubTabs);
+  dbLayout->addWidget(m_dbSubTabs);
 
   // 탭 추가
   // ======================

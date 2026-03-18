@@ -34,6 +34,8 @@ class RoiService;
 class RpiPanelController;
 class VideoWidget;
 class QEvent;
+class ControllerDialog;
+class QTimer;
 
 class MainWindowController : public QObject {
   Q_OBJECT
@@ -43,6 +45,7 @@ public:
                                 QObject *parent = nullptr);
   void shutdown();
   void startInitialCctv();
+  void connectControllerDialog(ControllerDialog *dialog);
 
 signals:
   void primaryVideoReady();
@@ -136,6 +139,14 @@ private:
   int m_manualRecordChannelIdx = -1;
   uint64_t m_manualRecordStartIdx = 0;
   QString m_currentManualRecordPath;
+
+  // Joystick smooth movement state
+  QTimer *m_joystickTimer = nullptr;
+  double m_joystickTargetX = 0.0;
+  double m_joystickTargetY = 0.0;
+  double m_joystickSpeedX = 0.0;
+  double m_joystickSpeedY = 0.0;
+  void processJoystickMovement();
 
   std::array<CameraChannelRuntime *, 4> m_channels{
       {nullptr, nullptr, nullptr, nullptr}};

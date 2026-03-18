@@ -1,5 +1,6 @@
 #include "mainwindowcontroller.h"
-
+#include <QDialog>
+#include "controllerdialog.h"
 #include "camera/camerasource.h"
 #include "camerachannelruntime.h"
 #include "config/config.h"
@@ -31,9 +32,11 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QTableWidget> // User Table
 #include <QTableWidgetItem>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
@@ -564,6 +567,8 @@ void MainWindowController::connectSignals() {
     m_dbPanelController->refreshAll();
   }
 
+  // Controller UI는 connectControllerDialog()를 통해 런타임에 동적으로 연결됩니다.
+
   // 수동 캡처/녹화 버튼 연결 (라이브 탭 + 녹화조회 탭 전용 버튼)
   if (m_ui.btnCaptureManual) {
     connect(m_ui.btnCaptureManual, &QPushButton::clicked, this,
@@ -587,6 +592,123 @@ void MainWindowController::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MainWindowController::bindRecordPreviewSource);
   }
+}
+
+void MainWindowController::connectControllerDialog(ControllerDialog *dialog) {
+  if (!dialog) return;
+  
+  // Joystick
+  connect(dialog, &ControllerDialog::simulatedJoystickMoved, this,
+          [this](const QString &dir, int state) {
+            if (m_selectedChannelIndices.size() > 1) {
+                onLogMessage("[Controller] JOY Ignored (Multiple channels visible)");
+                return;
+            }
+            if (!m_joystickTimer) {
+                m_joystickTimer = new QTimer(this);
+                connect(m_joystickTimer, &QTimer::timeout, this, &MainWindowController::processJoystickMovement);
+            }
+
+            if (state == 1) { // Pressed
+                onLogMessage(QString("[Controller] JOY Pressed: %1").arg(dir));
+                if (dir == "U") m_joystickTargetY = -1.0;
+                else if (dir == "D") m_joystickTargetY = 1.0;
+                else if (dir == "L") m_joystickTargetX = -1.0;
+                else if (dir == "R") m_joystickTargetX = 1.0;
+                
+                if (!m_joystickTimer->isActive()) {
+                    m_joystickTimer->start(16); // ~60fps continuous movement
+                }
+            } else { // Released
+                onLogMessage(QString("[Controller] JOY Released: %1").arg(dir));
+                if (dir == "U" && m_joystickTargetY < 0) m_joystickTargetY = 0;
+                else if (dir == "D" && m_joystickTargetY > 0) m_joystickTargetY = 0;
+                else if (dir == "L" && m_joystickTargetX < 0) m_joystickTargetX = 0;
+                else if (dir == "R" && m_joystickTargetX > 0) m_joystickTargetX = 0;
+            }
+          });
+
+  // Encoder
+  connect(dialog, &ControllerDialog::simulatedEncoderRotated, this,
+          [this](int delta) {
+            // 4분할 모드일 때는 줌 제어 무시
+            if (m_selectedChannelIndices.size() > 1) {
+                return;
+            }
+
+            onLogMessage(QString("[Controller] ENC Rotated: %1").arg(delta));
+            int cardIdx = primarySelectedChannelIndex();
+            CameraChannelRuntime *channel = channelForCardIndex(cardIdx);
+            if (!channel) channel = channelAt(0);
+
+            if (channel && channel->videoWidget()) {
+                double z = channel->videoWidget()->zoom();
+                z += (delta > 0) ? 0.1 : -0.1; 
+                channel->videoWidget()->setZoom(z);
+                onLogMessage(QString("[Zoom] Current: %1x").arg(channel->videoWidget()->zoom(), 0, 'f', 1));
+            }
+          });
+
+  connect(dialog, &ControllerDialog::simulatedEncoderClicked, this,
+          [this]() {
+            if (m_selectedChannelIndices.size() > 1) {
+                return;
+            }
+            onLogMessage("[Controller] ENC Clicked (Reset Zoom)");
+            int cardIdx = primarySelectedChannelIndex();
+            CameraChannelRuntime *channel = channelForCardIndex(cardIdx);
+            if (!channel) channel = channelAt(0);
+
+            if (channel && channel->videoWidget()) {
+                channel->videoWidget()->setZoom(1.0);
+                onLogMessage("[Zoom] Reset to 1.0x");
+            }
+          });
+
+  // Buttons (288~295)
+  connect(dialog, &ControllerDialog::simulatedButtonClicked, this,
+          [this](int btnCode) {
+            onLogMessage(QString("[Controller] BTN Clicked: %1").arg(btnCode));
+            if (btnCode >= 288 && btnCode <= 291) {
+              // 1. 모든 채널 줌 상태 초기화 (Auto Reset)
+              for (int i = 0; i < 4; ++i) {
+                CameraChannelRuntime *ch = channelAt(i);
+                if (ch && ch->videoWidget()) {
+                    ch->videoWidget()->setZoom(1.0);
+                }
+              }
+
+              // 2. 채널 단독 송출 전환
+              int ch = btnCode - 288;
+              // 단독 송출: 기존 선택 해제하고 해당 채널만 표시
+              m_selectedChannelIndices.clear();
+              m_selectedChannelIndices.append(ch);
+              m_selectedChannelIndex = ch;
+              rebuildLiveLayout();
+              onRoiTargetChanged(ch);
+            } else if (btnCode == 292) { // DB 이동
+              if (m_ui.stackedWidget) {
+                m_ui.stackedWidget->setCurrentIndex(4); // DB 탭 인덱스 4
+                onLogMessage("[Controller] Moved to DB Tab.");
+              }
+            } else if (btnCode == 293) { // DB 탭 전환
+              if (m_ui.stackedWidget && m_ui.stackedWidget->currentIndex() == 4 && m_ui.dbSubTabs) {
+                int nextIndex = (m_ui.dbSubTabs->currentIndex() + 1) % m_ui.dbSubTabs->count();
+                m_ui.dbSubTabs->setCurrentIndex(nextIndex);
+                onLogMessage(QString("[Controller] Cycled DB SubTab to %1").arg(nextIndex));
+              } else {
+                onLogMessage("[Controller] DB Tab must be active to cycle sub-tabs.");
+              }
+            } else if (btnCode == 294) { // 캡쳐
+              onCaptureManual();
+            } else if (btnCode == 295) { // 녹화 토글
+              if (m_ui.btnRecordManual) {
+                m_ui.btnRecordManual->toggle();
+              } else {
+                onRecordManualToggled(!m_isManualRecording);
+              }
+            }
+          });
 }
 
 bool MainWindowController::isChannelSelected(int index) const {
@@ -1389,14 +1511,37 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
   box->show();
 }
 
+void MainWindowController::processJoystickMovement() {
+    int cardIdx = primarySelectedChannelIndex();
+    CameraChannelRuntime *channel = channelForCardIndex(cardIdx);
+    if (!channel) channel = channelAt(0);
+
+    if (channel && channel->videoWidget()) {
+        const double accel = 0.08; // 8% approach per tick (smooth acceleration)
+        
+        m_joystickSpeedX += (m_joystickTargetX - m_joystickSpeedX) * accel;
+        m_joystickSpeedY += (m_joystickTargetY - m_joystickSpeedY) * accel;
+        
+        // Deadzone check to completely stop
+        if (std::abs(m_joystickSpeedX) < 0.001) m_joystickSpeedX = 0;
+        if (std::abs(m_joystickSpeedY) < 0.001) m_joystickSpeedY = 0;
+        
+        if (m_joystickSpeedX != 0 || m_joystickSpeedY != 0) {
+            channel->videoWidget()->panZoom(m_joystickSpeedX * 0.4, m_joystickSpeedY * 0.4);
+        } else if (m_joystickTargetX == 0 && m_joystickTargetY == 0) {
+            if (m_joystickTimer) m_joystickTimer->stop();
+        }
+    } else {
+        if (m_joystickTimer) m_joystickTimer->stop();
+    }
+}
+
 void MainWindowController::onCaptureManual() {
   QPushButton *senderBtn = qobject_cast<QPushButton *>(sender());
   int idx = m_selectedChannelIndex;
 
-  if (!senderBtn && m_ui.cmbManualCamera) {
-    idx = m_ui.cmbManualCamera->currentIndex();
-  } else if (senderBtn && m_ui.btnCaptureRecordTab &&
-             senderBtn == m_ui.btnCaptureRecordTab) {
+  if (senderBtn && m_ui.btnCaptureRecordTab &&
+      senderBtn == m_ui.btnCaptureRecordTab) {
     idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
   }
   if (idx < 0)
@@ -1405,7 +1550,12 @@ void MainWindowController::onCaptureManual() {
   VideoBufferManager *targetBuffer = getBufferByIndex(idx);
   QString camId = QString("Ch %1").arg(idx + 1);
 
-  onLogMessage(QString("[Recorder] [%1] 수동 캐캐 요청...").arg(camId));
+  VideoWidget *targetWidget = videoWidgetForTarget(static_cast<RoiTarget>(idx));
+  if (targetWidget) {
+    targetWidget->triggerCaptureFeedback();
+  }
+
+  onLogMessage(QString("[Recorder] [%1] 수동 캡처 요청...").arg(camId));
 
   if (!targetBuffer) {
     onLogMessage(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));
@@ -1438,7 +1588,7 @@ void MainWindowController::onCaptureManual() {
                             Q_ARG(QString, camId));
 
   onLogMessage(
-      QString("[Recorder] [%1] 캐캐 저장 코: %2").arg(camId, fileName));
+      QString("[Recorder] [%1] 캡처 저장 완료: %2").arg(camId, fileName));
 }
 
 void MainWindowController::onRecordManualToggled(bool checked) {
@@ -1494,6 +1644,12 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     onLogMessage(QString("[Recorder] [%1] 수동 녹화 시작 (시작 인덱스: %2)")
                      .arg(camId)
                      .arg(m_manualRecordStartIdx));
+    
+    // UI 피드백 (REC 표시)
+    VideoWidget *vw = videoWidgetForTarget(static_cast<RoiTarget>(idx));
+    if (vw) {
+        vw->setRecording(true);
+    }
   } else {
     int idx = m_manualRecordChannelIdx;
     VideoBufferManager *targetBuffer = getBufferByIndex(idx);
@@ -1501,6 +1657,12 @@ void MainWindowController::onRecordManualToggled(bool checked) {
 
     onLogMessage(
         QString("[Recorder] [%1] 녹화 중지 요청 - 저장 중...").arg(camId));
+    
+    // UI 피드백 (REC 제거)
+    VideoWidget *vw = videoWidgetForTarget(static_cast<RoiTarget>(idx));
+    if (vw) {
+        vw->setRecording(false);
+    }
 
     if (!targetBuffer) {
       onLogMessage(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));

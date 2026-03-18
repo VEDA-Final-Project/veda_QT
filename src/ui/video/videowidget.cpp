@@ -2,7 +2,9 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QPainter>
+#include <QTimer>
 #include <QtGlobal>
+#include <cmath>
 
 VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent) {
   setStyleSheet("background-color: black;");
@@ -20,6 +22,7 @@ void VideoWidget::setShowFps(bool show) {
     emit avgFpsUpdated(0.0);
   }
 }
+
 
 void VideoWidget::setUserRoi(const QRect &roi) {
   m_roiState.setUserRoi(roi);
@@ -203,7 +206,7 @@ void VideoWidget::renderFrame(const QImage &frame) {
   const QImage composed = m_frameRenderer.compose(
       frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
       m_roiState.roiEnabled(), m_showFps, static_cast<int>(m_currentFps),
-      m_profileName, nullptr);
+      m_profileName, m_zoomFactor, m_zoomCenterX, m_zoomCenterY, nullptr);
 
   // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
   m_currentFrame = composed;
@@ -213,12 +216,80 @@ void VideoWidget::renderFrame(const QImage &frame) {
 void VideoWidget::paintEvent(QPaintEvent *event) {
   QWidget::paintEvent(event);
 
+  int imgX = 0;
+  int imgY = 0;
+  int imgW = width();
+  int imgH = height();
+
   if (!m_currentFrame.isNull()) {
     QPainter p(this);
-    // 위젯 중앙에 QImage를 직접 그립니다 (QPixmap 변환 비용 0)
-    const int x = (width() - m_currentFrame.width()) / 2;
-    const int y = (height() - m_currentFrame.height()) / 2;
-    p.drawImage(x, y, m_currentFrame);
+    imgW = m_currentFrame.width();
+    imgH = m_currentFrame.height();
+    imgX = (width() - imgW) / 2;
+    imgY = (height() - imgH) / 2;
+    p.drawImage(imgX, imgY, m_currentFrame);
+  }
+
+  QPainter p(this);
+  p.setRenderHint(QPainter::Antialiasing);
+
+  // === 録画(REC) 알림 ===
+  if (m_isRecording) {
+      const int margin = 15;
+      const int dotRadius = 6;
+      
+      // 부드러운 깜빡임 (싸인파 기반)
+      qint64 ms = QDateTime::currentMSecsSinceEpoch();
+      double alpha = (std::sin(ms / 150.0) + 1.0) / 2.0; // 0.0 ~ 1.0
+      int redAlpha = static_cast<int>(100 + 155 * alpha);
+
+      QRect recBox(imgX + margin, imgY + margin, 90, 32);
+      
+      // 배경 라운드 박스
+      p.setPen(Qt::NoPen);
+      p.setBrush(QColor(0, 0, 0, 160));
+      p.drawRoundedRect(recBox, 6, 6);
+
+      // 빨간 점
+      p.setBrush(QColor(255, 0, 0, redAlpha));
+      p.drawEllipse(recBox.left() + 10, recBox.center().y() - dotRadius, dotRadius * 2, dotRadius * 2);
+      
+      // REC 텍스트
+      p.setPen(QColor(255, 255, 255, 220));
+      QFont recFont = p.font();
+      recFont.setPointSize(12);
+      recFont.setBold(true);
+      p.setFont(recFont);
+      p.drawText(recBox.left() + 28, recBox.center().y() + 5, "REC");
+      
+      // 테두리 글로우 효과
+      p.setPen(QPen(QColor(255, 0, 0, redAlpha / 2), 2));
+      p.setBrush(Qt::NoBrush);
+      p.drawRoundedRect(recBox, 6, 6);
+  }
+
+  // === 캡처(CAPTURED) 알림 (셔터 효과) ===
+  if (m_isCapturing) {
+      qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_captureStartTime;
+      const qint64 animDuration = 800; // 800ms
+      
+      if (elapsed < animDuration) {
+          double progress = static_cast<double>(elapsed) / animDuration;
+          double opacity = 1.0 - progress; // 서서히 사라짐
+          
+          // 화면 전체 플래시
+          if (elapsed < 100) { 
+             p.fillRect(imgX, imgY, imgW, imgH, QColor(255, 255, 255, static_cast<int>(200 * (1.0 - elapsed/100.0))));
+          }
+
+          // 카메라 포커스 / 사각 테두리
+          int offset = static_cast<int>(20 * progress);
+          p.setPen(QPen(QColor(255, 255, 255, static_cast<int>(255 * opacity)), 4));
+          p.drawRect(imgX + 10 + offset, imgY + 10 + offset, imgW - 20 - offset*2, imgH - 20 - offset*2);
+          
+      } else {
+          m_isCapturing = false;
+      }
   }
 
   m_roiState.paintDrawingOverlay(this, m_lastFrameSize);
@@ -257,3 +328,68 @@ void VideoWidget::leaveEvent(QEvent *event) {
   update();
   QWidget::leaveEvent(event);
 }
+
+void VideoWidget::setZoom(double zoom) {
+  m_zoomFactor = qBound(1.0, zoom, 5.0);
+  if (m_zoomFactor <= 1.001) {
+    m_zoomCenterX = 0.5;
+    m_zoomCenterY = 0.5;
+  }
+  update();
+}
+
+double VideoWidget::zoom() const { return m_zoomFactor; }
+
+void VideoWidget::panZoom(double dx, double dy) {
+    if (m_zoomFactor <= 1.001) return;
+
+    // 줌 배율이 높을수록 이동 감도를 조절 (정밀 조작 가능하게 함)
+    double sensitivity = 0.05 / m_zoomFactor;
+    m_zoomCenterX = qBound(0.0, m_zoomCenterX + dx * sensitivity, 1.0);
+    m_zoomCenterY = qBound(0.0, m_zoomCenterY + dy * sensitivity, 1.0);
+    update();
+}
+
+void VideoWidget::setRecording(bool recording) {
+  if (!m_animTimer) {
+      m_animTimer = new QTimer(this);
+      connect(m_animTimer, &QTimer::timeout, this, [this]() {
+          if (m_isRecording || m_isCapturing) {
+              update();
+          } else {
+              m_animTimer->stop();
+          }
+      });
+  }
+
+  if (m_isRecording != recording) {
+      m_isRecording = recording;
+      if (m_isRecording && !m_animTimer->isActive()) {
+          m_animTimer->start(33); // ~30fps
+      }
+      update();
+  }
+}
+
+void VideoWidget::triggerCaptureFeedback() {
+  if (!m_animTimer) {
+      m_animTimer = new QTimer(this);
+      connect(m_animTimer, &QTimer::timeout, this, [this]() {
+          if (m_isRecording || m_isCapturing) {
+              update();
+          } else {
+              m_animTimer->stop();
+          }
+      });
+  }
+
+  m_isCapturing = true;
+  m_captureStartTime = QDateTime::currentMSecsSinceEpoch();
+  
+  if (!m_animTimer->isActive()) {
+      m_animTimer->start(33); // ~30fps
+  }
+  
+  update();
+}
+

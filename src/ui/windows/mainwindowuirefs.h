@@ -16,8 +16,12 @@ class QTextEdit;
 class VideoWidget;
 class QFrame;
 class QGridLayout;
+class QStackedWidget;
+class QTabWidget;
 
 struct MainWindowUiRefs {
+  QStackedWidget *stackedWidget = nullptr;
+  QTabWidget *dbSubTabs = nullptr;
   VideoWidget *videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
   QFrame *channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};

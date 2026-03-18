@@ -21,6 +21,8 @@ public:
                  const QList<QPolygon> &roiPolygons,
                  const QStringList &roiLabels, bool roiEnabled, bool showFps,
                  int currentFps, const QString &profileName,
+                 double zoomFactor,
+                 double centerX, double centerY,
                  QList<OcrRequest> *ocrRequests) const;
 };
 
