@@ -32,6 +32,10 @@ void RpiControlClient::connectToServer() {
         m_socket->state() == QAbstractSocket::ConnectingState) {
         return;
     }
+    if (m_host.trimmed().isEmpty() || m_port == 0) {
+        emit logMessage("[RPi] 제어 서버 설정이 비어 있어 연결할 수 없습니다.");
+        return;
+    }
     emit logMessage(
         QString("[RPi] %1:%2 연결 중...").arg(m_host).arg(m_port));
     m_socket->connectToHost(m_host, m_port);
@@ -112,6 +116,15 @@ void RpiControlClient::parsePacket(const QByteArray &rawLine) {
 
     if (type == QLatin1String("JOY")) {
         // $JOY,<dir>,<state>
+        if ((d1 != QLatin1String("U")) && (d1 != QLatin1String("D")) &&
+            (d1 != QLatin1String("L")) && (d1 != QLatin1String("R"))) {
+            emit logMessage(QString("[RPi] 잘못된 JOY 방향: %1").arg(d1));
+            return;
+        }
+        if ((d2 != QLatin1String("1")) && (d2 != QLatin1String("0"))) {
+            emit logMessage(QString("[RPi] 잘못된 JOY 상태값: %1").arg(d2));
+            return;
+        }
         const bool active = (d2 == QLatin1String("1"));
         emit joystickMoved(d1, active);
 
@@ -122,7 +135,11 @@ void RpiControlClient::parsePacket(const QByteArray &rawLine) {
         } else {
             bool ok = false;
             const int delta = d1.toInt(&ok);
-            if (ok) emit encoderRotated(delta);
+            if (!ok || (delta != 1 && delta != -1)) {
+                emit logMessage(QString("[RPi] 잘못된 ENC 값: %1").arg(d1));
+                return;
+            }
+            emit encoderRotated(delta);
         }
 
     } else if (type == QLatin1String("CH")) {
@@ -143,13 +160,21 @@ void RpiControlClient::parsePacket(const QByteArray &rawLine) {
         // $BTN,<code>
         bool ok = false;
         const int code = d1.toInt(&ok);
-        if (ok) emit buttonPressed(code);
+        if (!ok) {
+            emit logMessage(QString("[RPi] 잘못된 BTN 값: %1").arg(d1));
+            return;
+        }
+        emit buttonPressed(code);
 
     } else if (type == QLatin1String("DB")) {
         // $DB,<idx>
         bool ok = false;
         const int idx = d1.toInt(&ok);
-        if (ok) emit dbTabChanged(idx);
+        if (!ok) {
+            emit logMessage(QString("[RPi] 잘못된 DB 탭 값: %1").arg(d1));
+            return;
+        }
+        emit dbTabChanged(idx);
 
     } else {
         emit logMessage(QString("[RPi] 알 수 없는 타입: %1").arg(type));
