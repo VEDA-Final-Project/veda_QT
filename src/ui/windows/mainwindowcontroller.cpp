@@ -10,6 +10,8 @@
 #include "mainwindow.h"
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
+#include "rpipanelcontroller.h"
+#include "rpi/dbbroadcastserver.h"
 #include "roi/roiservice.h"
 #include "ui/video/videowidget.h"
 #include "video/mediarecorderworker.h"
@@ -86,6 +88,18 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &MainWindowController::primaryVideoReady);
   }
 
+  // RPi 제어 클라이언트 초기화 및 시그널 연결 (UI 미존재 시 더미 위젯 사용)
+  RpiPanelController::UiRefs rpiUiRefs;
+  rpiUiRefs.hostEdit = new QLineEdit("192.168.0.44", this);
+  rpiUiRefs.portSpin = new QSpinBox(this);
+  rpiUiRefs.portSpin->setValue(12345);
+  // 나머지 UI 포인터들은 자동으로 nullptr 초기화됨
+  m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
+  m_rpiPanelController->connectSignals();
+  
+  QTimer::singleShot(500, m_rpiPanelController, [this]() {
+      m_rpiPanelController->onRpiConnect();
+  });
   const QString dbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
   DatabaseContext::init(dbPath);
@@ -159,6 +173,23 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
+  // DB broadcast server init (QT -> RPi touchscreen viewer)
+  m_dbBroadcastServer = new DbBroadcastServer(this);
+  m_dbBroadcastServer->setLogsProvider([this]() {
+    QVector<QJsonObject> logs;
+    for (CameraSource *source : m_cameraSources) {
+      ParkingService *service = source ? source->parkingService() : nullptr;
+      if (!service) continue;
+      const QVector<QJsonObject> svcLogs = service->recentLogs(100);
+      for (const QJsonObject &row : svcLogs) {
+        logs.append(row);
+      }
+    }
+    return logs;
+  });
+  connect(m_dbBroadcastServer, &DbBroadcastServer::logMessage,
+          this, &MainWindowController::onLogMessage);
+  m_dbBroadcastServer->startListening(12346);
   for (CameraSource *source : m_cameraSources) {
     ParkingService *service = source ? source->parkingService() : nullptr;
     if (!service) {

@@ -92,6 +92,8 @@ qt_add_executable(rtsp_test
     src/rpi/rpicontrolclient.h
     src/rpi/rpitcpclient.cpp
     src/rpi/rpitcpclient.h
+    src/rpi/dbbroadcastserver.cpp
+    src/rpi/dbbroadcastserver.h
     src/telegram/telegrambotapi.cpp
     src/telegram/telegrambotapi.h
     # Parking

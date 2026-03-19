@@ -25,8 +25,11 @@
 
 class CameraChannelRuntime;
 class CameraSource;
+class DbBroadcastServer;
 class DbPanelController;
 class RecordPanelController;
+class RpiPanelController;
+class RpiPanelController;
 class ControllerDialog;
 class MediaRepository;
 class VideoBufferManager;
@@ -148,6 +151,9 @@ private:
   QTimer *m_joystickTimer = nullptr;
   double m_joystickTargetX = 0.0;
   double m_joystickTargetY = 0.0;
+
+  DbBroadcastServer *m_dbBroadcastServer = nullptr;
+  RpiPanelController *m_rpiPanelController = nullptr;
 
   std::array<CameraChannelRuntime *, 4> m_channels{
       {nullptr, nullptr, nullptr, nullptr}};
