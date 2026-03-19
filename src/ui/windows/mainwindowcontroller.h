@@ -29,6 +29,7 @@ class DbPanelController;
 class RecordPanelController;
 class ControllerDialog;
 class MediaRepository;
+class RpiControlClient;
 class VideoBufferManager;
 class MediaRecorderWorker;
 class QThread;
@@ -107,6 +108,9 @@ private:
   void updateRecordPreviewSourceSize();
   void updateThumbnailForCard(int cardIndex, SharedVideoFrame frame);
   void processJoystickMovement();
+  void setHardwareRecordingState(bool recording);
+  void navigateHardwareToDbTab(int tabIndex);
+  void onHardwareChannelSelectRequested();
   void onHardwareButtonPressed(int btnCode);
   void onHardwareJoystickMoved(const QString &dir, int state);
   void onHardwareEncoderRotated(int delta);
@@ -132,6 +136,7 @@ private:
   DbPanelController *m_dbPanelController = nullptr;
   RecordPanelController *m_recordPanelController = nullptr;
   MediaRepository *m_mediaRepo = nullptr;
+  RpiControlClient *m_rpiControlClient = nullptr;
   VideoBufferManager *m_primaryBuffer = nullptr;
   VideoBufferManager *m_secondaryBuffer = nullptr;
   VideoBufferManager *m_buffer3 = nullptr;

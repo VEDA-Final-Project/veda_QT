@@ -53,5 +53,10 @@
     "port": 9000,
     "connectTimeoutMs": 3000,
     "requestTimeoutMs": 5000
+  },
+  "rpiControl": {
+    "host": "192.168.0.44",
+    "port": 12345,
+    "autoConnect": true
   }
 }

@@ -10,6 +10,7 @@
 #include "mainwindow.h"
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
+#include "rpi/rpicontrolclient.h"
 #include "roi/roiservice.h"
 #include "ui/video/videowidget.h"
 #include "video/mediarecorderworker.h"
@@ -200,6 +201,31 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       new RecordPanelController(recordUiRefs, m_mediaRepo, this);
   m_recordPanelController->connectSignals();
   m_recordPanelController->refreshLogTable();
+
+  m_rpiControlClient = new RpiControlClient(this);
+  m_rpiControlClient->setServer(
+      Config::instance().rpiControlHost(),
+      static_cast<quint16>(Config::instance().rpiControlPort()));
+  connect(m_rpiControlClient, &RpiControlClient::logMessage, this,
+          &MainWindowController::onLogMessage);
+  connect(m_rpiControlClient, &RpiControlClient::joystickMoved, this,
+          [this](const QString &dir, bool active) {
+            onHardwareJoystickMoved(dir, active ? 1 : 0);
+          });
+  connect(m_rpiControlClient, &RpiControlClient::encoderRotated, this,
+          &MainWindowController::onHardwareEncoderRotated);
+  connect(m_rpiControlClient, &RpiControlClient::encoderClicked, this,
+          &MainWindowController::onHardwareEncoderClicked);
+  connect(m_rpiControlClient, &RpiControlClient::buttonPressed, this,
+          &MainWindowController::onHardwareButtonPressed);
+  connect(m_rpiControlClient, &RpiControlClient::captureRequested, this,
+          &MainWindowController::onCaptureManual);
+  connect(m_rpiControlClient, &RpiControlClient::recordingChanged, this,
+          &MainWindowController::setHardwareRecordingState);
+  connect(m_rpiControlClient, &RpiControlClient::dbTabChanged, this,
+          &MainWindowController::navigateHardwareToDbTab);
+  connect(m_rpiControlClient, &RpiControlClient::channelSelectRequested, this,
+          &MainWindowController::onHardwareChannelSelectRequested);
   // 5. 녹화 시스템 초기화
   // 버퍼 크기를 600으로 확장 (15fps 기준 약 40초 분량 저장 가능)
   m_primaryBuffer = new VideoBufferManager(600, this);
@@ -377,6 +403,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &MainWindowController::onApplyContinuousSettingClicked);
   }
 
+  if (Config::instance().rpiControlAutoConnect() && m_rpiControlClient) {
+    m_rpiControlClient->connectToServer();
+  }
+
 }
 
 void MainWindowController::startInitialCctv() {
@@ -450,6 +480,9 @@ void MainWindowController::shutdown() {
     }
   }
   bindRecordPreviewSource(-1);
+  if (m_rpiControlClient) {
+    m_rpiControlClient->disconnectFromServer();
+  }
   for (CameraSource *source : m_cameraSources) {
     if (source) {
       source->stop();
@@ -633,6 +666,38 @@ void MainWindowController::processJoystickMovement() {
   channel->videoWidget()->panZoom(m_joystickTargetX, m_joystickTargetY);
 }
 
+void MainWindowController::setHardwareRecordingState(bool recording) {
+  if (m_isManualRecording == recording) {
+    return;
+  }
+
+  if (m_ui.btnRecordManual) {
+    m_ui.btnRecordManual->setChecked(recording);
+    return;
+  }
+
+  onRecordManualToggled(recording);
+}
+
+void MainWindowController::navigateHardwareToDbTab(int tabIndex) {
+  if (!m_ui.stackedWidget) {
+    return;
+  }
+
+  m_ui.stackedWidget->setCurrentIndex(MainWindow::kDbPageIndex);
+  if (!m_ui.dbSubTabs || m_ui.dbSubTabs->count() <= 0) {
+    onLogMessage("[RPi] DB 탭이 없어 이동할 수 없습니다.");
+    return;
+  }
+
+  const int boundedIndex = qBound(0, tabIndex, m_ui.dbSubTabs->count() - 1);
+  m_ui.dbSubTabs->setCurrentIndex(boundedIndex);
+}
+
+void MainWindowController::onHardwareChannelSelectRequested() {
+  onLogMessage("[RPi] $CH,SEL 은 미지원입니다. BTN 288~291을 사용하세요.");
+}
+
 void MainWindowController::onHardwareJoystickMoved(const QString &dir,
                                                    int state) {
   if (m_selectedChannelIndices.size() > 1) {
@@ -754,7 +819,10 @@ void MainWindowController::onHardwareButtonPressed(int btnCode) {
     if (channel && channel->videoWidget()) {
       channel->videoWidget()->setZoom(1.0);
     }
+    return;
   }
+
+  onLogMessage(QString("[RPi] 지원하지 않는 버튼 코드: %1").arg(btnCode));
 }
 
 void MainWindowController::connectControllerDialog(ControllerDialog *dialog) {

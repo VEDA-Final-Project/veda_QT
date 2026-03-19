@@ -154,6 +154,7 @@ bool Config::load(const QString &path) {
   m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
+  m_rpiControl = root["rpiControl"].toObject();
   m_loadedConfigPath = loadedPath;
 
   qDebug() << "Config loaded from:" << loadedPath;
@@ -383,4 +384,16 @@ int Config::authConnectTimeoutMs() const {
 
 int Config::authRequestTimeoutMs() const {
   return m_auth["requestTimeoutMs"].toInt(5000);
+}
+
+QString Config::rpiControlHost() const {
+  return m_rpiControl["host"].toString(QStringLiteral("192.168.0.44"));
+}
+
+int Config::rpiControlPort() const {
+  return m_rpiControl["port"].toInt(12345);
+}
+
+bool Config::rpiControlAutoConnect() const {
+  return m_rpiControl["autoConnect"].toBool(true);
 }
