@@ -1,6 +1,8 @@
 #include "mainwindow.h"
+#include "../video/videowidget.h"
 #include "config/logfilterconfig.h"
 #include "mainwindowcontroller.h"
+#include "controllerdialog.h"
 #include <QDialog>
 
 #ifdef Q_OS_WIN
@@ -110,29 +112,12 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnSendExit = m_btnSendExit;
   uiRefs.userTable = m_userTable;
 
-  uiRefs.rpiHostEdit = m_rpiHostEdit;
-  uiRefs.rpiPortSpin = m_rpiPortSpin;
-  uiRefs.btnRpiConnect = m_btnRpiConnect;
-  uiRefs.btnRpiDisconnect = m_btnRpiDisconnect;
-  uiRefs.btnBarrierUp = m_btnBarrierUp;
-  uiRefs.btnBarrierDown = m_btnBarrierDown;
-  uiRefs.btnLedOn = m_btnLedOn;
-  uiRefs.btnLedOff = m_btnLedOff;
-  uiRefs.rpiConnectionStatusLabel = m_rpiConnectionStatusLabel;
-  uiRefs.rpiVehicleStatusLabel = m_rpiVehicleStatusLabel;
-  uiRefs.rpiLedStatusLabel = m_rpiLedStatusLabel;
-  uiRefs.rpiIrRawLabel = m_rpiIrRawLabel;
-  uiRefs.rpiServoAngleLabel = m_rpiServoAngleLabel;
-
   uiRefs.parkingLogTable = m_parkingLogTable;
   uiRefs.plateSearchInput = m_plateSearchInput;
   uiRefs.btnSearchPlate = m_btnSearchPlate;
   uiRefs.btnRefreshLogs = m_btnRefreshLogs;
   uiRefs.forcePlateInput = m_forcePlateInput;
   uiRefs.forceObjectIdInput = m_forceObjectIdInput;
-  uiRefs.forceTypeInput = m_forceTypeInput;
-  uiRefs.forceScoreInput = m_forceScoreInput;
-  uiRefs.forceBBoxInput = m_forceBBoxInput;
   uiRefs.btnForcePlate = m_btnForcePlate;
   uiRefs.editPlateInput = m_editPlateInput;
   uiRefs.btnEditPlate = m_btnEditPlate;
@@ -149,15 +134,15 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnAddUser = m_btnAddUser;
   uiRefs.btnEditUser = m_btnEditUser;
   uiRefs.btnDeleteUser = m_btnDeleteUser;
-  uiRefs.hwLogTable = m_hwLogTable;
-  uiRefs.btnRefreshHwLogs = m_btnRefreshHwLogs;
-  uiRefs.btnClearHwLogs = m_btnClearHwLogs;
   uiRefs.vehicleTable = m_vehicleTable;
   uiRefs.btnRefreshVehicles = m_btnRefreshVehicles;
   uiRefs.btnDeleteVehicle = m_btnDeleteVehicle;
   uiRefs.zoneTable = m_zoneTable;
   uiRefs.btnRefreshZone = m_btnRefreshZone;
   uiRefs.eventListWidget = m_eventListWidget;
+
+  uiRefs.stackedWidget = m_stackedWidget;
+  uiRefs.dbSubTabs = m_dbSubTabs;
 
   uiRefs.recordLogTable = m_recordLogTable;
   uiRefs.btnRefreshRecordLogs = m_btnRefreshRecordLogs;
@@ -184,6 +169,15 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
 
   uiRefs.btnCaptureManual = m_btnCaptureManual;
   uiRefs.btnRecordManual = m_btnRecordManual;
+
+  // RPi uc81cuc5b4uc2e0ud638 uc218uc2e0 ud074ub77cuc774uc5b8ud2b8
+  uiRefs.rpiHostEdit              = m_rpiHostEdit;
+  uiRefs.rpiPortSpin              = m_rpiPortSpin;
+  uiRefs.btnRpiConnect            = m_btnRpiConnect;
+  uiRefs.btnRpiDisconnect         = m_btnRpiDisconnect;
+  uiRefs.rpiConnectionStatusLabel = m_rpiConnectionStatusLabel;
+  uiRefs.rpiLastCmdLabel          = m_rpiLastCmdLabel;
+  uiRefs.rpiCtrlLogView           = m_rpiCtrlLogView;
 
   return uiRefs;
 }
@@ -410,17 +404,30 @@ void MainWindow::setupUi() {
   const QStringList menuLabels = {
       QString::fromUtf8("\xF0\x9F\x93\xB1 "
                         "\xED\x85\x94\xEB\xA0\x88\xEA\xB7\xB8\xEB\x9E\xA8"),
-      QString::fromUtf8("\xF0\x9F\xA7\xA0 RPi"),
       QString::fromUtf8("\xF0\x9F\x97\x84\xEF\xB8\x8F DB"),
-      QString::fromUtf8("\xF0\x9F\x94\x8D ReID"),
       QString::fromUtf8("\xF0\x9F\x93\xBD REC")};
-  const QList<int> menuIndices = {2, 3, 4, 5, 6};
+  const QList<int> menuIndices = {2, 3, 4};
 
   for (int i = 0; i < menuLabels.size(); ++i) {
     QAction *action = m_navMenu->addAction(menuLabels[i]);
     connect(action, &QAction::triggered, this,
             [=]() { stackedWidget->setCurrentIndex(menuIndices[i]); });
   }
+
+  // Controller UI Action
+  m_navMenu->addSeparator();
+  QAction *ctrlAction = m_navMenu->addAction(QString::fromUtf8("\xF0\x9F\x8E\xAE 컨트롤러"));
+  connect(ctrlAction, &QAction::triggered, this, [this]() {
+      if (!m_controllerDialog) {
+          m_controllerDialog = new ControllerDialog(this);
+          if (m_controller) {
+              m_controller->connectControllerDialog(m_controllerDialog);
+          }
+      }
+      m_controllerDialog->show();
+      m_controllerDialog->raise();
+      m_controllerDialog->activateWindow();
+  });
 
   m_menuButton->setMenu(m_navMenu);
   headerLayout->addWidget(m_menuButton);
@@ -507,12 +514,12 @@ void MainWindow::setupUi() {
   splashCardLayout->setSpacing(14);
 
   m_splashTitleLabel =
-      new QLabel(QString::fromUtf8("CCTV 준비 중"), splashCard);
+      new QLabel(QString::fromUtf8("CCTV 준비 중..."), splashCard);
   m_splashTitleLabel->setObjectName("cctvSplashTitle");
   m_splashTitleLabel->setAlignment(Qt::AlignCenter);
 
   m_splashMessageLabel = new QLabel(
-      QString::fromUtf8("카메라 연결을 확인하고 있습니다."), splashCard);
+      QString::fromUtf8("카메라를 확인하고 있습니다."), splashCard);
   m_splashMessageLabel->setObjectName("cctvSplashMessage");
   m_splashMessageLabel->setWordWrap(true);
   m_splashMessageLabel->setAlignment(Qt::AlignCenter);
@@ -655,7 +662,7 @@ void MainWindow::setupUi() {
   channelPanelLayout->addSpacing(4);
 
   // ROI 버튼들
-  m_btnApplyRoi = new QPushButton(QString::fromUtf8("구역 설정"), this);
+  m_btnApplyRoi = new QPushButton(QString::fromUtf8("ROI 추가"), this);
   m_btnFinishRoi = new QPushButton(QString::fromUtf8("ROI 완료"), this);
   m_btnDeleteRoi = new QPushButton(QString::fromUtf8("ROI 삭제"), this);
   channelPanelLayout->addWidget(m_btnApplyRoi);
@@ -694,7 +701,7 @@ void MainWindow::setupUi() {
   channelPanelLayout->addSpacing(4);
 
   m_chkShowFps = new QCheckBox(QString::fromUtf8("FPS 표시"), this);
-  m_lblAvgFps = new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
+  m_lblAvgFps = new QLabel(QString::fromUtf8("평균 FPS: 0.0"), this);
   channelPanelLayout->addWidget(m_chkShowFps);
   channelPanelLayout->addWidget(m_lblAvgFps);
   channelPanelLayout->addSpacing(12);
@@ -817,7 +824,7 @@ void MainWindow::setupUi() {
   mainSplitter->setCollapsible(2, true);  // 우측 이벤트 패널 접기 가능
   mainSplitter->setStretchFactor(
       1, 1); // 중앙 화면이 남는 공간을 모두 차지하도록 설정 (매우 중요)
-  mainSplitter->setSizes({220, 600, 250});
+  mainSplitter->setSizes({220, 850, 0});
 
   // 이제 Splitter 전체를 꽉 차게 cctvLayout에 바로 추가 (여백 없음)
   cctvLayout->addWidget(mainSplitter, 1);
@@ -916,77 +923,12 @@ void MainWindow::setupUi() {
 
   tgLayout->addStretch();
 
-  // ======================
-  // Tab 3: RPi 제어
-  // ======================
-  QWidget *rpiTab = new QWidget(this);
-  QVBoxLayout *rpiLayout = new QVBoxLayout(rpiTab);
-
-  // 1. 연결 설정
-  QGroupBox *rpiConnGroup =
-      new QGroupBox(QString::fromUtf8("RPi 연결 설정"), this);
-  QHBoxLayout *rpiConnRow = new QHBoxLayout();
-  m_rpiHostEdit = new QLineEdit(this);
-  m_rpiHostEdit->setPlaceholderText(
-      QStringLiteral("RPi Host (예: 192.168.0.50)"));
-  m_rpiHostEdit->setText(QStringLiteral("127.0.0.1"));
-  m_rpiPortSpin = new QSpinBox(this);
-  m_rpiPortSpin->setRange(1, 65535);
-  m_rpiPortSpin->setValue(5000);
-  m_btnRpiConnect = new QPushButton(QString::fromUtf8("연결"), this);
-  m_btnRpiDisconnect = new QPushButton(QString::fromUtf8("해제"), this);
-  rpiConnRow->addWidget(new QLabel(QString::fromUtf8("Host:"), this));
-  rpiConnRow->addWidget(m_rpiHostEdit);
-  rpiConnRow->addWidget(new QLabel(QString::fromUtf8("Port:"), this));
-  rpiConnRow->addWidget(m_rpiPortSpin);
-  rpiConnRow->addWidget(m_btnRpiConnect);
-  rpiConnRow->addWidget(m_btnRpiDisconnect);
-  rpiConnGroup->setLayout(rpiConnRow);
-  rpiLayout->addWidget(rpiConnGroup);
-
-  // 2. 제어
-  QGroupBox *rpiControlGroup =
-      new QGroupBox(QString::fromUtf8("차단봉 / LED 제어"), this);
-  QHBoxLayout *rpiControlRow = new QHBoxLayout();
-  m_btnBarrierUp = new QPushButton(QString::fromUtf8("차단봉 올리기"), this);
-  m_btnBarrierDown = new QPushButton(QString::fromUtf8("차단봉 내리기"), this);
-  m_btnLedOn = new QPushButton(QString::fromUtf8("LED ON"), this);
-  m_btnLedOff = new QPushButton(QString::fromUtf8("LED OFF"), this);
-  rpiControlRow->addWidget(m_btnBarrierUp);
-  rpiControlRow->addWidget(m_btnBarrierDown);
-  rpiControlRow->addSpacing(20);
-  rpiControlRow->addWidget(m_btnLedOn);
-  rpiControlRow->addWidget(m_btnLedOff);
-  rpiControlGroup->setLayout(rpiControlRow);
-  rpiLayout->addWidget(rpiControlGroup);
-
-  // 3. 상태
-  QGroupBox *rpiStatusGroup = new QGroupBox(QString::fromUtf8("상태"), this);
-  QFormLayout *rpiStatusForm = new QFormLayout();
-  m_rpiConnectionStatusLabel =
-      new QLabel(QString::fromUtf8("Disconnected"), this);
-  m_rpiVehicleStatusLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiLedStatusLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiIrRawLabel = new QLabel(QString::fromUtf8("-"), this);
-  m_rpiServoAngleLabel = new QLabel(QString::fromUtf8("-"), this);
-  rpiStatusForm->addRow(QString::fromUtf8("연결 상태:"),
-                        m_rpiConnectionStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("차량 감지(IR):"),
-                        m_rpiVehicleStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("LED 상태:"), m_rpiLedStatusLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("IR Raw:"), m_rpiIrRawLabel);
-  rpiStatusForm->addRow(QString::fromUtf8("서보 각도:"), m_rpiServoAngleLabel);
-  rpiStatusGroup->setLayout(rpiStatusForm);
-  rpiLayout->addWidget(rpiStatusGroup);
-
-  rpiLayout->addStretch();
-
-  // Tab 4: 주차 DB 현황판
+  // Tab 3: 주차 DB 현황판
   // ======================
   QWidget *parkingDbTab = new QWidget(this);
   QVBoxLayout *dbLayout = new QVBoxLayout(parkingDbTab);
 
-  QTabWidget *dbSubTabs = new QTabWidget(this);
+  m_dbSubTabs = new QTabWidget(this);
 
   // --- Sub-Tab 1: 주차 이력 (Parking Logs) ---
   QWidget *logsTab = new QWidget(this);
@@ -1003,9 +945,12 @@ void MainWindow::setupUi() {
   logsToolBar->addStretch();
 
   m_parkingLogTable = new QTableWidget(this);
-  m_parkingLogTable->setColumnCount(5);
+  m_parkingLogTable->setColumnCount(8);
   m_parkingLogTable->setHorizontalHeaderLabels(
-      QStringList() << "ID" << "번호판" << "ROI" << "입차시간" << "출차시간");
+      QStringList() << "ID" << "Object ID" << "번호판" << "구역명" << "입차시간"
+                    << "출차시간" << "지불여부" << "총 금액");
+  m_parkingLogTable->setColumnHidden(0, true);
+  m_parkingLogTable->setColumnHidden(1, true);
   m_parkingLogTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::Stretch);
   m_parkingLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1013,7 +958,7 @@ void MainWindow::setupUi() {
 
   logsLayout->addLayout(logsToolBar);
   logsLayout->addWidget(m_parkingLogTable);
-  dbSubTabs->addTab(logsTab, "🚗 주차 이력");
+  m_dbSubTabs->addTab(logsTab, "🚗 주차 이력");
 
   // --- Sub-Tab 2: 텔레그램 사용자 (Users) ---
   QWidget *usersTab = new QWidget(this);
@@ -1042,7 +987,7 @@ void MainWindow::setupUi() {
 
   usersLayout->addLayout(usersToolBar);
   usersLayout->addWidget(m_userDbTable);
-  dbSubTabs->addTab(usersTab, "👥 사용자");
+  m_dbSubTabs->addTab(usersTab, "👥 사용자");
 
   // --- Sub-Tab 3: 장치 로그 (Hardware Logs) ---
   QWidget *hwTab = new QWidget(this);
@@ -1064,18 +1009,18 @@ void MainWindow::setupUi() {
 
   hwLayout->addLayout(hwToolBar);
   hwLayout->addWidget(m_hwLogTable);
-  dbSubTabs->addTab(hwTab, "🔧 장치 로그");
+  m_dbSubTabs->addTab(hwTab, "🔧 장치 로그");
 
   // --- Sub-Tab 4: 차량 정보 (Vehicles) ---
   QWidget *vhTab = new QWidget(this);
   QVBoxLayout *vhLayout = new QVBoxLayout(vhTab);
+  vhLayout->setContentsMargins(0, 0, 0, 0);
+  vhLayout->setSpacing(8);
 
-  QHBoxLayout *vhToolBar = new QHBoxLayout();
-  m_btnRefreshVehicles = new QPushButton("새로고침", this);
-  m_btnDeleteVehicle = new QPushButton("삭제", this);
-  vhToolBar->addWidget(m_btnRefreshVehicles);
-  vhToolBar->addWidget(m_btnDeleteVehicle);
-  vhToolBar->addStretch();
+  QLabel *reidSectionTitle =
+      new QLabel(QString::fromUtf8("실시간 객체 정보 / 차량 정보 입력"), this);
+  reidSectionTitle->setObjectName("panelTitle");
+  vhLayout->addWidget(reidSectionTitle);
 
   m_vehicleTable = new QTableWidget(this);
   m_vehicleTable->setColumnCount(5);
@@ -1087,9 +1032,16 @@ void MainWindow::setupUi() {
   m_vehicleTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_vehicleTable->setSelectionBehavior(QAbstractItemView::SelectRows);
 
+  QHBoxLayout *vhToolBar = new QHBoxLayout();
+  m_btnRefreshVehicles = new QPushButton("새로고침", this);
+  m_btnDeleteVehicle = new QPushButton("삭제", this);
+  vhToolBar->addWidget(m_btnRefreshVehicles);
+  vhToolBar->addWidget(m_btnDeleteVehicle);
+  vhToolBar->addStretch();
+
   vhLayout->addLayout(vhToolBar);
   vhLayout->addWidget(m_vehicleTable);
-  dbSubTabs->addTab(vhTab, "🚘 차량 정보");
+  m_dbSubTabs->addTab(vhTab, "🚘 차량 정보");
 
   // --- Sub-Tab 5: 주차구역 현황 (Zones) ---
   QWidget *zoneTab = new QWidget(this);
@@ -1111,64 +1063,47 @@ void MainWindow::setupUi() {
 
   zoneLayout->addLayout(zoneToolBar);
   zoneLayout->addWidget(m_zoneTable);
-  dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
+  m_dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
 
-  dbLayout->addWidget(dbSubTabs);
+  dbLayout->addWidget(m_dbSubTabs);
 
   // 탭 추가
   // ======================
-  // Tab 4: 객체 ReID (Debug)
+  // Tab 4: 객체 ReID (Debug) 은 vhLayout에 이어붙임
   // ======================
-  QWidget *reidTab = new QWidget(this);
-  QVBoxLayout *reidLayout = new QVBoxLayout(reidTab);
 
   // 1. 실시간 객체 정보 테이블
   m_reidTable = new QTableWidget(this);
-  m_reidTable->setColumnCount(5);
-  m_reidTable->setHorizontalHeaderLabels(
-      QStringList() << "ID" << "Type" << "Plate" << "Score" << "BBox");
+  m_reidTable->setColumnCount(4);
+  m_reidTable->setHorizontalHeaderLabels(QStringList()
+                                         << QString::fromUtf8("채널")
+                                         << "ReID"
+                                         << "Obj ID"
+                                         << QString::fromUtf8("번호판"));
+
   m_reidTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_reidTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_reidTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-  reidLayout->addWidget(m_reidTable);
+  vhLayout->addWidget(m_reidTable, 1);
 
-  // 2. 선택 객체 정보 수정 (실험용 상세 제어)
   QGroupBox *forceGroup = new QGroupBox(
       QString::fromUtf8("선택 객체 정보 수정 (실험용 상세 제어)"), this);
-  QVBoxLayout *forceLayout = new QVBoxLayout(); // 메인 레이아웃
+  QVBoxLayout *forceLayout = new QVBoxLayout();
 
-  // 라벨 행
   QHBoxLayout *labelRow = new QHBoxLayout();
-  labelRow->addWidget(new QLabel("ID", this), 1);
-  labelRow->addWidget(new QLabel("Type", this), 2);
-  labelRow->addWidget(new QLabel("Plate", this), 2);
-  labelRow->addWidget(new QLabel("Score", this), 1);
-  labelRow->addWidget(new QLabel("BBox (x y w h)", this), 3);
-  labelRow->addWidget(new QLabel("", this), 1); // 버튼 공간
+  labelRow->addWidget(new QLabel("Object ID", this), 1);
+  labelRow->addWidget(new QLabel("Plate", this), 4);
+  labelRow->addWidget(new QLabel("", this), 1);
 
-  // 입력 행
   QHBoxLayout *inputRow = new QHBoxLayout();
 
   m_forceObjectIdInput = new QSpinBox(this);
   m_forceObjectIdInput->setRange(0, 2147483647);
   inputRow->addWidget(m_forceObjectIdInput, 1);
 
-  m_forceTypeInput = new QLineEdit(this);
-  m_forceTypeInput->setPlaceholderText("Type");
-  inputRow->addWidget(m_forceTypeInput, 2);
-
   m_forcePlateInput = new QLineEdit(this);
   m_forcePlateInput->setPlaceholderText("Plate");
-  inputRow->addWidget(m_forcePlateInput, 2);
-
-  m_forceScoreInput = new QDoubleSpinBox(this);
-  m_forceScoreInput->setRange(0.0, 1.0);
-  m_forceScoreInput->setSingleStep(0.01);
-  inputRow->addWidget(m_forceScoreInput, 1);
-
-  m_forceBBoxInput = new QLineEdit(this);
-  m_forceBBoxInput->setPlaceholderText("x y w h");
-  inputRow->addWidget(m_forceBBoxInput, 3);
+  inputRow->addWidget(m_forcePlateInput, 4);
 
   m_btnForcePlate = new QPushButton(QString::fromUtf8("정보 업데이트"), this);
   inputRow->addWidget(m_btnForcePlate, 1);
@@ -1176,9 +1111,8 @@ void MainWindow::setupUi() {
   forceLayout->addLayout(labelRow);
   forceLayout->addLayout(inputRow);
   forceGroup->setLayout(forceLayout);
-  reidLayout->addWidget(forceGroup);
+  vhLayout->addWidget(forceGroup);
 
-  // 표시 설정 그룹
   QGroupBox *settingsGroup =
       new QGroupBox(QString::fromUtf8("표시 및 보존 설정"), this);
   QHBoxLayout *settingsLayout = new QHBoxLayout();
@@ -1196,7 +1130,7 @@ void MainWindow::setupUi() {
   settingsLayout->addWidget(
       new QLabel(QString::fromUtf8("Prune Timeout (ms):"), this));
   m_pruneTimeoutInput = new QSpinBox(this);
-  m_pruneTimeoutInput->setRange(0, 315360000); // 대략 1년(사실상 무제한)
+  m_pruneTimeoutInput->setRange(0, 315360000);
   m_pruneTimeoutInput->setValue(5000);
   m_pruneTimeoutInput->setSingleStep(1000);
   settingsLayout->addWidget(m_pruneTimeoutInput);
@@ -1209,10 +1143,10 @@ void MainWindow::setupUi() {
 
   settingsLayout->addStretch();
   settingsGroup->setLayout(settingsLayout);
-  reidLayout->addWidget(settingsGroup);
+  vhLayout->addWidget(settingsGroup);
 
   // ======================
-  // Tab 6: 녹화 조회 (Recording Search)
+  // Tab 5: 녹화 조회 (Recording Search)
   // ======================
   QWidget *recordTab = new QWidget(this);
   QVBoxLayout *recordLayout = new QVBoxLayout(recordTab);
@@ -1459,9 +1393,7 @@ void MainWindow::setupUi() {
   stackedWidget->addWidget(splashTab);
   stackedWidget->addWidget(cctvTab);
   stackedWidget->addWidget(telegramTab);
-  stackedWidget->addWidget(rpiTab);
   stackedWidget->addWidget(parkingDbTab);
-  stackedWidget->addWidget(reidTab);
   stackedWidget->addWidget(recordTab);
   stackedWidget->setCurrentIndex(kSplashPageIndex);
 
@@ -1499,6 +1431,20 @@ void MainWindow::showCctvPage() {
   }
   if (m_stackedWidget) {
     m_stackedWidget->setCurrentIndex(kCctvPageIndex);
+  }
+}
+
+void MainWindow::navigateToPage(int stackedIndex) {
+  if (m_stackedWidget) {
+    m_stackedWidget->setCurrentIndex(stackedIndex);
+  }
+}
+
+void MainWindow::navigateToDbSubTab(int tabIndex) {
+  // DB 펜이지로 이동 후 해당 서브탭으로 전환
+  navigateToPage(kDbPageIndex);
+  if (m_dbSubTabs && tabIndex >= 0 && tabIndex < m_dbSubTabs->count()) {
+    m_dbSubTabs->setCurrentIndex(tabIndex);
   }
 }
 

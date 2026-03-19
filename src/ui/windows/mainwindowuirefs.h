@@ -16,8 +16,12 @@ class QTextEdit;
 class VideoWidget;
 class QFrame;
 class QGridLayout;
+class QStackedWidget;
+class QTabWidget;
 
 struct MainWindowUiRefs {
+  QStackedWidget *stackedWidget = nullptr;
+  QTabWidget *dbSubTabs = nullptr;
   VideoWidget *videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
   QFrame *channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
@@ -42,21 +46,6 @@ struct MainWindowUiRefs {
   QPushButton *btnSendExit = nullptr;
   QTableWidget *userTable = nullptr;
 
-  // RPi Widgets
-  QLineEdit *rpiHostEdit = nullptr;
-  QSpinBox *rpiPortSpin = nullptr;
-  QPushButton *btnRpiConnect = nullptr;
-  QPushButton *btnRpiDisconnect = nullptr;
-  QPushButton *btnBarrierUp = nullptr;
-  QPushButton *btnBarrierDown = nullptr;
-  QPushButton *btnLedOn = nullptr;
-  QPushButton *btnLedOff = nullptr;
-  QLabel *rpiConnectionStatusLabel = nullptr;
-  QLabel *rpiVehicleStatusLabel = nullptr;
-  QLabel *rpiLedStatusLabel = nullptr;
-  QLabel *rpiIrRawLabel = nullptr;
-  QLabel *rpiServoAngleLabel = nullptr;
-
   // Parking DB Panel Widgets
   QTableWidget *parkingLogTable = nullptr;
   QLineEdit *plateSearchInput = nullptr;
@@ -64,9 +53,6 @@ struct MainWindowUiRefs {
   QPushButton *btnRefreshLogs = nullptr;
   QLineEdit *forcePlateInput = nullptr;
   QSpinBox *forceObjectIdInput = nullptr;
-  QLineEdit *forceTypeInput = nullptr;
-  QDoubleSpinBox *forceScoreInput = nullptr;
-  QLineEdit *forceBBoxInput = nullptr;
   QPushButton *btnForcePlate = nullptr;
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;
@@ -84,9 +70,6 @@ struct MainWindowUiRefs {
   QPushButton *btnAddUser = nullptr;
   QPushButton *btnEditUser = nullptr;
   QPushButton *btnDeleteUser = nullptr;
-  QTableWidget *hwLogTable = nullptr;
-  QPushButton *btnRefreshHwLogs = nullptr;
-  QPushButton *btnClearHwLogs = nullptr;
   QTableWidget *vehicleTable = nullptr;
   QPushButton *btnRefreshVehicles = nullptr;
   QPushButton *btnDeleteVehicle = nullptr;
@@ -125,6 +108,15 @@ struct MainWindowUiRefs {
   QLabel *lblContinuousStatus = nullptr;
   QPushButton *btnApplyContinuousSetting = nullptr;
   QPushButton *btnViewContinuous = nullptr;
+
+  // RPi 제어신호 수신 클라이언트 UI
+  QLineEdit   *rpiHostEdit              = nullptr;
+  QSpinBox    *rpiPortSpin              = nullptr;
+  QPushButton *btnRpiConnect            = nullptr;
+  QPushButton *btnRpiDisconnect         = nullptr;
+  QLabel      *rpiConnectionStatusLabel = nullptr;
+  QLabel      *rpiLastCmdLabel          = nullptr;
+  QTextEdit   *rpiCtrlLogView           = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

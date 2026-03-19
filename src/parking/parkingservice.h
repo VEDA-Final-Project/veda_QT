@@ -3,20 +3,13 @@
 
 #include "parking/parkingrepository.h"
 #include "parking/vehicletracker.h"
+#include <QHash>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 class TelegramBotAPI;
 
-/**
- * @brief 주차 관리 시스템의 중앙 비즈니스 로직 서비스
- *
- * 차량 추적(VehicleTracker), DB 관리(ParkingRepository),
- * 알림(TelegramBotAPI)을 통합하여 입출차 이벤트를 처리합니다.
- *
- * MainWindowController는 이 서비스에 메타데이터와 OCR 결과를
- * 전달하고, 결과 시그널을 받아 UI에 반영하기만 하면 됩니다.
- */
 class ParkingService : public QObject {
   Q_OBJECT
 
@@ -38,7 +31,8 @@ public:
   /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
    */
-  void updateRoiPolygons(const QList<QPolygonF> &polygons);
+  void updateRoiPolygons(const QList<QPolygonF> &polygons,
+                         const QStringList &zoneNames = QStringList());
 
   /**
    * @brief 새 메타데이터 프레임 처리 (입출차 판단의 진입점)
@@ -46,11 +40,18 @@ public:
   void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
                        int effectiveWidth, int sourceHeight,
                        qint64 pruneTimeoutMs = 5000);
+  void updateReidFeatures(const QList<ObjectInfo> &objects);
+
+  /**
+   * @brief OCR 시작 수신 처리 (인식 중 상태 표시)
+   */
+  void processOcrStarted(int objectId);
 
   /**
    * @brief OCR 결과 수신 처리
    */
   void processOcrResult(int objectId, const QString &plateNumber);
+
 
   /**
    * @brief 최근 입출차 기록 조회 (UI 표시용)
@@ -67,6 +68,9 @@ public:
    */
   bool updatePlate(int recordId, const QString &newPlate);
   bool deleteLog(int recordId, QString *errorMessage = nullptr);
+  bool updatePayment(const QString &plateNumber, int totalAmount,
+                     const QString &payStatus = QStringLiteral("결제완료"),
+                     QString *errorMessage = nullptr);
 
   /**
    * @brief 수동 번호판 및 객체 정보 강제 지정 (실험용 상세 제어)
@@ -103,11 +107,16 @@ signals:
 private:
   void handleNewEntry(const VehicleState &vs);
   void handleDeparture(const VehicleState &vs);
+  void syncActivePlateIfNeeded(const VehicleState &vs);
+  QString zoneNameForIndex(int roiIndex) const;
 
   VehicleTracker m_tracker;
   ParkingRepository m_repository;
   QString m_cameraKey = QStringLiteral("camera");
+  QStringList m_roiZoneNames;
   TelegramBotAPI *m_telegram = nullptr;
+  QHash<int, QString> m_ocrObjectReidSnapshot;
+  QHash<int, QString> m_lastReidByObjectId;
 };
 
 #endif // PARKINGSERVICE_H

@@ -1,5 +1,6 @@
 #include "videoframerenderer.h"
 #include "config/config.h"
+#include <QDateTime>
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
@@ -23,6 +24,53 @@ QRect sourceRectForObject(const QImage &frame, const ObjectInfo &obj) {
 
   return QRect(static_cast<int>(srcX), static_cast<int>(srcY),
                static_cast<int>(srcW), static_cast<int>(srcH));
+}
+
+bool isVehicleMetadataType(const QString &type) {
+  return type == QStringLiteral("Vehical") ||
+         type == QStringLiteral("Vehicle") ||
+         type == QStringLiteral("Car") || type == QStringLiteral("Truck") ||
+         type == QStringLiteral("Bus") ||
+         type == QStringLiteral("Motorcycle");
+}
+
+int matchedVehicleObjectId(const QImage &frame, const QList<ObjectInfo> &objects,
+                           const ObjectInfo &plateObj) {
+  const QRect plateRect = sourceRectForObject(frame, plateObj);
+  if (plateRect.isEmpty()) {
+    return -1;
+  }
+
+  int bestVehicleId = -1;
+  int bestOverlapArea = -1;
+  for (const ObjectInfo &candidate : objects) {
+    if (!isVehicleMetadataType(candidate.type)) {
+      continue;
+    }
+
+    const QRect vehicleRect = sourceRectForObject(frame, candidate);
+    if (vehicleRect.isEmpty()) {
+      continue;
+    }
+
+    // 번호판은 보통 차량 하단에 위치하므로, 차량 바운딩 박스의 하단 절반 영역과만 겹침도를 계산합니다.
+    // 이는 차량이 줄지어 서 있을 때 뒤차의 번호판이 앞차의 상단 영역과 겹쳐 오인식되는 것을 방지합니다.
+    QRect lowerHalf = vehicleRect;
+    lowerHalf.setTop(vehicleRect.top() + vehicleRect.height() / 2);
+
+    const QRect overlap = lowerHalf.intersected(plateRect);
+    const int overlapArea = overlap.width() * overlap.height();
+    if (overlapArea <= 0) {
+      continue;
+    }
+
+    if (overlapArea > bestOverlapArea) {
+      bestOverlapArea = overlapArea;
+      bestVehicleId = candidate.id;
+    }
+  }
+
+  return bestVehicleId;
 }
 
 QRegion roiRegionOnFrame(const QRect &frameRect,
@@ -98,13 +146,18 @@ void VideoFrameRenderer::collectOcrRequests(
       continue;
     }
 
+    const int targetObjectId = matchedVehicleObjectId(frame, objects, obj);
+    if (targetObjectId < 0) {
+      continue;
+    }
+
     const QRect srcRect = sourceRectForObject(frame, obj);
     const int padX = std::max(1, static_cast<int>(srcRect.width() * 0.015));
     const int padY = std::max(1, static_cast<int>(srcRect.height() * 0.03));
     const QRect paddedRect = srcRect.adjusted(-padX, -padY, padX, padY);
     const QRect safeRect = paddedRect.intersected(frame.rect());
     if (!safeRect.isEmpty()) {
-      ocrRequests->append(OcrRequest{obj.id, frame.copy(safeRect)});
+      ocrRequests->append(OcrRequest{targetObjectId, frame.copy(safeRect)});
     }
   }
 }
@@ -113,21 +166,42 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
+                                   const QSet<int> &occupiedRoiIndices,
                                    bool roiEnabled, bool showFps,
                                    int currentFps, const QString &profileName,
+                                   double zoomFactor,
+                                   double centerX, double centerY,
                                    QList<OcrRequest> *ocrRequests) const {
   (void)ocrRequests;
   if (targetSize.isEmpty()) {
     return frame;
   }
 
-  // 1. Qt 네이티브 기반 고속 축소 (UI 스레드 병목 및 메모리 복사 제거)
-  const QSize scaledSize = frame.size().scaled(targetSize, Qt::KeepAspectRatio);
-  QImage scaledFrame =
-      frame.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  // 0. 가용 줌 배율 (1.0x ~ 5.0x)에 따른 크롭 영역 계산 (Digital Zoom with Panning)
+  QImage croppedFrame;
+  if (zoomFactor > 1.001) {
+    int cw = static_cast<int>(frame.width() / zoomFactor);
+    int ch = static_cast<int>(frame.height() / zoomFactor);
+    
+    // centerX, centerY (0.0~1.0) 기준 실제 픽셀 좌표 계산
+    int px = static_cast<int>(frame.width() * centerX);
+    int py = static_cast<int>(frame.height() * centerY);
+    
+    // 크롭 영역이 이미지 경계를 넘지 않도록 조정
+    int cx = qBound(0, px - cw / 2, frame.width() - cw);
+    int cy = qBound(0, py - ch / 2, frame.height() - ch);
+    
+    croppedFrame = frame.copy(cx, cy, cw, ch);
+  } else {
+    croppedFrame = frame;
+  }
 
-  // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장 (대부분
-  // BGR888/RGB888이므로 변환 패스됨)
+  // 1. Qt 네이티브 기반 고속 축소 (UI 스레드 병목 및 메모리 복사 제거)
+  const QSize scaledSize = croppedFrame.size().scaled(targetSize, Qt::KeepAspectRatio);
+  QImage scaledFrame =
+      croppedFrame.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+
+  // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장
   if (scaledFrame.format() != QImage::Format_RGB888 &&
       scaledFrame.format() != QImage::Format_BGR888 &&
       scaledFrame.format() != QImage::Format_RGB32 &&
@@ -192,26 +266,13 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     candidates.push_back(RenderCandidate{obj, uRect, fullSrcRect, intersects});
   }
 
-  if (hasActiveRoi) {
+  if (hasActiveRoi && zoomFactor <= 1.001) {
     for (int i = 0; i < scaledRoiPolygons.size(); ++i) {
       const QPolygon &polygon = scaledRoiPolygons[i];
       if (polygon.size() < 3)
         continue;
 
-      const QRegion singleRoiRegion(polygon, Qt::WindingFill);
-      const double roiArea = regionPixelArea(singleRoiRegion);
-      bool occupied = false;
-      for (const RenderCandidate &c : candidates) {
-        if (!c.obj.type.startsWith("Vehic"))
-          continue;
-        const QRegion intersection =
-            singleRoiRegion.intersected(QRegion(c.scaledRect));
-        const double interArea = regionPixelArea(intersection);
-        if (roiArea > 0 && (interArea / roiArea) >= 0.5) {
-          occupied = true;
-          break;
-        }
-      }
+      const bool occupied = occupiedRoiIndices.contains(i);
 
       if (occupied) {
         painter.setPen(QPen(QColor(255, 59, 48), 2, Qt::SolidLine));
@@ -245,36 +306,64 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     painter.setPen(pen);
   }
 
-  for (const RenderCandidate &candidate : candidates) {
-    const ObjectInfo &obj = candidate.obj;
-    const QRect &uRect = candidate.scaledRect;
-    painter.drawRect(uRect);
+  // 줌이 1.0일 때만 메타데이터 상자 표시 (사용자 요청)
+  if (zoomFactor <= 1.001) {
+    for (const RenderCandidate &candidate : candidates) {
+      const ObjectInfo &obj = candidate.obj;
+      const QRect &uRect = candidate.scaledRect;
+      painter.drawRect(uRect);
 
-    QString text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
-    if (!obj.extraInfo.isEmpty()) {
-      text += QString(" [%1]").arg(obj.extraInfo);
+      const QString lowerType = obj.type.toLower();
+      const bool vehicle = lowerType == QStringLiteral("vehicle") ||
+                           lowerType == QStringLiteral("vehical") ||
+                           lowerType == QStringLiteral("car") ||
+                           lowerType == QStringLiteral("truck") ||
+                           lowerType == QStringLiteral("bus");
+  
+      QString text;
+      if (vehicle) {
+        const QString displayId =
+            obj.reidId.isEmpty() ? QStringLiteral("V---") : obj.reidId;
+        text = QString("[%1] Vehicle").arg(displayId);
+      } else {
+        text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
+      }
+      if (!obj.extraInfo.isEmpty() && obj.extraInfo != obj.plate) {
+        text += QString(" (%1)").arg(obj.extraInfo);
+      }
+      if (!obj.plate.isEmpty()) {
+        text += QString(" [%1]").arg(obj.plate);
+      }
+
+      QRect textRect = painter.fontMetrics().boundingRect(text);
+      textRect.moveTopLeft(uRect.topLeft() - QPoint(0, textRect.height() + 5));
+
+      painter.fillRect(textRect, Qt::black);
+      painter.setPen(Qt::white);
+      painter.drawText(textRect, Qt::AlignCenter, text);
+      painter.setPen(pen);
     }
-
-    QRect textRect = painter.fontMetrics().boundingRect(text);
-    textRect.moveTopLeft(uRect.topLeft() - QPoint(0, textRect.height() + 5));
-
-    painter.fillRect(textRect, Qt::black);
-    painter.setPen(Qt::white);
-    painter.drawText(textRect, Qt::AlignCenter, text);
-    painter.setPen(pen);
   }
 
-  if (showFps) {
-    // === 우측 상단 정보 오버레이 강화 (프로파일 + 해상도 + FPS) ===
-    QString shortProfileName = profileName;
-    if (shortProfileName.contains('/')) {
-      shortProfileName = shortProfileName.split('/').first();
+  if (showFps || zoomFactor > 1.001) {
+    QString overlayText;
+    if (zoomFactor > 1.001) {
+        // 줌 상태에서는 줌 배율만 깔끔하게 표시 (사용자 요청)
+        overlayText = QString("ZOOM: %1x").arg(zoomFactor, 0, 'f', 1);
+        if (showFps) {
+            overlayText += QString(" , FPS: %1").arg(currentFps);
+        }
+    } else {
+        // 줌이 아닐 때는 기존 정보(프로파일, 해상도, FPS) 표시
+        QString shortProfileName = profileName;
+        if (shortProfileName.contains('/')) {
+            shortProfileName = shortProfileName.split('/').first();
+        }
+        overlayText = QString("%1(%2x%3)").arg(shortProfileName).arg(frame.width()).arg(frame.height());
+        if (showFps) {
+            overlayText += QString(" , FPS: %1").arg(currentFps);
+        }
     }
-    const QString overlayText = QString("%1(%2x%3) , FPS: %4")
-                                    .arg(shortProfileName)
-                                    .arg(frame.width())
-                                    .arg(frame.height())
-                                    .arg(currentFps);
 
     QFont fpsFont = painter.font();
     fpsFont.setPointSize(14);

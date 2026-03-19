@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QtConcurrent>
 #include <algorithm>
 
 namespace
@@ -16,6 +17,7 @@ namespace
   constexpr qint64 kThumbnailRenderIntervalMs = 200;
   constexpr qint64 kOcrFrameStaleMs = 250;
   constexpr qint64 kOcrDispatchIntervalMs = 200;
+  constexpr qint64 kReidDispatchIntervalMs = 800;
   constexpr qint64 kZoneSyncIntervalMs = 500;
   constexpr qint64 kRoiSyncIntervalMs = 1000;
   constexpr int kIdleTargetFps = 5;
@@ -63,6 +65,11 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
   connect(m_ocrDispatchTimer, &QTimer::timeout, this,
           &CameraSource::onOcrDispatchTick);
 
+  m_reidDispatchTimer = new QTimer(this);
+  m_reidDispatchTimer->setInterval(static_cast<int>(kReidDispatchIntervalMs));
+  connect(m_reidDispatchTimer, &QTimer::timeout, this,
+          &CameraSource::onReidDispatchTick);
+
   m_cameraSession.setCameraManager(m_cameraManager);
   m_cameraSession.setDelayMs(Config::instance().defaultDelayMs());
 
@@ -79,8 +86,15 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
       });
   connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrReady, this,
           &CameraSource::onOcrResult);
+  connect(m_ocrCoordinator, &PlateOcrCoordinator::ocrStarted, this,
+          [this](int objectId) {
+            if (m_parkingService) {
+              m_parkingService->processOcrStarted(objectId);
+            }
+          });
   connect(m_parkingService, &ParkingService::logMessage, this,
           &CameraSource::logMessage);
+
 }
 
 bool CameraSource::initialize(TelegramBotAPI *telegramApi)
@@ -108,6 +122,15 @@ bool CameraSource::initialize(TelegramBotAPI *telegramApi)
     m_parkingService->setTelegramApi(telegramApi);
   }
   m_parkingService->setCameraKey(m_cameraKey);
+
+  const QString reidModelPath = Config::instance().reidModelPath();
+  if (!reidModelPath.isEmpty()) {
+    if (m_reidExtractor.loadModel(reidModelPath)) {
+      emit logMessage(QString("[ReID] Model Load Success: %1").arg(reidModelPath));
+    } else {
+      emit logMessage(QString("[ReID] Model Load Failed: %1").arg(reidModelPath));
+    }
+  }
   m_initialized = true;
   return reloadRoi(false);
 }
@@ -134,6 +157,10 @@ void CameraSource::start()
   {
     m_ocrDispatchTimer->start();
   }
+  if (m_reidDispatchTimer && !m_reidDispatchTimer->isActive())
+  {
+    m_reidDispatchTimer->start();
+  }
   startDisplayStream(false, true, QStringLiteral("initial start"));
   if (!m_cameraManager->isAnalyticsRunning())
   {
@@ -145,7 +172,6 @@ void CameraSource::stop()
 {
   m_shouldRun = false;
   m_videoReadyNotified = false;
-  m_currentObjects.clear();
   m_latestFrameObjects.clear();
   m_latestFramePtr.reset();
   m_latestBufferedFrameTimestampMs = 0;
@@ -168,6 +194,10 @@ void CameraSource::stop()
   if (m_ocrDispatchTimer)
   {
     m_ocrDispatchTimer->stop();
+  }
+  if (m_reidDispatchTimer)
+  {
+    m_reidDispatchTimer->stop();
   }
   if (m_cameraManager)
   {
@@ -242,8 +272,10 @@ void CameraSource::syncEnabledRoiPolygons()
 
   const QVector<QJsonObject> &records = m_roiService.records();
   QList<QPolygonF> enabledPolygons;
+  QStringList enabledZoneNames;
   QVector<QString> enabledZoneIds;
   enabledPolygons.reserve(records.size());
+  enabledZoneNames.reserve(records.size());
   enabledZoneIds.reserve(records.size());
 
   for (const QJsonObject &record : records)
@@ -266,11 +298,14 @@ void CameraSource::syncEnabledRoiPolygons()
       continue;
     }
     enabledPolygons.append(polygon);
+    const QString zoneName = record.value("zone_name").toString().trimmed();
+    enabledZoneNames.append(zoneName.isEmpty() ? record.value("zone_id").toString()
+                                               : zoneName);
     enabledZoneIds.append(record.value("zone_id").toString());
   }
 
   m_enabledZoneIds = enabledZoneIds;
-  m_parkingService->updateRoiPolygons(enabledPolygons);
+  m_parkingService->updateRoiPolygons(enabledPolygons, enabledZoneNames);
 }
 
 bool CameraSource::isRunning() const
@@ -283,8 +318,6 @@ QString CameraSource::cameraKey() const { return m_cameraKey; }
 int CameraSource::cardIndex() const { return m_cardIndex; }
 
 QString CameraSource::displayProfile() const { return m_displayProfile; }
-
-QString CameraSource::ocrProfile() const { return m_ocrProfile; }
 
 CameraSource::Status CameraSource::status() const { return m_status; }
 
@@ -403,7 +436,6 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   const QList<ObjectInfo> readyMetadata =
       m_cameraSession.consumeReadyMetadata(QDateTime::currentMSecsSinceEpoch());
-  m_currentObjects = readyMetadata;
   m_latestFramePtr = framePtr;
   m_latestFrameObjects = readyMetadata;
   m_latestBufferedFrameTimestampMs = timestampMs;
@@ -429,7 +461,15 @@ void CameraSource::onDisplayRenderTick()
   }
 
   const auto framePtr = m_latestFramePtr;
-  const QList<ObjectInfo> readyMetadata = m_latestFrameObjects;
+  QList<ObjectInfo> readyMetadata = m_latestFrameObjects;
+  if (m_parkingService) {
+    for (ObjectInfo &obj : readyMetadata) {
+      const VehicleState vs = m_parkingService->getVehicleState(obj.id);
+      if (vs.objectId >= 0 && !vs.reidId.isEmpty()) {
+        obj.reidId = vs.reidId;
+      }
+    }
+  }
   QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
               QImage::Format_BGR888);
   const QImage copiedFrame = qimg.copy();
@@ -503,6 +543,63 @@ void CameraSource::onOcrDispatchTick()
     m_ocrCoordinator->requestOcr(request.objectId, request.crop);
   }
   m_lastOcrProcessedTimestampMs = timestampMs;
+}
+
+void CameraSource::onReidDispatchTick()
+{
+  if (!m_shouldRun || m_reidProcessing || !m_latestFramePtr ||
+      m_latestFramePtr->empty() || m_latestFrameObjects.isEmpty()) {
+    return;
+  }
+
+  m_reidProcessing = true;
+  const QList<ObjectInfo> objects = m_latestFrameObjects;
+  const QSharedPointer<cv::Mat> framePtr = m_latestFramePtr;
+
+  (void)QtConcurrent::run([this, objects, framePtr]() {
+    QList<ObjectInfo> processedObjects = objects;
+    const cv::Mat frame = *framePtr;
+    const int frameW = frame.cols;
+    const int frameH = frame.rows;
+
+    const auto &cfg = Config::instance();
+    const double srcWCfg =
+        std::max(1.0, static_cast<double>(cfg.sourceWidth()));
+    const double srcHCfg =
+        std::max(1.0, static_cast<double>(cfg.sourceHeight()));
+
+    for (ObjectInfo &obj : processedObjects) {
+      if (!isVehicleType(obj.type)) {
+        continue;
+      }
+
+      const double srcX = (obj.rect.x() / srcWCfg) * frameW;
+      const double srcY = (obj.rect.y() / srcHCfg) * frameH;
+      const double srcW = (obj.rect.width() / srcWCfg) * frameW;
+      const double srcH = (obj.rect.height() / srcHCfg) * frameH;
+
+      cv::Rect roi(static_cast<int>(srcX), static_cast<int>(srcY),
+                   static_cast<int>(srcW), static_cast<int>(srcH));
+      roi &= cv::Rect(0, 0, frameW, frameH);
+
+      if (roi.width < 24 || roi.height < 24 || roi.area() <= 0) {
+        continue;
+      }
+
+      const cv::Mat vehicleCrop = frame(roi).clone();
+      obj.reidFeatures = m_reidExtractor.extract(vehicleCrop);
+    }
+
+    QMetaObject::invokeMethod(
+        this,
+        [this, processedObjects]() {
+          if (m_parkingService) {
+            m_parkingService->updateReidFeatures(processedObjects);
+          }
+          m_reidProcessing = false;
+        },
+        Qt::QueuedConnection);
+  });
 }
 
 void CameraSource::onOcrResult(int objectId, const OcrFullResult &result)
@@ -646,7 +743,6 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   }
 
   m_displayProfile = connectionInfo.profile;
-  m_ocrProfile = connectionInfo.profile;
   m_cameraManager->setConnectionInfo(connectionInfo);
   m_cameraManager->setDisabledObjectTypes(m_disabledTypes);
   return true;

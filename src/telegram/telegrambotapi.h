@@ -2,6 +2,8 @@
 #define TELEGRAMBOTAPI_H
 
 #include "database/userrepository.h"
+#include "parking/parkingrepository.h"
+#include "ocr/recognition/telegramllmrunner.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
@@ -72,6 +74,16 @@ private:
   /// API 응답 처리
   void handleReply(QNetworkReply *reply);
 
+  // LLM 알림 및 처리 핸들러
+  void handleLlmCommand(const QString &chatId, const QString &userText,
+                        ocr::recognition::TelegramLlmRunner::CommandCategory category);
+  void handleInfoInquiry(const QString &chatId);
+  void handleFeeInquiry(const QString &chatId);
+  void handleUsageHistory(const QString &chatId);
+  void handleCallAdmin(const QString &chatId);
+  void handleFeePayment(const QString &chatId);
+
+
   QNetworkAccessManager *m_networkManager;
   QString m_botToken;
   qint64 m_lastUpdateId = 0;
@@ -111,6 +123,8 @@ private:
 
   /// 사용자 정보 리포지토리 (영속화)
   UserRepository m_userRepository;
+  ParkingRepository m_parkingRepository;
+  ocr::recognition::TelegramLlmRunner *m_llmRunner = nullptr;
 };
 
 #endif // TELEGRAMBOTAPI_H

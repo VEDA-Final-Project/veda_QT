@@ -1,11 +1,13 @@
 #include "mainwindowcontroller.h"
-
+#include <QDialog>
+#include "controllerdialog.h"
 #include "camera/camerasource.h"
 #include "camerachannelruntime.h"
 #include "config/config.h"
 #include "database/databasecontext.h"
 #include "database/mediarepository.h"
 #include "dbpanelcontroller.h"
+#include "mainwindow.h"
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
 #include "roi/roiservice.h"
@@ -14,6 +16,7 @@
 #include "video/mediarecorderworker.h"
 #include "video/videobuffermanager.h"
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -31,9 +34,11 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QTableWidget> // User Table
 #include <QTableWidgetItem>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
@@ -42,6 +47,7 @@
 namespace {
 constexpr int kCameraStartStaggerMs = 350;
 constexpr int kMaxLiveSlots = 4;
+constexpr qint64 kReidRefreshIntervalMs = 300;
 }
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
@@ -50,24 +56,24 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   m_telegramApi = new TelegramBotAPI(this);
 
   CameraChannelRuntime::SharedUiRefs channelUiRefs;
-  channelUiRefs.reidTable = m_ui.reidTable;
+  channelUiRefs.reidTable = nullptr;
   channelUiRefs.staleTimeoutInput = m_ui.staleTimeoutInput;
   channelUiRefs.pruneTimeoutInput = m_ui.pruneTimeoutInput;
   channelUiRefs.chkShowStaleObjects = m_ui.chkShowStaleObjects;
   channelUiRefs.avgFpsLabel = m_ui.lblAvgFps;
 
   m_channels[0] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch1, QStringLiteral("Ch1"),
-      m_ui.videoWidgets[0], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch1, m_ui.videoWidgets[0], channelUiRefs,
+      this);
   m_channels[1] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch2, QStringLiteral("Ch2"),
-      m_ui.videoWidgets[1], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch2, m_ui.videoWidgets[1], channelUiRefs,
+      this);
   m_channels[2] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch3, QStringLiteral("Ch3"),
-      m_ui.videoWidgets[2], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch3, m_ui.videoWidgets[2], channelUiRefs,
+      this);
   m_channels[3] = new CameraChannelRuntime(
-      CameraChannelRuntime::Slot::Ch4, QStringLiteral("Ch4"),
-      m_ui.videoWidgets[3], channelUiRefs, this);
+      CameraChannelRuntime::Slot::Ch4, m_ui.videoWidgets[3], channelUiRefs,
+      this);
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (!m_channels[i]) {
@@ -81,21 +87,15 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &MainWindowController::primaryVideoReady);
   }
 
+  // ?? RPi ?쒖뼱?좏샇 ?섏떊 ?대씪?댁뼵??珥덇린??(?먮룞 ?곌껐: 192.168.0.44:12345) ?????????????????
   RpiPanelController::UiRefs rpiUiRefs;
-  rpiUiRefs.hostEdit = m_ui.rpiHostEdit;
-  rpiUiRefs.portSpin = m_ui.rpiPortSpin;
-  rpiUiRefs.btnConnect = m_ui.btnRpiConnect;
-  rpiUiRefs.btnDisconnect = m_ui.btnRpiDisconnect;
-  rpiUiRefs.btnBarrierUp = m_ui.btnBarrierUp;
-  rpiUiRefs.btnBarrierDown = m_ui.btnBarrierDown;
-  rpiUiRefs.btnLedOn = m_ui.btnLedOn;
-  rpiUiRefs.btnLedOff = m_ui.btnLedOff;
+  rpiUiRefs.hostEdit              = m_ui.rpiHostEdit;
+  rpiUiRefs.portSpin              = m_ui.rpiPortSpin;
+  rpiUiRefs.btnConnect            = m_ui.btnRpiConnect;
+  rpiUiRefs.btnDisconnect         = m_ui.btnRpiDisconnect;
   rpiUiRefs.connectionStatusLabel = m_ui.rpiConnectionStatusLabel;
-  rpiUiRefs.vehicleStatusLabel = m_ui.rpiVehicleStatusLabel;
-  rpiUiRefs.ledStatusLabel = m_ui.rpiLedStatusLabel;
-  rpiUiRefs.irRawLabel = m_ui.rpiIrRawLabel;
-  rpiUiRefs.servoAngleLabel = m_ui.rpiServoAngleLabel;
-  rpiUiRefs.logView = m_ui.logView;
+  rpiUiRefs.lastCmdLabel          = m_ui.rpiLastCmdLabel;
+  rpiUiRefs.logView               = m_ui.rpiCtrlLogView;
   m_rpiPanelController = new RpiPanelController(rpiUiRefs, this);
 
   const QString dbPath =
@@ -112,9 +112,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnRefreshLogs = m_ui.btnRefreshLogs;
   dbUiRefs.forcePlateInput = m_ui.forcePlateInput;
   dbUiRefs.forceObjectIdInput = m_ui.forceObjectIdInput;
-  dbUiRefs.forceTypeInput = m_ui.forceTypeInput;
-  dbUiRefs.forceScoreInput = m_ui.forceScoreInput;
-  dbUiRefs.forceBBoxInput = m_ui.forceBBoxInput;
   dbUiRefs.btnForcePlate = m_ui.btnForcePlate;
   dbUiRefs.editPlateInput = m_ui.editPlateInput;
   dbUiRefs.btnEditPlate = m_ui.btnEditPlate;
@@ -123,9 +120,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnAddUser = m_ui.btnAddUser;
   dbUiRefs.btnEditUser = m_ui.btnEditUser;
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
-  dbUiRefs.hwLogTable = m_ui.hwLogTable;
-  dbUiRefs.btnRefreshHwLogs = m_ui.btnRefreshHwLogs;
-  dbUiRefs.btnClearHwLogs = m_ui.btnClearHwLogs;
   dbUiRefs.vehicleTable = m_ui.vehicleTable;
   dbUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
   dbUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
@@ -137,13 +131,39 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbContext.parkingServiceProvider = [this]() {
     return parkingServiceForTarget(m_roiTarget);
   };
-  dbContext.primaryZoneRecordsProvider = [this]() {
-    CameraSource *source = sourceAt(0);
-    return source ? source->roiRecords() : QVector<QJsonObject>();
+  dbContext.allParkingServicesProvider = [this]() {
+    QVector<ParkingService *> services;
+    for (CameraSource *source : m_cameraSources) {
+      ParkingService *service = source ? source->parkingService() : nullptr;
+      if (service) {
+        services.append(service);
+      }
+    }
+    return services;
   };
-  dbContext.secondaryZoneRecordsProvider = [this]() {
-    CameraSource *source = sourceAt(1);
-    return source ? source->roiRecords() : QVector<QJsonObject>();
+  dbContext.parkingServiceForCameraKeyProvider = [this](const QString &cameraKey) {
+    for (CameraSource *source : m_cameraSources) {
+      if (!source || source->cameraKey() != cameraKey) {
+        continue;
+      }
+      return source->parkingService();
+    }
+    return static_cast<ParkingService *>(nullptr);
+  };
+  dbContext.allZoneRecordsProvider = [this]() {
+    QVector<QJsonObject> allRecords;
+    for (CameraSource *source : m_cameraSources) {
+      if (!source) {
+        continue;
+      }
+
+      const QVector<QJsonObject> &records = source->roiRecords();
+      allRecords.reserve(allRecords.size() + records.size());
+      for (const QJsonObject &record : records) {
+        allRecords.append(record);
+      }
+    }
+    return allRecords;
   };
   dbContext.logMessage = [this](const QString &message) {
     onLogMessage(message);
@@ -154,7 +174,17 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
   };
   m_dbPanelController = new DbPanelController(dbUiRefs, dbContext, this);
-  // 4. 녹화 조회 컨트롤러 초기화
+  for (CameraSource *source : m_cameraSources) {
+    ParkingService *service = source ? source->parkingService() : nullptr;
+    if (!service) {
+      continue;
+    }
+    connect(service, &ParkingService::vehicleEntered, m_dbPanelController,
+            &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
+            &DbPanelController::onRefreshParkingLogs);
+  }
+  // 4. ?뱁솕 議고쉶 而⑦듃濡ㅻ윭 珥덇린??
   m_mediaRepo = new MediaRepository();
   m_mediaRepo->init();
 
@@ -168,7 +198,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   recordUiRefs.btnApplyEventSetting = m_ui.btnApplyEventSetting;
   recordUiRefs.btnTriggerEventRecord = m_ui.btnTriggerEventRecord;
   recordUiRefs.recordPreviewPathLabel = m_ui.recordPreviewPathLabel;
-  // 플레이어 컨트롤 연결
+  // ?뚮젅?댁뼱 而⑦듃濡??곌껐
   recordUiRefs.btnVideoPlay = m_ui.btnVideoPlay;
   recordUiRefs.btnVideoPause = m_ui.btnVideoPause;
   recordUiRefs.btnVideoStop = m_ui.btnVideoStop;
@@ -176,7 +206,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   recordUiRefs.videoTimeLabel = m_ui.videoTimeLabel;
   recordUiRefs.cmbManualCamera = m_ui.cmbManualCamera;
 
-  // 상시 녹화 컨트롤 연결
+  // ?곸떆 ?뱁솕 而⑦듃濡??곌껐
   recordUiRefs.spinRecordRetention = m_ui.spinRecordRetention;
   recordUiRefs.lblContinuousStatus = m_ui.lblContinuousStatus;
   recordUiRefs.btnViewContinuous = m_ui.btnViewContinuous;
@@ -185,16 +215,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       new RecordPanelController(recordUiRefs, m_mediaRepo, this);
   m_recordPanelController->connectSignals();
   m_recordPanelController->refreshLogTable();
-  // 5. 녹화 시스템 초기화
-  // 버퍼 크기를 600으로 확장 (15fps 기준 약 40초 분량 저장 가능)
+  // 5. ?뱁솕 ?쒖뒪??珥덇린??
+  // 踰꾪띁 ?ш린瑜?600?쇰줈 ?뺤옣 (15fps 湲곗? ??40珥?遺꾨웾 ???媛??
   m_primaryBuffer = new VideoBufferManager(600, this);
   m_secondaryBuffer = new VideoBufferManager(600, this);
   m_buffer3 = new VideoBufferManager(600, this);
   m_buffer4 = new VideoBufferManager(600, this);
 
-  // 이벤트 구간 저장: RecordPanel -> MainWindowController 연결
-  // 클릭 시점 기준으로 '과거(preSec) + 미래(postSec)' 프레임을 모두 포함하기
-  // 위해 postSec만큼 기다린 후 버퍼에서 프레임을 추출하여 저장합니다.
+  // ?대깽??援ш컙 ??? RecordPanel -> MainWindowController ?곌껐
+  // ?대┃ ?쒖젏 湲곗??쇰줈 '怨쇨굅(preSec) + 誘몃옒(postSec)' ?꾨젅?꾩쓣 紐⑤몢 ?ы븿?섍린
+  // ?꾪빐 postSec留뚰겮 湲곕떎由???踰꾪띁?먯꽌 ?꾨젅?꾩쓣 異붿텧?섏뿬 ??ν빀?덈떎.
   connect(
       m_recordPanelController, &RecordPanelController::eventRecordRequested,
       this, [this](const QString &desc, int preSec, int postSec) {
@@ -205,30 +235,30 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
         if (!targetBuffer)
           return;
 
-        // 클릭 시점의 버퍼 인덱스 캡처
+        // ?대┃ ?쒖젏??踰꾪띁 ?몃뜳??罹≪쿂
         uint64_t clickIdx = targetBuffer->getTotalFramesAdded();
 
         onLogMessage(
             QString(
-                "[Recorder] 이벤트 감지 (I:%1): %2초 후 저장을 시작합니다...")
+                "[Recorder] ?대깽??媛먯? (I:%1): %2珥?????μ쓣 ?쒖옉?⑸땲??..")
                 .arg(clickIdx)
                 .arg(postSec));
 
         QString camId = QString("Ch %1").arg(idx + 1);
 
-        // postSec (미래 프레임)이 쌓일 때까지 대기
+        // postSec (誘몃옒 ?꾨젅?????볦씪 ?뚭퉴吏 ?湲?
         QTimer::singleShot(
             postSec * 1000, this,
             [this, desc, preSec, postSec, idx, camId, targetBuffer,
              clickIdx]() {
-              // 실제 스트림 FPS 반영 (preSec + postSec 구간의 프레임 수 계산을
-              // 위해)
+              // ?ㅼ젣 ?ㅽ듃由?FPS 諛섏쁺 (preSec + postSec 援ш컙???꾨젅????怨꾩궛??
+              // ?꾪빐)
               double actualFps = m_recordPanelController->getLiveFps();
               if (actualFps <= 0)
-                actualFps = 15.0; // 세이프가드
+                actualFps = 15.0; // ?몄씠?꾧???
 
-              // 전체 구간(preSec + postSec)에 해당하는 프레임 추출
-              // 클릭 시점(clickIdx) 기준으로 전후 구간을 계산
+              // ?꾩껜 援ш컙(preSec + postSec)???대떦?섎뒗 ?꾨젅??異붿텧
+              // ?대┃ ?쒖젏(clickIdx) 湲곗??쇰줈 ?꾪썑 援ш컙??怨꾩궛
               uint64_t startIdx =
                   (clickIdx > static_cast<uint64_t>(preSec * actualFps))
                       ? (clickIdx - static_cast<uint64_t>(preSec * actualFps))
@@ -236,7 +266,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
               auto frames = targetBuffer->getFramesSince(startIdx);
 
-              // 우리가 필요로 하는 총 프레임 수
+              // ?곕━媛 ?꾩슂濡??섎뒗 珥??꾨젅????
               size_t requestedFrames =
                   static_cast<size_t>((preSec + postSec) * actualFps);
               if (frames.size() > requestedFrames) {
@@ -245,7 +275,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
               if (frames.empty()) {
                 onLogMessage(QString::fromUtf8(
-                    "[Recorder] 버퍼에 저장된 프레임이 없습니다."));
+                    "[Recorder] 踰꾪띁????λ맂 ?꾨젅?꾩씠 ?놁뒿?덈떎."));
                 return;
               }
 
@@ -264,8 +294,8 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
                   Q_ARG(QString, "VIDEO"), Q_ARG(QString, desc),
                   Q_ARG(QString, camId));
 
-              onLogMessage(QString("[Recorder] 이벤트 구간 저장 완료: %1 "
-                                   "(%2초 전 ~ %3초 후, FPS: %4, 프레임수: %5)")
+              onLogMessage(QString("[Recorder] ?대깽??援ш컙 ????꾨즺: %1 "
+                                   "(%2珥???~ %3珥??? FPS: %4, ?꾨젅?꾩닔: %5)")
                                .arg(fileName)
                                .arg(preSec)
                                .arg(postSec)
@@ -319,37 +349,44 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
 
   for (size_t i = 0; i < m_channels.size(); ++i) {
     if (m_channels[i]) {
-      m_channels[i]->setReidPanelActive(i == 0);
+      m_channels[i]->setReidPanelActive(false); // 媛쒕퀎 媛깆떊 以묒?, 而⑦듃濡ㅻ윭?먯꽌 ?듯빀 媛깆떊
     }
   }
+
+  m_reidTimer = new QTimer(this);
+  m_reidTimer->setInterval(300);
+  connect(m_reidTimer, &QTimer::timeout, this,
+          &MainWindowController::onRefreshReidTableAllChannels);
+  m_reidTimer->start();
 
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
   updateChannelCardSelection();
+  refreshReidTableAllChannels(true);
   connectSignals();
   bindRecordPreviewSource(m_ui.cmbManualCamera
                               ? m_ui.cmbManualCamera->currentIndex()
                               : 0);
-  // 상시 녹화 초기화
+  // ?곸떆 ?뱁솕 珥덇린??
   for (int i = 0; i < 4; ++i) {
-    // 5 FPS 기준 1분(60초) = 300프레임. 넉넉하게 600으로 설정
+    // 5 FPS 湲곗? 1遺?60珥? = 300?꾨젅?? ?됰꼮?섍쾶 600?쇰줈 ?ㅼ젙
     m_continuousBuffers[i] = new VideoBufferManager(600, this);
   }
 
   m_continuousRecordTimer = new QTimer(this);
-  m_continuousRecordTimer->setInterval(60000); // 기본 1분
+  m_continuousRecordTimer->setInterval(60000); // 湲곕낯 1遺?
   connect(m_continuousRecordTimer, &QTimer::timeout, this,
           &MainWindowController::onContinuousRecordTimeout);
 
   m_cleanupTimer = new QTimer(this);
-  m_cleanupTimer->setInterval(60000); // 1분마다 자동 삭제 체크
+  m_cleanupTimer->setInterval(60000); // 1遺꾨쭏???먮룞 ??젣 泥댄겕
   connect(m_cleanupTimer, &QTimer::timeout, this,
           &MainWindowController::onCleanupTimeout);
 
   m_continuousRecordTimer->start();
   m_cleanupTimer->start();
 
-  // 설정값 적용 버튼 연결
+  // ?ㅼ젙媛??곸슜 踰꾪듉 ?곌껐
   if (m_ui.btnApplyContinuousSetting) {
     connect(m_ui.btnApplyContinuousSetting, &QPushButton::clicked, this,
             &MainWindowController::onApplyContinuousSettingClicked);
@@ -433,15 +470,12 @@ void MainWindowController::shutdown() {
       source->stop();
     }
   }
-  if (m_rpiPanelController) {
-    m_rpiPanelController->shutdown();
-  }
-  // 백그라운드 워커 삭제
+  // 諛깃렇?쇱슫???뚯빱 ??젣
   if (m_recorderThread) {
     m_recorderThread->quit();
     m_recorderThread->wait();
     m_recorderThread = nullptr;
-    // m_recorderWorker는 QThread::finished 시그널에 deleteLater 연결됨
+    // m_recorderWorker??QThread::finished ?쒓렇?먯뿉 deleteLater ?곌껐??
   }
 
   const QString shutdownLog =
@@ -452,12 +486,15 @@ void MainWindowController::shutdown() {
     m_ui.logView->append(shutdownLog);
   }
 
-  // 상시 녹화 타이머 중지 및 버퍼 정리
+  // ?곸떆 ?뱁솕 ??대㉧ 以묒? 諛?踰꾪띁 ?뺣━
   if (m_continuousRecordTimer) {
     m_continuousRecordTimer->stop();
   }
   if (m_cleanupTimer) {
     m_cleanupTimer->stop();
+  }
+  if (m_reidTimer) {
+    m_reidTimer->stop();
   }
   for (int i = 0; i < 4; ++i) {
     if (m_continuousBuffers[i]) {
@@ -504,6 +541,20 @@ void MainWindowController::connectSignals() {
     connect(m_ui.reidTable, &QTableWidget::cellClicked, this,
             &MainWindowController::onReidTableCellClicked);
   }
+  if (m_ui.staleTimeoutInput) {
+    connect(m_ui.staleTimeoutInput,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { refreshReidTableAllChannels(true); });
+  }
+  if (m_ui.pruneTimeoutInput) {
+    connect(m_ui.pruneTimeoutInput,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { refreshReidTableAllChannels(true); });
+  }
+  if (m_ui.chkShowStaleObjects) {
+    connect(m_ui.chkShowStaleObjects, &QCheckBox::toggled, this,
+            [this](bool) { refreshReidTableAllChannels(true); });
+  }
   if (m_ui.chkShowFps) {
     connect(m_ui.chkShowFps, &QCheckBox::toggled, this, [this](bool checked) {
       for (CameraChannelRuntime *channel : m_channels) {
@@ -537,14 +588,12 @@ void MainWindowController::connectSignals() {
   connect(m_telegramApi, &TelegramBotAPI::adminSummoned, this,
           &MainWindowController::onAdminSummoned);
 
-  if (m_rpiPanelController) {
-    m_rpiPanelController->connectSignals();
-  }
-
   if (m_dbPanelController) {
     m_dbPanelController->connectSignals();
     m_dbPanelController->refreshAll();
   }
+
+  // Controller UI는 connectControllerDialog()를 통해 런타임에 동적으로 연결됩니다.
 
   // 수동 캡처/녹화 버튼 연결 (라이브 탭 + 녹화조회 탭 전용 버튼)
   if (m_ui.btnCaptureManual) {
@@ -569,6 +618,161 @@ void MainWindowController::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MainWindowController::bindRecordPreviewSource);
   }
+
+  // ?? RPi ?쒖뼱?좏샇 ?대씪?댁뼵???쒓렇???곌껐 ??????????????????????????????????????
+  if (m_rpiPanelController) {
+    m_rpiPanelController->connectSignals(); // 泥ㅼ텧???먮룞 ?곌껐 ?ы븿
+
+    // $CH -> 다음 채널 선택 
+    connect(m_rpiPanelController, &RpiPanelController::channelSelectRequested,
+            this, [this]() {
+              if (m_selectedChannelIndices.isEmpty()) return;
+              const int cur = m_selectedChannelIndices.first();
+              onHardwareButtonPressed(288 + ((cur + 1) % kMaxLiveSlots));
+            });
+
+    // $CAP -> 캡처 (BTN 294)
+    connect(m_rpiPanelController, &RpiPanelController::captureRequested,
+            this, [this]() { onHardwareButtonPressed(294); });
+
+    // $REC 상태 변경 (수동 녹화와 연동, BTN 295 동작으로 대체 가능하지만 명시적 상태 활용)
+    connect(m_rpiPanelController, &RpiPanelController::recordingChanged,
+            this, [this](bool rec) {
+              if (m_ui.btnRecordManual &&
+                  m_ui.btnRecordManual->isChecked() != rec) {
+                m_ui.btnRecordManual->setChecked(rec);
+              } else {
+                onRecordManualToggled(rec);
+              }
+            });
+
+    // $BTN 버튼별 동작 매핑
+    connect(m_rpiPanelController, &RpiPanelController::buttonPressed,
+            this, &MainWindowController::onHardwareButtonPressed);
+
+    // $JOY 조이스틱
+    connect(m_rpiPanelController, &RpiPanelController::joystickMoved,
+            this, [this](const QString &dir, bool active) {
+              onHardwareJoystickMoved(dir, active ? 1 : 0);
+            });
+
+    // $ENC 텍트/로터리
+    connect(m_rpiPanelController, &RpiPanelController::encoderRotated,
+            this, &MainWindowController::onHardwareEncoderRotated);
+    connect(m_rpiPanelController, &RpiPanelController::encoderClicked,
+            this, [this]() { onHardwareButtonPressed(999); });
+  }
+}
+
+void MainWindowController::onHardwareJoystickMoved(const QString &dir, int state) {
+  if (m_selectedChannelIndices.size() > 1) {
+      onLogMessage("[Controller] JOY Ignored (Multiple channels visible)");
+      return;
+  }
+  if (!m_joystickTimer) {
+      m_joystickTimer = new QTimer(this);
+      connect(m_joystickTimer, &QTimer::timeout, this, &MainWindowController::processJoystickMovement);
+  }
+
+  if (state == 1) { // Pressed
+      onLogMessage(QString("[Controller] JOY Pressed: %1").arg(dir));
+      if (dir == "U") m_joystickTargetY = -1.0;
+      else if (dir == "D") m_joystickTargetY = 1.0;
+      else if (dir == "L") m_joystickTargetX = -1.0;
+      else if (dir == "R") m_joystickTargetX = 1.0;
+      
+      if (!m_joystickTimer->isActive()) {
+          m_joystickTimer->start(16); // ~60fps continuous movement
+      }
+  } else { // Released
+      onLogMessage(QString("[Controller] JOY Released: %1").arg(dir));
+      if (dir == "U" && m_joystickTargetY < 0) m_joystickTargetY = 0;
+      else if (dir == "D" && m_joystickTargetY > 0) m_joystickTargetY = 0;
+      else if (dir == "L" && m_joystickTargetX < 0) m_joystickTargetX = 0;
+      else if (dir == "R" && m_joystickTargetX > 0) m_joystickTargetX = 0;
+  }
+}
+
+void MainWindowController::onHardwareEncoderRotated(int delta) {
+  if (m_selectedChannelIndices.size() > 1) {
+      return;
+  }
+
+  onLogMessage(QString("[Controller] ENC Rotated: %1").arg(delta));
+  int cardIdx = primarySelectedChannelIndex();
+  CameraChannelRuntime *channel = channelForCardIndex(cardIdx);
+  if (!channel) channel = channelAt(0);
+
+  if (channel && channel->videoWidget()) {
+      double z = channel->videoWidget()->zoom();
+      z += (delta > 0) ? 0.1 : -0.1; 
+      channel->videoWidget()->setZoom(z);
+      onLogMessage(QString("[Zoom] Current: %1x").arg(channel->videoWidget()->zoom(), 0, 'f', 1));
+  }
+}
+
+void MainWindowController::onHardwareButtonPressed(int btnCode) {
+  onLogMessage(QString("[Controller] BTN Clicked: %1").arg(btnCode));
+  if (btnCode >= 288 && btnCode <= 291) {
+      for (int i = 0; i < 4; ++i) {
+          CameraChannelRuntime *ch = channelAt(i);
+          if (ch && ch->videoWidget()) {
+              ch->videoWidget()->setZoom(1.0);
+          }
+      }
+      int ch = btnCode - 288;
+      m_selectedChannelIndices.clear();
+      m_selectedChannelIndices.append(ch);
+      m_selectedChannelIndex = ch;
+      rebuildLiveLayout();
+      onRoiTargetChanged(ch);
+  } else if (btnCode == 292) {
+      if (m_ui.stackedWidget) {
+          m_ui.stackedWidget->setCurrentIndex(3);
+          onLogMessage("[Controller] Moved to DB Tab.");
+      }
+  } else if (btnCode == 293) {
+      if (m_ui.stackedWidget && m_ui.stackedWidget->currentIndex() == 3 && m_ui.dbSubTabs) {
+          int nextIndex = (m_ui.dbSubTabs->currentIndex() + 1) % m_ui.dbSubTabs->count();
+          m_ui.dbSubTabs->setCurrentIndex(nextIndex);
+          onLogMessage(QString("[Controller] Cycled DB SubTab to %1").arg(nextIndex));
+      } else {
+          onLogMessage("[Controller] DB Tab must be active to cycle sub-tabs.");
+      }
+  } else if (btnCode == 294) {
+      onCaptureManual();
+  } else if (btnCode == 295) {
+      if (m_ui.btnRecordManual) {
+          m_ui.btnRecordManual->toggle();
+      } else {
+          onRecordManualToggled(!m_isManualRecording);
+      }
+  } else if (btnCode == 999) { // Fake code for Encoder Click
+      if (m_selectedChannelIndices.size() > 1) return;
+      onLogMessage("[Controller] ENC Clicked (Reset Zoom)");
+      int cardIdx = primarySelectedChannelIndex();
+      CameraChannelRuntime *channel = channelForCardIndex(cardIdx);
+      if (!channel) channel = channelAt(0);
+
+      if (channel && channel->videoWidget()) {
+          channel->videoWidget()->setZoom(1.0);
+          onLogMessage("[Zoom] Reset to 1.0x");
+      }
+  }
+}
+
+void MainWindowController::connectControllerDialog(ControllerDialog *dialog) {
+  if (!dialog) return;
+  
+  // Joystick
+  connect(dialog, &ControllerDialog::simulatedJoystickMoved, this, &MainWindowController::onHardwareJoystickMoved);
+
+  // Encoder
+  connect(dialog, &ControllerDialog::simulatedEncoderRotated, this, &MainWindowController::onHardwareEncoderRotated);
+  connect(dialog, &ControllerDialog::simulatedEncoderClicked, this, [this]() { onHardwareButtonPressed(999); });
+
+  // Buttons (288~295)
+  connect(dialog, &ControllerDialog::simulatedButtonClicked, this, &MainWindowController::onHardwareButtonPressed);
 }
 
 bool MainWindowController::isChannelSelected(int index) const {
@@ -609,6 +813,157 @@ void MainWindowController::refreshZoneTableAllChannels() {
   }
 }
 
+void MainWindowController::refreshReidTableAllChannels(bool force) {
+  if (!m_ui.reidTable) {
+    return;
+  }
+
+  if (!force && m_reidRefreshTimer.isValid() &&
+      m_reidRefreshTimer.elapsed() < kReidRefreshIntervalMs) {
+    return;
+  }
+  m_reidRefreshTimer.restart();
+
+  QString selectedCameraKey;
+  int selectedObjectId = -1;
+  if (const int currentRow = m_ui.reidTable->currentRow(); currentRow >= 0) {
+    if (QTableWidgetItem *objectIdItem = m_ui.reidTable->item(currentRow, 2)) {
+      selectedObjectId = objectIdItem->text().toInt();
+      selectedCameraKey = objectIdItem->data(Qt::UserRole).toString();
+    } else if (QTableWidgetItem *idItem = m_ui.reidTable->item(currentRow, 1)) {
+      selectedObjectId = idItem->data(Qt::UserRole + 1).toInt();
+      selectedCameraKey = idItem->data(Qt::UserRole).toString();
+    }
+  }
+
+  struct AggregatedVehicleRow {
+    int cardIndex = -1;
+    QString cameraKey;
+    VehicleState state;
+  };
+
+  QVector<AggregatedVehicleRow> rows;
+  const int staleMs =
+      m_ui.staleTimeoutInput ? m_ui.staleTimeoutInput->value() : 1000;
+  const bool showStaleObjects =
+      !m_ui.chkShowStaleObjects || m_ui.chkShowStaleObjects->isChecked();
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+  for (int i = 0; i < static_cast<int>(m_cameraSources.size()); ++i) {
+    CameraSource *source = sourceAt(i);
+    if (!source) {
+      continue;
+    }
+
+    const QList<VehicleState> activeVehicles = source->activeVehicles();
+    for (const VehicleState &vehicle : activeVehicles) {
+      if (vehicle.objectId < 0) {
+        continue;
+      }
+      if (!isVehicleType(vehicle.type)) {
+        continue;
+      }
+      if (vehicle.reidId.isEmpty() || vehicle.reidId == QStringLiteral("V---")) {
+        continue;
+      }
+
+      const bool isStale = (nowMs - vehicle.lastSeenMs) > staleMs;
+      if (isStale && !showStaleObjects) {
+        continue;
+      }
+
+      rows.append({i, source->cameraKey(), vehicle});
+    }
+  }
+
+  std::sort(rows.begin(), rows.end(),
+            [](const AggregatedVehicleRow &a, const AggregatedVehicleRow &b) {
+              if (a.cardIndex != b.cardIndex) {
+                return a.cardIndex < b.cardIndex;
+              }
+              return a.state.objectId < b.state.objectId;
+            });
+
+  m_ui.reidTable->setUpdatesEnabled(false);
+  const QSignalBlocker blocker(m_ui.reidTable);
+  m_ui.reidTable->setRowCount(static_cast<int>(rows.size()));
+
+  int rowToRestore = -1;
+  for (int i = 0; i < rows.size(); ++i) {
+    const AggregatedVehicleRow &rowData = rows[i];
+    const int row = i;
+
+    const bool isStale = (nowMs - rowData.state.lastSeenMs) > staleMs;
+    const QColor textColor =
+        isStale ? QColor(QStringLiteral("#94A3B8"))
+                : QColor(QStringLiteral("#F8FAFC"));
+    const QColor rowBackground = [cardIndex = rowData.cardIndex]() {
+      switch (cardIndex) {
+      case 0:
+        return QColor(QStringLiteral("#17324A"));
+      case 1:
+        return QColor(QStringLiteral("#402636"));
+      case 2:
+        return QColor(QStringLiteral("#183D35"));
+      case 3:
+        return QColor(QStringLiteral("#433A1E"));
+      default:
+        return QColor(QStringLiteral("#1E293B"));
+      }
+    }();
+
+    auto *channelItem =
+        new QTableWidgetItem(QStringLiteral("Ch%1").arg(rowData.cardIndex + 1));
+    channelItem->setForeground(textColor);
+    channelItem->setBackground(rowBackground);
+    channelItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 0, channelItem);
+
+    const QString displayId =
+        (rowData.state.reidId.isEmpty() ||
+         rowData.state.reidId == QStringLiteral("V---"))
+            ? QString("V%1").arg(rowData.state.objectId)
+            : rowData.state.reidId;
+    auto *idItem = new QTableWidgetItem(displayId);
+    idItem->setForeground(textColor);
+    idItem->setBackground(rowBackground);
+    idItem->setData(Qt::UserRole, rowData.cameraKey);
+    idItem->setData(Qt::UserRole + 1, rowData.state.objectId);
+    idItem->setToolTip(QString("Tracker ID: %1").arg(rowData.state.objectId));
+    m_ui.reidTable->setItem(row, 1, idItem);
+
+    auto *objectIdItem =
+        new QTableWidgetItem(QString::number(rowData.state.objectId));
+    objectIdItem->setForeground(textColor);
+    objectIdItem->setBackground(rowBackground);
+    objectIdItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 2, objectIdItem);
+
+    auto *plateItem = new QTableWidgetItem(rowData.state.plateNumber);
+    plateItem->setForeground(textColor);
+    plateItem->setBackground(rowBackground);
+    plateItem->setData(Qt::UserRole, rowData.cameraKey);
+    m_ui.reidTable->setItem(row, 3, plateItem);
+
+    if (rowData.state.objectId == selectedObjectId &&
+        rowData.cameraKey == selectedCameraKey) {
+      rowToRestore = row;
+    }
+  }
+
+  if (rowToRestore >= 0) {
+    m_ui.reidTable->setCurrentCell(rowToRestore, 1);
+    m_ui.reidTable->selectRow(rowToRestore);
+  } else {
+    m_ui.reidTable->clearSelection();
+    if (m_ui.btnForcePlate) {
+      m_ui.btnForcePlate->setProperty("cameraKey", QString());
+    }
+  }
+
+  m_ui.reidTable->setUpdatesEnabled(true);
+}
+
 void MainWindowController::initRoiDb() { initRoiDbForChannels(); }
 
 void MainWindowController::initRoiDbForChannels() {
@@ -637,7 +992,7 @@ void MainWindowController::refreshRoiSelectorForTarget() {
     return;
   }
   m_ui.roiSelectorCombo->clear();
-  m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
+  m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI ?좏깮"), -1);
 
   const RoiService *service = roiServiceForTarget(m_roiTarget);
   if (!service) {
@@ -759,7 +1114,7 @@ void MainWindowController::rebuildLiveLayout() {
       } else {
         channel->selectCardWithoutStream(cardIndex);
       }
-      channel->setReidPanelActive(slotIndex == 0);
+      // channel->setReidPanelActive(slotIndex == 0); // ?덈꺼???덉씠?꾩썐 ?ㅼ썭 ??媛쒕퀎 ?쒖뼱 二쇱꽍 泥섎━
     } else {
       channel->deactivate();
       channel->setReidPanelActive(false);
@@ -900,7 +1255,7 @@ void MainWindowController::startCameraSources() {
       if (!deferredSource) {
         return;
       }
-      onLogMessage(QString("[Camera] Ch %1 시작 예약 실행 (%2 ms)")
+      onLogMessage(QString("[Camera] Ch %1 ?쒖옉 ?덉빟 ?ㅽ뻾 (%2 ms)")
                        .arg(i + 1)
                        .arg(startDelayMs));
       deferredSource->start();
@@ -958,7 +1313,10 @@ void MainWindowController::onRoiTargetChanged(int index) {
     m_roiTarget = static_cast<RoiTarget>(index);
   }
   refreshRoiSelectorForTarget();
-  onLogMessage(QString("[ROI] 편집 대상 변경: %1").arg(roiTargetLabel(m_roiTarget)));
+  if (m_dbPanelController) {
+    m_dbPanelController->onRefreshParkingLogs();
+  }
+  onLogMessage(QString("[ROI] ?몄쭛 ???蹂寃? %1").arg(roiTargetLabel(m_roiTarget)));
 }
 
 void MainWindowController::onChannelCardClicked(int index) {
@@ -990,7 +1348,7 @@ void MainWindowController::onChannelCardClicked(int index) {
       m_selectedChannelIndex = primarySelectedChannelIndex();
     }
     rebuildLiveLayout();
-    onLogMessage(QString("[Camera] Ch %1 선택 해제").arg(index + 1));
+    onLogMessage(QString("[Camera] Ch %1 ?좏깮 ?댁젣").arg(index + 1));
     refreshZoneTableAllChannels();
     return;
   }
@@ -998,10 +1356,10 @@ void MainWindowController::onChannelCardClicked(int index) {
   m_selectedChannelIndices.append(index);
   rebuildLiveLayout();
   if (isNoSignal) {
-    onLogMessage(QString("[Camera] Ch %1 선택: 신호 없음").arg(index + 1));
+    onLogMessage(QString("[Camera] Ch %1 ?좏깮: ?좏샇 ?놁쓬").arg(index + 1));
   } else {
     CameraSource *newSource = sourceAt(index);
-    onLogMessage(QString("[Camera] Ch %1 선택: %2")
+    onLogMessage(QString("[Camera] Ch %1 ?좏깮: %2")
                      .arg(index + 1)
                      .arg(newSource ? newSource->cameraKey()
                                     : QStringLiteral("N/A")));
@@ -1076,7 +1434,7 @@ void MainWindowController::onStartRoiDraw() {
   }
   targetWidget->startRoiDrawing();
   m_ui.logView->append(
-      QString("[ROI] Draw mode (%1): left-click points, then press 'ROI 완료'.")
+      QString("[ROI] Draw mode (%1): left-click points, then press 'ROI ?꾨즺'.")
           .arg(roiTargetLabel(m_roiTarget)));
 }
 
@@ -1091,18 +1449,18 @@ void MainWindowController::onCompleteRoiDraw() {
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
   if (auto nameError = targetService->isValidName(typedName);
       nameError.has_value()) {
-    m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError.value()));
+    m_ui.logView->append(QString("[ROI] ?꾨즺 ?ㅽ뙣: %1").arg(nameError.value()));
     return;
   }
   if (targetService->isDuplicateName(typedName)) {
     m_ui.logView->append(
-        QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.")
+        QString("[ROI] ?꾨즺 ?ㅽ뙣: ?대쫫 '%1' ??媛) ?대? 議댁옱?⑸땲??")
             .arg(typedName));
     return;
   }
 
   if (!targetWidget->completeRoiDrawing()) {
-    m_ui.logView->append("[ROI] 완료 실패: 최소 3개 점이 필요합니다.");
+    m_ui.logView->append("[ROI] ?꾨즺 ?ㅽ뙣: 理쒖냼 3媛??먯씠 ?꾩슂?⑸땲??");
   }
 }
 
@@ -1120,19 +1478,19 @@ void MainWindowController::onDeleteSelectedRoi() {
   }
   const int recordIndex = m_ui.roiSelectorCombo->currentData().toInt();
   if (recordIndex < 0 || recordIndex >= targetService->count()) {
-    m_ui.logView->append("[ROI] 삭제 실패: ROI를 선택해주세요.");
+    m_ui.logView->append("[ROI] ??젣 ?ㅽ뙣: ROI瑜??좏깮?댁＜?몄슂.");
     return;
   }
 
   const Result<QString> deleteResult = targetService->removeAt(recordIndex);
   if (!deleteResult.isOk()) {
     m_ui.logView->append(
-        QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
+        QString("[ROI][DB] ??젣 ?ㅽ뙣: %1").arg(deleteResult.error));
     return;
   }
   if (!targetWidget->removeRoiAt(recordIndex)) {
     m_ui.logView->append(
-        "[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
+        "[ROI] ??젣 ?ㅽ뙣: ROI ?곹깭? 紐⑸줉???쇱튂?섏? ?딆뒿?덈떎.");
     return;
   }
 
@@ -1148,7 +1506,7 @@ void MainWindowController::onDeleteSelectedRoi() {
                              ? m_ui.roiSelectorCombo->findData(nextRecordIndex)
                              : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
-  m_ui.logView->append(QString("[ROI] 삭제 완료: %1").arg(deleteResult.data));
+  m_ui.logView->append(QString("[ROI] ??젣 ?꾨즺: %1").arg(deleteResult.data));
 }
 
 void MainWindowController::onRoiChanged(const QRect &roi) {
@@ -1174,7 +1532,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
     return;
   }
   if (frameSize.isEmpty()) {
-    m_ui.logView->append("[ROI] 저장 실패: 프레임 크기가 유효하지 않습니다.");
+    m_ui.logView->append("[ROI] ????ㅽ뙣: ?꾨젅???ш린媛 ?좏슚?섏? ?딆뒿?덈떎.");
     return;
   }
 
@@ -1202,7 +1560,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
       targetWidget->removeRoiAt(targetWidget->roiCount() - 1);
     }
     m_ui.logView->append(
-        QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
+        QString("[ROI][DB] ????ㅽ뙣: %1").arg(createResult.error));
     if (target == m_roiTarget) {
       refreshRoiSelectorForTarget();
     }
@@ -1235,7 +1593,7 @@ void MainWindowController::onRawFrameReady(int cardIndex,
     return;
   }
 
-  // 상시녹화 버퍼 추가 (5 FPS 유지)
+  // ?곸떆?뱁솕 踰꾪띁 異붽? (5 FPS ?좎?)
   if (m_continuousBuffers[cardIndex]) {
     if (!m_continuousThrottleTimers[cardIndex].isValid() ||
         m_continuousThrottleTimers[cardIndex].elapsed() >= 200) {
@@ -1244,11 +1602,13 @@ void MainWindowController::onRawFrameReady(int cardIndex,
     }
   }
 
-  // 매뉴얼 캡쳐/이벤트 구간 저장을 위한 버퍼 추가
+  // 留ㅻ돱??罹≪퀜/?대깽??援ш컙 ??μ쓣 ?꾪븳 踰꾪띁 異붽?
   VideoBufferManager *targetBuffer = getBufferByIndex(cardIndex);
   if (targetBuffer) {
     targetBuffer->addFrame(framePtr);
   }
+
+  refreshReidTableAllChannels(false);
 }
 void MainWindowController::onSendEntry() {
   if (!m_ui.entryPlateInput || !m_ui.logView) {
@@ -1257,7 +1617,7 @@ void MainWindowController::onSendEntry() {
 
   const QString plate = m_ui.entryPlateInput->text().trimmed();
   if (plate.isEmpty()) {
-    m_ui.logView->append("[Telegram] 차량번호를 입력해주세요.");
+    m_ui.logView->append("[Telegram] 李⑤웾踰덊샇瑜??낅젰?댁＜?몄슂.");
     return;
   }
   m_telegramApi->sendEntryNotice(plate);
@@ -1270,7 +1630,7 @@ void MainWindowController::onSendExit() {
 
   const QString plate = m_ui.exitPlateInput->text().trimmed();
   if (plate.isEmpty()) {
-    m_ui.logView->append("[Telegram] 차량번호를 입력해주세요.");
+    m_ui.logView->append("[Telegram] 李⑤웾踰덊샇瑜??낅젰?댁＜?몄슂.");
     return;
   }
   m_telegramApi->sendExitNotice(plate, m_ui.feeInput->value());
@@ -1305,16 +1665,38 @@ void MainWindowController::onUsersUpdated(int count) {
 
 void MainWindowController::onPaymentConfirmed(const QString &plate,
                                               int amount) {
+  bool updated = false;
+  for (CameraSource *source : m_cameraSources) {
+    ParkingService *service = source ? source->parkingService() : nullptr;
+    if (!service) {
+      continue;
+    }
+
+    QString error;
+    if (service->updatePayment(plate, amount, QStringLiteral("寃곗젣?꾨즺"), &error)) {
+      updated = true;
+    }
+  }
+
   if (m_ui.logView) {
     const QString msg =
-        QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
+        QString("[Payment] 앱 결제 완료 수신! 차량: %1, 금액: %2원")
             .arg(plate)
             .arg(amount);
 
-    if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
-      return;
+    if (!m_ui.chkShowPlateLogs || m_ui.chkShowPlateLogs->isChecked()) {
+      m_ui.logView->append(msg);
+      if (updated) {
+        m_ui.logView->append(
+            QString("[Payment] DB 결제 상태 반영 완료: %1, %2원")
+                .arg(plate)
+                .arg(amount));
+      }
     }
-    m_ui.logView->append(msg);
+  }
+
+  if (updated && m_dbPanelController) {
+    m_dbPanelController->onRefreshParkingLogs();
   }
 }
 
@@ -1324,45 +1706,40 @@ void MainWindowController::onReidTableCellClicked(int row, int column) {
     return;
   }
 
-  QTableWidgetItem *idItem = m_ui.reidTable->item(row, 0);
-  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 2);
+  QTableWidgetItem *idItem = m_ui.reidTable->item(row, 1);
+  QTableWidgetItem *objectIdItem = m_ui.reidTable->item(row, 2);
+  QTableWidgetItem *plateItem = m_ui.reidTable->item(row, 3);
 
-  if (idItem && m_ui.forceObjectIdInput) {
-    m_ui.forceObjectIdInput->setValue(idItem->text().toInt());
-  }
-
-  QTableWidgetItem *typeItem = m_ui.reidTable->item(row, 1);
-  if (typeItem && m_ui.forceTypeInput) {
-    m_ui.forceTypeInput->setText(typeItem->text());
+  if (m_ui.forceObjectIdInput) {
+    const int objectId =
+        objectIdItem ? objectIdItem->text().toInt()
+                     : (idItem ? idItem->data(Qt::UserRole + 1).toInt() : 0);
+    m_ui.forceObjectIdInput->setValue(objectId);
   }
 
   if (plateItem && m_ui.forcePlateInput) {
     m_ui.forcePlateInput->setText(plateItem->text());
   }
 
-  QTableWidgetItem *scoreItem = m_ui.reidTable->item(row, 3);
-  if (scoreItem && m_ui.forceScoreInput) {
-    m_ui.forceScoreInput->setValue(scoreItem->text().toDouble());
+  if (m_ui.btnForcePlate && idItem) {
+    m_ui.btnForcePlate->setProperty("cameraKey",
+                                    idItem->data(Qt::UserRole).toString());
   }
 
-  QTableWidgetItem *bboxItem = m_ui.reidTable->item(row, 4);
-  if (bboxItem && m_ui.forceBBoxInput) {
-    m_ui.forceBBoxInput->setText(bboxItem->text());
-  }
 }
 
 void MainWindowController::onAdminSummoned(const QString &chatId,
                                            const QString &name) {
   if (m_ui.logView) {
     m_ui.logView->append(
-        QString("[알림] 🚨 관리자 호출 수신! (User: %1, ChatID: %2)")
+        QString("[?뚮┝] ?슚 愿由ъ옄 ?몄텧 ?섏떊! (User: %1, ChatID: %2)")
             .arg(name, chatId));
   }
 
   QMessageBox *box = new QMessageBox(nullptr);
-  box->setWindowTitle("관리자 호출");
+  box->setWindowTitle("愿由ъ옄 ?몄텧");
   box->setText(
-      QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
+      QString("?슚 ?ъ슜?먭? 愿由ъ옄瑜??몄텧?덉뒿?덈떎!\n\n?대쫫: %1\nChat ID: %2")
           .arg(name, chatId));
   box->setIcon(QMessageBox::Warning);
   box->setStandardButtons(QMessageBox::Ok);
@@ -1371,14 +1748,37 @@ void MainWindowController::onAdminSummoned(const QString &chatId,
   box->show();
 }
 
+void MainWindowController::processJoystickMovement() {
+    int cardIdx = primarySelectedChannelIndex();
+    CameraChannelRuntime *channel = channelForCardIndex(cardIdx);
+    if (!channel) channel = channelAt(0);
+
+    if (channel && channel->videoWidget()) {
+        const double accel = 0.08; // 8% approach per tick (smooth acceleration)
+        
+        // ?쇰읇?? ?떼씇?쇰㈃(Target?? 0?대㈃) 利됱떆  ucfirst? ?꾨땲硫? 媛€? ucfirst 적용
+        if (m_joystickTargetX == 0) m_joystickSpeedX = 0;
+        else m_joystickSpeedX += (m_joystickTargetX - m_joystickSpeedX) * accel;
+
+        if (m_joystickTargetY == 0) m_joystickSpeedY = 0;
+        else m_joystickSpeedY += (m_joystickTargetY - m_joystickSpeedY) * accel;
+        
+        if (m_joystickSpeedX != 0 || m_joystickSpeedY != 0) {
+            channel->videoWidget()->panZoom(m_joystickSpeedX * 0.4, m_joystickSpeedY * 0.4);
+        } else if (m_joystickTargetX == 0 && m_joystickTargetY == 0) {
+            if (m_joystickTimer) m_joystickTimer->stop();
+        }
+    } else {
+        if (m_joystickTimer) m_joystickTimer->stop();
+    }
+}
+
 void MainWindowController::onCaptureManual() {
   QPushButton *senderBtn = qobject_cast<QPushButton *>(sender());
   int idx = m_selectedChannelIndex;
 
-  if (!senderBtn && m_ui.cmbManualCamera) {
-    idx = m_ui.cmbManualCamera->currentIndex();
-  } else if (senderBtn && m_ui.btnCaptureRecordTab &&
-             senderBtn == m_ui.btnCaptureRecordTab) {
+  if (senderBtn && m_ui.btnCaptureRecordTab &&
+      senderBtn == m_ui.btnCaptureRecordTab) {
     idx = m_ui.cmbManualCamera ? m_ui.cmbManualCamera->currentIndex() : 0;
   }
   if (idx < 0)
@@ -1387,21 +1787,26 @@ void MainWindowController::onCaptureManual() {
   VideoBufferManager *targetBuffer = getBufferByIndex(idx);
   QString camId = QString("Ch %1").arg(idx + 1);
 
-  onLogMessage(QString("[Recorder] [%1] 수동 캐캐 요청...").arg(camId));
+  VideoWidget *targetWidget = videoWidgetForTarget(static_cast<RoiTarget>(idx));
+  if (targetWidget) {
+    targetWidget->triggerCaptureFeedback();
+  }
+
+  onLogMessage(QString("[Recorder] [%1] 수동 캡처 요청...").arg(camId));
 
   if (!targetBuffer) {
-    onLogMessage(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));
+    onLogMessage(QString("[Recorder] [%1] 踰꾪띁 媛앹껜媛 ?놁뒿?덈떎.").arg(camId));
     return;
   }
 
   auto frames = targetBuffer->getFrames();
-  onLogMessage(QString("[Recorder] [%1] 버퍼 프레임 수: %2")
+  onLogMessage(QString("[Recorder] [%1] 踰꾪띁 ?꾨젅???? %2")
                    .arg(camId)
                    .arg(frames.size()));
 
   if (frames.empty()) {
-    onLogMessage(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 "
-                         "실행 중인지 확인하세요.")
+    onLogMessage(QString("[Recorder] [%1] 踰꾪띁媛 鍮꾩뼱?덉뒿?덈떎. ?대떦 移대찓?쇨? "
+                         "?ㅽ뻾 以묒씤吏 ?뺤씤?섏꽭??")
                      .arg(camId));
     return;
   }
@@ -1420,11 +1825,11 @@ void MainWindowController::onCaptureManual() {
                             Q_ARG(QString, camId));
 
   onLogMessage(
-      QString("[Recorder] [%1] 캐캐 저장 코: %2").arg(camId, fileName));
+      QString("[Recorder] [%1] 캡처 저장 완료: %2").arg(camId, fileName));
 }
 
 void MainWindowController::onRecordManualToggled(bool checked) {
-  // 라이브 뷰의 버튼과 녹화조회 탭의 버튼 상태를 동기화
+  // ?쇱씠釉?酉곗쓽 踰꾪듉怨??뱁솕議고쉶 ??쓽 踰꾪듉 ?곹깭瑜??숆린??
   if (m_ui.btnRecordManual && m_ui.btnRecordManual->isChecked() != checked) {
     QSignalBlocker blocker(m_ui.btnRecordManual);
     m_ui.btnRecordManual->setChecked(checked);
@@ -1434,26 +1839,7 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     QSignalBlocker blocker(m_ui.btnRecordRecordTab);
     m_ui.btnRecordRecordTab->setChecked(checked);
   }
-
-  auto updateButtonStyle = [&](QPushButton *btn, bool isRecording) {
-    if (!btn)
-      return;
-    if (isRecording) {
-      btn->setText("녹화 중지");
-      btn->setStyleSheet(
-          "background-color: #ff4d4d; color: white; "
-          "font-weight: bold; border-radius: 4px; padding: 5px;");
-    } else {
-      btn->setText("수동 녹화");
-      btn->setStyleSheet(""); // 기본 스타일로 복구
-    }
-  };
-
-  updateButtonStyle(m_ui.btnRecordManual, checked);
-  updateButtonStyle(m_ui.btnRecordRecordTab, checked);
-
-  // No status label to update
-
+  // UI 버튼 스타일 변경 등의 코드는 생략하지만, 실제 녹화 로직은 실행
   if (checked) {
     m_isManualRecording = true;
 
@@ -1473,9 +1859,15 @@ void MainWindowController::onRecordManualToggled(bool checked) {
     m_manualRecordStartIdx = buf ? buf->getTotalFramesAdded() : 0;
 
     QString camId = QString("Ch %1").arg(idx + 1);
-    onLogMessage(QString("[Recorder] [%1] 수동 녹화 시작 (시작 인덱스: %2)")
+    onLogMessage(QString("[Recorder] [%1] ?섎룞 ?뱁솕 ?쒖옉 (?쒖옉 ?몃뜳?? %2)")
                      .arg(camId)
                      .arg(m_manualRecordStartIdx));
+    
+    // UI 피드백 (REC 표시)
+    VideoWidget *vw = videoWidgetForTarget(static_cast<RoiTarget>(idx));
+    if (vw) {
+        vw->setRecording(true);
+    }
   } else {
     int idx = m_manualRecordChannelIdx;
     VideoBufferManager *targetBuffer = getBufferByIndex(idx);
@@ -1483,22 +1875,33 @@ void MainWindowController::onRecordManualToggled(bool checked) {
 
     onLogMessage(
         QString("[Recorder] [%1] 녹화 중지 요청 - 저장 중...").arg(camId));
+    
+    // UI 피드백 (REC 제거)
+    VideoWidget *vw = videoWidgetForTarget(static_cast<RoiTarget>(idx));
+    if (vw) {
+        vw->setRecording(false);
+    }
+    /*
+=======
+        QString("[Recorder] [%1] ?뱁솕 以묒? ?붿껌 - ?€??以?..").arg(camId));
+>>>>>>> remotes/origin/feature/tcp-comm
+    */
 
     if (!targetBuffer) {
-      onLogMessage(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));
+      onLogMessage(QString("[Recorder] [%1] 踰꾪띁 媛앹껜媛 ?놁뒿?덈떎.").arg(camId));
       m_isManualRecording = false;
       return;
     }
     m_isManualRecording = false;
 
     auto frames = targetBuffer->getFramesSince(m_manualRecordStartIdx);
-    onLogMessage(QString("[Recorder] [%1] 버퍼 프레임 수: %2")
+    onLogMessage(QString("[Recorder] [%1] 踰꾪띁 ?꾨젅???? %2")
                      .arg(camId)
                      .arg(frames.size()));
 
     if (frames.empty()) {
-      onLogMessage(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 "
-                           "실행 중인지 확인하세요.")
+      onLogMessage(QString("[Recorder] [%1] 踰꾪띁媛 鍮꾩뼱?덉뒿?덈떎. ?대떦 移대찓?쇨? "
+                           "?ㅽ뻾 以묒씤吏 ?뺤씤?섏꽭??")
                        .arg(camId));
       return;
     }
@@ -1516,7 +1919,7 @@ void MainWindowController::onRecordManualToggled(bool checked) {
         Q_ARG(QString, filePath), Q_ARG(int, 15), Q_ARG(QString, "VIDEO"),
         Q_ARG(QString, "Manual Record"), Q_ARG(QString, camId));
 
-    onLogMessage(QString("[Recorder] [%1] 녹화 파일 저장 실행: %2")
+    onLogMessage(QString("[Recorder] [%1] ?뱁솕 ?뚯씪 ????ㅽ뻾: %2")
                      .arg(camId, fileName));
   }
 }
@@ -1527,35 +1930,36 @@ void MainWindowController::onMediaSaveFinished(bool success,
                                                const QString &description,
                                                const QString &cameraId) {
   if (!success) {
-    onLogMessage(QString("[Recorder] 미디어 저장 실패: %1").arg(filePath));
+    onLogMessage(QString("[Recorder] 誘몃뵒??????ㅽ뙣: %1").arg(filePath));
     return;
   }
 
   QString fileName = QFileInfo(filePath).fileName();
 
-  // 주 스레드에서 안전하게 DB 기록
+  // 二??ㅻ젅?쒖뿉???덉쟾?섍쾶 DB 湲곕줉
   if (m_mediaRepo) {
     m_mediaRepo->addMediaRecord(type, description, cameraId, filePath);
   }
 
-  onLogMessage(QString("[Recorder] 미디어 저장 완료: %1").arg(fileName));
+  onLogMessage(QString("[Recorder] 誘몃뵒??????꾨즺: %1").arg(fileName));
 
-  // 목록 자동 갱신
+  // 紐⑸줉 ?먮룞 媛깆떊
   if (m_recordPanelController) {
     m_recordPanelController->refreshLogTable();
   }
 }
 
+
 void MainWindowController::onContinuousRecordTimeout() {
-  // 활성화 체크박스 제거로 상시 실행
-  int intervalMin = 1; // 1분 고정
+  // ?쒖꽦??泥댄겕諛뺤뒪 ?쒓굅濡??곸떆 ?ㅽ뻾
+  int intervalMin = 1; // 1遺?怨좎젙
   QString camId;
 
   for (int i = 0; i < 4; ++i) {
     if (!m_continuousBuffers[i])
       continue;
 
-    // 5 FPS 기준 1분(60초) = 300프레임
+    // 5 FPS 湲곗? 1遺?60珥? = 300?꾨젅??
     auto frames = m_continuousBuffers[i]->getFrames(0, intervalMin * 60, 5);
     if (frames.empty())
       continue;
@@ -1571,22 +1975,22 @@ void MainWindowController::onContinuousRecordTimeout() {
         m_recorderWorker, "saveVideo",
         Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
         Q_ARG(QString, filePath), Q_ARG(int, 5), Q_ARG(QString, "CONTINUOUS"),
-        Q_ARG(QString, "상시녹화"), Q_ARG(QString, camId));
+        Q_ARG(QString, "?곸떆?뱁솕"), Q_ARG(QString, camId));
   }
 
-  // 상시녹화 파일 생성 후 즉시 오래된 파일 정리 수행 (UX 향상)
+  // ?곸떆?뱁솕 ?뚯씪 ?앹꽦 ??利됱떆 ?ㅻ옒???뚯씪 ?뺣━ ?섑뻾 (UX ?μ긽)
   onCleanupTimeout();
 }
 
 void MainWindowController::onApplyContinuousSettingClicked() {
-  onLogMessage(QString("[System] 상시녹화 설정 적용: 보존기간 %1분")
+  onLogMessage(QString("[System] 상시녹화 설정 적용: 보존기간 %1일")
                    .arg(m_ui.spinRecordRetention->value()));
-  // 즉시 삭제 체크 트리거
+  // 利됱떆 ??젣 泥댄겕 ?몃━嫄?
   onCleanupTimeout();
 }
 
 void MainWindowController::onCleanupTimeout() {
-  // 보존 기간을 분 단위로 해석
+  // 蹂댁〈 湲곌컙??遺??⑥쐞濡??댁꽍
   int retentionMinutes =
       m_ui.spinRecordRetention ? m_ui.spinRecordRetention->value() : 60;
   if (!m_mediaRepo)
@@ -1597,7 +2001,7 @@ void MainWindowController::onCleanupTimeout() {
       m_mediaRepo->getOldMediaRecordsByMinutes(retentionMinutes, &error);
 
   if (!error.isEmpty()) {
-    onLogMessage(QString("[Recorder] DB 조회 오류: %1").arg(error));
+    onLogMessage(QString("[Recorder] DB 議고쉶 ?ㅻ쪟: %1").arg(error));
     return;
   }
 
@@ -1605,7 +2009,7 @@ void MainWindowController::onCleanupTimeout() {
   int failCount = 0;
 
   for (const auto &record : oldRecords) {
-    // 상시녹화(CONTINUOUS) 타입만 자동 삭제 대상으로 지정
+    // ?곸떆?뱁솕(CONTINUOUS) ??낅쭔 ?먮룞 ??젣 ??곸쑝濡?吏??
     if (record["type"].toString() != "CONTINUOUS")
       continue;
 
@@ -1617,19 +2021,19 @@ void MainWindowController::onCleanupTimeout() {
       deleteCount++;
     } else {
       if (!QFile::exists(path)) {
-        // 파일이 이미 없는 경우 DB에서도 제거
+        // ?뚯씪???대? ?녿뒗 寃쎌슦 DB?먯꽌???쒓굅
         m_mediaRepo->deleteMediaRecord(id);
         deleteCount++;
       } else {
-        // 파일이 존재하지만 삭제 실패 (잠김 상태 등)
+        // ?뚯씪??議댁옱?섏?留???젣 ?ㅽ뙣 (?좉? ?곹깭 ??
         failCount++;
-        qWarning() << "[Recorder] 파일 삭제 실패 (잠김 예상):" << path;
+        qWarning() << "[Recorder] ?뚯씪 ??젣 ?ㅽ뙣 (?좉? ?덉긽):" << path;
       }
     }
   }
 
   if (deleteCount > 0) {
-    onLogMessage(QString("[Recorder] 상시녹화 오래된 파일 %1개 자동 정리 완료")
+    onLogMessage(QString("[Recorder] ?곸떆?뱁솕 ?ㅻ옒???뚯씪 %1媛??먮룞 ?뺣━ ?꾨즺")
                      .arg(deleteCount));
     if (m_recordPanelController) {
       m_recordPanelController->refreshLogTable();
@@ -1639,13 +2043,13 @@ void MainWindowController::onCleanupTimeout() {
   if (failCount > 0) {
     onLogMessage(
         QString(
-            "[Recorder] 상시녹화 파일 %1개를 삭제하지 못했습니다. (사용 중)")
+            "[Recorder] ?곸떆?뱁솕 ?뚯씪 %1媛쒕? ??젣?섏? 紐삵뻽?듬땲?? (?ъ슜 以?")
             .arg(failCount));
   }
 }
 
 void MainWindowController::onContinuousSettingChanged() {
-  // spinRecordInterval 제거로 인해 더 이상 사용하지 않음
+  // spinRecordInterval ?쒓굅濡??명빐 ???댁긽 ?ъ슜?섏? ?딆쓬
 }
 
 VideoBufferManager *MainWindowController::getBufferByIndex(int index) const {
@@ -1749,4 +2153,8 @@ bool MainWindowController::isCameraSourceRunning(int cardIndex) const {
 
   CameraSource *source = m_cameraSources[static_cast<size_t>(cardIndex)];
   return source && source->isRunning();
+}
+
+void MainWindowController::onRefreshReidTableAllChannels() {
+  refreshReidTableAllChannels();
 }
