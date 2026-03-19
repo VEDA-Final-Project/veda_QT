@@ -1,0 +1,73 @@
+# ============================================================
+# OpenVINO 2025.4.1 (Intel GPU / CPU 가속)
+# C:\intel\openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64
+# ============================================================
+set(OPENVINO_ROOT "C:/intel/openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64"
+    CACHE PATH "Path to OpenVINO installation")
+
+set(OPENVINO_INCLUDE_DIR "${OPENVINO_ROOT}/runtime/include")
+
+# 빌드 설정에 따라 경로 자동 선택
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(OV_SUBDIR "Debug")
+    set(OV_SUFFIX "d")
+else()
+    set(OV_SUBDIR "Release")
+    set(OV_SUFFIX "")
+endif()
+
+set(OPENVINO_LIB_DIR     "${OPENVINO_ROOT}/runtime/lib/intel64/${OV_SUBDIR}")
+set(OPENVINO_BIN_DIR     "${OPENVINO_ROOT}/runtime/bin/intel64/${OV_SUBDIR}")
+set(OPENVINO_TBB_DIR     "${OPENVINO_ROOT}/runtime/3rdparty/tbb/bin")
+
+if(EXISTS "${OPENVINO_INCLUDE_DIR}/openvino/openvino.hpp")
+
+    message(STATUS "[OpenVINO] Found at ${OPENVINO_ROOT} (Mode: ${OV_SUBDIR})")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${OPENVINO_INCLUDE_DIR})
+    target_link_directories(${PROJECT_NAME}    PRIVATE ${OPENVINO_LIB_DIR})
+    
+    # Debug일 때는 openvinod, Release일 때는 openvino 연결
+    target_link_libraries(${PROJECT_NAME}      PRIVATE "openvino${OV_SUFFIX}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_OPENVINO)
+
+    # 핵심 DLL 빌드 후 자동 복사
+    set(OPENVINO_DLLS
+        "${OPENVINO_BIN_DIR}/openvino${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_c${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_intel_cpu_plugin${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_intel_gpu_plugin${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_auto_plugin${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_auto_batch_plugin${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_hetero_plugin${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_ir_frontend${OV_SUFFIX}.dll"
+        "${OPENVINO_BIN_DIR}/openvino_onnx_frontend${OV_SUFFIX}.dll"
+    )
+    foreach(dll ${OPENVINO_DLLS})
+        if(EXISTS "${dll}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${dll}" $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            )
+        endif()
+    endforeach()
+
+    # TBB 의존성 DLL
+    set(TBB_DLLS
+        "${OPENVINO_TBB_DIR}/tbb12${OV_SUFFIX}.dll"
+        "${OPENVINO_TBB_DIR}/tbbbind_2_5${OV_SUFFIX}.dll"
+        "${OPENVINO_TBB_DIR}/tbbmalloc${OV_SUFFIX}.dll"
+        "${OPENVINO_TBB_DIR}/tbbmalloc_proxy${OV_SUFFIX}.dll"
+    )
+    foreach(dll ${TBB_DLLS})
+        $src = "${dll}"
+        if(EXISTS "${dll}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${dll}" $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            )
+        endif()
+    endforeach()
+
+else()
+    message(WARNING "[OpenVINO] Not found at ${OPENVINO_ROOT}")
+endif()

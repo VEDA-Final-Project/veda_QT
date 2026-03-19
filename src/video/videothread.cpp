@@ -4,6 +4,7 @@
 #include <QTcpSocket>
 #include <QUrl>
 #include <QtGlobal>
+#include <opencv2/core/ocl.hpp>
 
 
 VideoThread::VideoThread(QObject *parent) : QThread(parent), m_stop(false) {
@@ -109,7 +110,13 @@ void VideoThread::run() {
    * OpenCV FFmpeg 백엔드 타임아웃을 환경 변수로 전달 (단위: 마이크로초)
    * stimeout: TCP 기반 RTSP 연결 및 읽기 타임아웃 2초 (2,000,000)
    */
-  qputenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", "stimeout;2000000");
+  // FFmpeg 캡처 옵션 설정: D3D11VA 하드웨어 디코딩 활성화 + RTSP TCP 전송 + 타임아웃 2초
+  qputenv("OPENCV_FFMPEG_CAPTURE_OPTIONS",
+          "hwaccel;d3d11va|rtsp_transport;tcp|stimeout;2000000");
+
+  // === 하드웨어 가속을 스트림 열기 전에 설정 (중요!) ===
+  m_cap.set(cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_D3D11);
+  m_cap.set(cv::CAP_PROP_HW_DEVICE, 0);  // 첫 번째 GPU 디바이스
 
   // === RTSP 스트림 열기 ===
   if (!m_cap.open(url.toStdString(), cv::CAP_FFMPEG)) {
@@ -122,10 +129,23 @@ void VideoThread::run() {
     return;
   }
 
-  // 내부 버퍼 최소화 (FFmpeg 캡처가 열린 후에 적용 가능)
-  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);
+  // 하드웨어 가속 상태 확인
+  int hw_accel = static_cast<int>(m_cap.get(cv::CAP_PROP_HW_ACCELERATION));
+  emit logMessage(QString("[Video] Hardware Acceleration for %1: mode=%2 (0=None, 1=Any, 2=D3D11, 3=VAAPI, 4=MFX)")
+                      .arg(url)
+                      .arg(hw_accel));
+
+  // 내부 버퍼 최소화 (지연 시간 감소를 위해 1로 설정)
+  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 1);
 
   const double sourceFps = m_cap.get(cv::CAP_PROP_FPS);
+  
+  // OpenCL 가속 상태 확인 로그 추가
+  bool has_ocl = cv::ocl::haveOpenCL();
+  bool use_ocl = cv::ocl::useOpenCL();
+  emit logMessage(QString("[Video] OpenCL status: Available=%1, Active=%2")
+                  .arg(has_ocl ? "Yes" : "No")
+                  .arg(use_ocl ? "Yes" : "No"));
   {
     QMutexLocker locker(&m_mutex);
     if (sourceFps > 0)

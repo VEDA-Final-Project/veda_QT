@@ -173,24 +173,33 @@ install(SCRIPT ${deploy_script})
 #   - OPENCV_DIR: OpenCV 설치 경로
 # ============================================================
 
-# OpenCV 패키지 찾기 (vcpkg 또는 환경 변수에서 자동 검사)
-if(DEFINED ENV{OPENCV_DIR})
-    set(OpenCV_DIR $ENV{OPENCV_DIR})
-endif()
+# OpenCV 및 의존성(Protobuf 등)을 vcpkg에서 찾도록 강력한 힌트 추가
+list(APPEND CMAKE_PREFIX_PATH 
+    "C:/vcpkg/installed/x64-windows"
+    "C:/vcpkg/installed/x64-windows/share"
+    "C:/vcpkg/installed/x64-windows/share/protobuf"
+)
 
-find_package(OpenCV REQUIRED)
+# OpenCV가 내부적으로 Protobuf를 찾을 때 에러가 나지 않도록 수동 힌트 설정
+set(Protobuf_DIR "C:/vcpkg/installed/x64-windows/share/protobuf" CACHE PATH "Force vcpkg Protobuf")
+
+find_package(Protobuf REQUIRED CONFIG)
+find_package(OpenCV REQUIRED CONFIG)
+
 target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
 
-# ONNX Runtime 패키지 찾기 (vcpkg 또는 ONNXRUNTIME_ROOT 환경 변수)
-find_package(ONNXRUNTIME CONFIG QUIET)
+
+# ONNX Runtime 추가 검색 경로 (DirectML 버전 수동 설치 대응)
+target_include_directories(rtsp_test PRIVATE "C:/onnxruntime/include")
+target_link_directories(rtsp_test PRIVATE "C:/onnxruntime/lib")
 
 if(TARGET onnxruntime::onnxruntime)
     target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime::onnxruntime)
 elseif(TARGET onnxruntime)
     target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime)
 else()
-    set(_onnxruntime_hints)
+    set(_onnxruntime_hints "C:/onnxruntime") # 최우선 힌트로 설정
 
     if(DEFINED ONNXRUNTIME_ROOT AND ONNXRUNTIME_ROOT)
         list(APPEND _onnxruntime_hints "${ONNXRUNTIME_ROOT}")
@@ -201,12 +210,15 @@ else()
     if(DEFINED ENV{ONNXRUNTIME_DIR} AND NOT "$ENV{ONNXRUNTIME_DIR}" STREQUAL "")
         list(APPEND _onnxruntime_hints "$ENV{ONNXRUNTIME_DIR}")
     endif()
-    if(WIN32)
-        list(APPEND _onnxruntime_hints
-            "$ENV{USERPROFILE}/Downloads/onnxruntime-win-x64-1.24.2/onnxruntime-win-x64-1.24.2"
-            "$ENV{USERPROFILE}/Downloads/onnxruntime-win-x64-1.23.2/onnxruntime-win-x64-1.23.2"
-        )
-    endif()
+
+    # [수정] GPU 가속을 위해 전용 패키지가 설치된 C:/onnxruntime만 사용하도록 강제합니다.
+    set(_onnxruntime_hints "C:/onnxruntime")
+    
+    # 캐시에 잘못된 경로가 남아있을 경우를 대비해 변수들을 강제로 덮어씁니다.
+    set(ONNXRUNTIME_ROOT "C:/onnxruntime" CACHE PATH "Path to GPU ONNX Runtime" FORCE)
+    set(ONNXRUNTIME_INCLUDE_DIR "C:/onnxruntime/include" CACHE PATH "" FORCE)
+    set(ONNXRUNTIME_LIBRARY "C:/onnxruntime/lib/onnxruntime.lib" CACHE FILEPATH "" FORCE)
+    set(ONNXRUNTIME_DLL "C:/onnxruntime/bin/onnxruntime.dll" CACHE FILEPATH "" FORCE)
 
     list(REMOVE_DUPLICATES _onnxruntime_hints)
 
@@ -228,6 +240,12 @@ else()
         PATH_SUFFIXES bin lib lib64
     )
 
+    find_file(DIRECTML_DLL
+        NAMES DirectML.dll
+        HINTS ${_onnxruntime_hints}
+        PATH_SUFFIXES bin lib lib64
+    )
+
     if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIBRARY)
         target_include_directories(rtsp_test PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
         target_link_libraries(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_LIBRARY})
@@ -239,9 +257,94 @@ else()
                         $<TARGET_FILE_DIR:rtsp_test>
             )
         endif()
+
+        if(DIRECTML_DLL)
+            add_custom_command(TARGET rtsp_test POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${DIRECTML_DLL}
+                        $<TARGET_FILE_DIR:rtsp_test>
+            )
+        endif()
+
+        # ORT 1.24.4+ requires onnxruntime_providers_shared.dll
+        find_file(ONNXRUNTIME_SHARED_DLL
+            NAMES onnxruntime_providers_shared.dll
+            HINTS ${_onnxruntime_hints}
+            PATH_SUFFIXES bin lib lib64
+        )
+        if(ONNXRUNTIME_SHARED_DLL)
+            add_custom_command(TARGET rtsp_test POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${ONNXRUNTIME_SHARED_DLL}
+                        $<TARGET_FILE_DIR:rtsp_test>
+            )
+        endif()
     else()
         message(FATAL_ERROR
             "ONNX Runtime package not found. Set ONNXRUNTIME_ROOT to the extracted folder "
             "(it must contain include/onnxruntime_cxx_api.h and lib/onnxruntime.lib).")
     endif()
 endif()
+# ============================================================
+# OpenVINO 2025.4.1 (Intel GPU / CPU 가속)
+# C:\intel\openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64
+# ============================================================
+set(OPENVINO_ROOT "C:/intel/openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64"
+    CACHE PATH "Path to OpenVINO installation")
+
+set(OPENVINO_INCLUDE_DIR "${OPENVINO_ROOT}/runtime/include")
+
+# 빌드 설정에 따라 경로 및 접미사 자동 선택 (Debug vs Release)
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+    set(OV_SUBDIR "Debug")
+    set(OV_SUFFIX "d")
+else()
+    set(OV_SUBDIR "Release")
+    set(OV_SUFFIX "")
+endif()
+
+set(OPENVINO_LIB_DIR     "${OPENVINO_ROOT}/runtime/lib/intel64/${OV_SUBDIR}")
+set(OPENVINO_BIN_DIR     "${OPENVINO_ROOT}/runtime/bin/intel64/${OV_SUBDIR}")
+set(OPENVINO_TBB_BIN_DIR "${OPENVINO_ROOT}/runtime/3rdparty/tbb/bin")
+
+if(EXISTS "${OPENVINO_INCLUDE_DIR}/openvino/openvino.hpp")
+
+    message(STATUS "[OpenVINO] Found at ${OPENVINO_ROOT} (Mode: ${OV_SUBDIR})")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${OPENVINO_INCLUDE_DIR})
+    target_link_directories(${PROJECT_NAME}    PRIVATE ${OPENVINO_LIB_DIR})
+    target_link_libraries(${PROJECT_NAME}      PRIVATE "openvino${OV_SUFFIX}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_OPENVINO)
+
+    # 핵심 DLL 빌드 후 자동 복사
+    set(OPENVINO_DLL_NAMES 
+        "openvino" "openvino_c" "openvino_intel_cpu_plugin" "openvino_intel_gpu_plugin"
+        "openvino_auto_plugin" "openvino_auto_batch_plugin" "openvino_hetero_plugin"
+        "openvino_ir_frontend" "openvino_onnx_frontend"
+    )
+    foreach(name ${OPENVINO_DLL_NAMES})
+        set(dll_path "${OPENVINO_BIN_DIR}/${name}${OV_SUFFIX}.dll")
+        if(EXISTS "${dll_path}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${dll_path}" $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            )
+        endif()
+    endforeach()
+
+    # TBB 의존성 DLL
+    set(TBB_DLL_NAMES "tbb12" "tbbbind_2_5" "tbbmalloc" "tbbmalloc_proxy")
+    foreach(name ${TBB_DLL_NAMES})
+        set(dll_path "${OPENVINO_TBB_BIN_DIR}/${name}${OV_SUFFIX}.dll")
+        if(EXISTS "${dll_path}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${dll_path}" $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            )
+        endif()
+    endforeach()
+
+else()
+    message(WARNING "[OpenVINO] Not found at ${OPENVINO_ROOT}")
+endif()
+
+

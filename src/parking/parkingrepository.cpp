@@ -1,6 +1,6 @@
 #include "parking/parkingrepository.h"
-#include "parking/parkingfeepolicy.h"
 #include "database/databasecontext.h"
+#include "parking/parkingfeepolicy.h"
 #include <QDebug>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -8,6 +8,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <algorithm>
+
 
 namespace {
 const QString kDefaultCameraKey = QStringLiteral("camera");
@@ -122,15 +123,22 @@ bool ParkingRepository::ensureSchema(QString *errorMessage) {
     return false;
   }
 
-  if (!ensureColumn(db, QStringLiteral("parking_logs"), QStringLiteral("reid_id"),
+  if (!ensureColumn(db, QStringLiteral("parking_logs"),
+                    QStringLiteral("reid_id"),
                     QStringLiteral("TEXT NOT NULL DEFAULT ''"), errorMessage)) {
     return false;
   }
 
+  if (!ensureColumn(db, QStringLiteral("parking_logs"),
+                    QStringLiteral("pay_status"),
+                    QStringLiteral("TEXT DEFAULT '정산대기'"), errorMessage)) {
+    return false;
+  }
+
   QSqlQuery indexQuery(db);
-  indexQuery.exec(QStringLiteral(
-      "CREATE INDEX IF NOT EXISTS idx_parking_logs_camera_entry "
-      "ON parking_logs(camera_key, entry_time DESC)"));
+  indexQuery.exec(
+      QStringLiteral("CREATE INDEX IF NOT EXISTS idx_parking_logs_camera_entry "
+                     "ON parking_logs(camera_key, entry_time DESC)"));
   indexQuery.exec(QStringLiteral(
       "CREATE INDEX IF NOT EXISTS idx_parking_logs_camera_plate_active "
       "ON parking_logs(camera_key, plate_number, exit_time)"));
@@ -156,20 +164,19 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
       "INSERT INTO parking_logs (camera_key, object_id, plate_number, "
       "zone_name, roi_index, reid_id, entry_time, pay_status, total_amount, "
       "ocr_confidence, bestshot_path) "
-      "VALUES (:camera_key, :object_id, :plate, :zone_name, :roi, :reid_id, "
-      ":entry, :pay_status, :total_amount, :ocr_confidence, "
-      ":bestshot_path)"));
-  query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
-  query.bindValue(":object_id", objectId);
-  query.bindValue(":plate", normalizedPlateNumber(plateNumber));
-  query.bindValue(":zone_name", zoneName.trimmed());
-  query.bindValue(":roi", roiIndex);
-  query.bindValue(":reid_id", reidId.trimmed());
-  query.bindValue(":entry", entryTime.toString(Qt::ISODate));
-  query.bindValue(":pay_status", kPendingPayStatus);
-  query.bindValue(":total_amount", 0);
-  query.bindValue(":ocr_confidence", 0.0);
-  query.bindValue(":bestshot_path", QStringLiteral(""));
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+
+  query.addBindValue(normalizedCameraKey(cameraKey));
+  query.addBindValue(objectId);
+  query.addBindValue(normalizedPlateNumber(plateNumber));
+  query.addBindValue(zoneName.trimmed());
+  query.addBindValue(roiIndex);
+  query.addBindValue(reidId.trimmed());
+  query.addBindValue(entryTime.toString(Qt::ISODate));
+  query.addBindValue(kPendingPayStatus);
+  query.addBindValue(0);
+  query.addBindValue(0.0);
+  query.addBindValue(QStringLiteral(""));
 
   if (!query.exec()) {
     const QString err =
@@ -185,8 +192,7 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
 }
 
 bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
-                                   int *totalAmount,
-                                   QString *errorMessage) {
+                                   int *totalAmount, QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return false;
@@ -207,8 +213,8 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
   QDateTime entryTime =
       QDateTime::fromString(selectQuery.value(0).toString(), Qt::ISODateWithMs);
   if (!entryTime.isValid()) {
-    entryTime = QDateTime::fromString(selectQuery.value(0).toString(),
-                                      Qt::ISODate);
+    entryTime =
+        QDateTime::fromString(selectQuery.value(0).toString(), Qt::ISODate);
   }
   const parking::ParkingFeeResult feeResult =
       parking::calculateParkingFee(entryTime, exitTime);
@@ -218,14 +224,14 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
   }
 
   QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "UPDATE parking_logs SET exit_time = :exit, total_amount = :total_amount, "
-      "pay_status = :pay_status WHERE id = :id"));
+  query.prepare(QStringLiteral("UPDATE parking_logs SET exit_time = :exit, "
+                               "total_amount = :total_amount, "
+                               "pay_status = :pay_status WHERE id = :id"));
   query.bindValue(":exit", exitTime.toString(Qt::ISODate));
   query.bindValue(":total_amount", calculatedTotalAmount);
-  query.bindValue(":pay_status",
-                  calculatedTotalAmount <= 0 ? kPaidPayStatus
-                                             : kPendingPayStatus);
+  query.bindValue(":pay_status", calculatedTotalAmount <= 0
+                                     ? kPaidPayStatus
+                                     : kPendingPayStatus);
   query.bindValue(":id", recordId);
 
   if (!query.exec()) {
@@ -242,8 +248,7 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
 
 bool ParkingRepository::updatePayment(const QString &cameraKey,
                                       const QString &plateNumber,
-                                      int totalAmount,
-                                      const QString &payStatus,
+                                      int totalAmount, const QString &payStatus,
                                       QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
@@ -255,11 +260,11 @@ bool ParkingRepository::updatePayment(const QString &cameraKey,
 
   auto updateTarget = [&](const QString &idQuerySql) -> int {
     QSqlQuery query(db);
-    query.prepare(QStringLiteral(
-        "UPDATE parking_logs SET pay_status = :pay_status, "
-        "total_amount = :total_amount "
-        "WHERE id = (") +
-                  idQuerySql + QStringLiteral(")"));
+    query.prepare(
+        QStringLiteral("UPDATE parking_logs SET pay_status = :pay_status, "
+                       "total_amount = :total_amount "
+                       "WHERE id = (") +
+        idQuerySql + QStringLiteral(")"));
     query.bindValue(":pay_status", normalizedStatus);
     query.bindValue(":total_amount", normalizedAmount);
     query.bindValue(":camera_key", normalizedKey);
@@ -297,9 +302,9 @@ bool ParkingRepository::updatePayment(const QString &cameraKey,
   return activeUpdated > 0;
 }
 
-QJsonObject ParkingRepository::findActiveByObjectId(const QString &cameraKey,
-                                                    int objectId,
-                                                    QString *errorMessage) const {
+QJsonObject
+ParkingRepository::findActiveByObjectId(const QString &cameraKey, int objectId,
+                                        QString *errorMessage) const {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return QJsonObject();
@@ -356,8 +361,8 @@ bool ParkingRepository::updateActivePlateByObjectId(const QString &cameraKey,
   query.bindValue(":object_id", objectId);
 
   if (!query.exec()) {
-    const QString err =
-        QStringLiteral("Update active plate error: ") + query.lastError().text();
+    const QString err = QStringLiteral("Update active plate error: ") +
+                        query.lastError().text();
     qWarning() << err;
     if (errorMessage) {
       *errorMessage = err;
@@ -383,16 +388,15 @@ bool ParkingRepository::updateActiveReidByObjectId(const QString &cameraKey,
   }
 
   QSqlQuery query(db);
+  // [수정] 네임드 파라미터(:reid_id)에서 포지셔널 파라미터(?)로 변경하여 바인딩
+  // 오류 방지
   query.prepare(QStringLiteral(
-      "UPDATE parking_logs SET reid_id = :reid_id "
-      "WHERE id = ("
-      "  SELECT id FROM parking_logs WHERE camera_key = :camera_key "
-      "  AND object_id = :object_id AND exit_time IS NULL "
-      "  ORDER BY entry_time DESC LIMIT 1"
-      ")"));
-  query.bindValue(":reid_id", trimmedReid);
-  query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
-  query.bindValue(":object_id", objectId);
+      "UPDATE parking_logs SET reid_id = ? "
+      "WHERE camera_key = ? AND object_id = ? AND exit_time IS NULL"));
+
+  query.addBindValue(trimmedReid);
+  query.addBindValue(normalizedCameraKey(cameraKey));
+  query.addBindValue(objectId);
 
   if (!query.exec()) {
     const QString err =
@@ -636,9 +640,10 @@ ParkingRepository::searchByPlate(const QString &cameraKey, const QString &plate,
   return results;
 }
 
-QList<QJsonObject> ParkingRepository::recentLogsByPlate(
-    const QString &cameraKey, const QString &plateNumber, int limit,
-    QString *errorMessage) const {
+QList<QJsonObject>
+ParkingRepository::recentLogsByPlate(const QString &cameraKey,
+                                     const QString &plateNumber, int limit,
+                                     QString *errorMessage) const {
   QList<QJsonObject> results;
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
@@ -702,9 +707,8 @@ bool ParkingRepository::updatePlate(const QString &cameraKey, int recordId,
     return false;
 
   QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "UPDATE parking_logs SET plate_number = :plate "
-      "WHERE id = :id AND camera_key = :camera_key"));
+  query.prepare(QStringLiteral("UPDATE parking_logs SET plate_number = :plate "
+                               "WHERE id = :id AND camera_key = :camera_key"));
   query.bindValue(":plate", normalizedPlateNumber(newPlate));
   query.bindValue(":id", recordId);
   query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
@@ -721,9 +725,8 @@ bool ParkingRepository::updatePlate(const QString &cameraKey, int recordId,
   return true;
 }
 
-QList<QJsonObject>
-ParkingRepository::getAllLogs(const QString &cameraKey,
-                              QString *errorMessage) const {
+QList<QJsonObject> ParkingRepository::getAllLogs(const QString &cameraKey,
+                                                 QString *errorMessage) const {
   QList<QJsonObject> results;
   QSqlDatabase db = DatabaseContext::database();
 

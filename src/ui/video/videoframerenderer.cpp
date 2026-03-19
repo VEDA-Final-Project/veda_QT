@@ -191,7 +191,10 @@ QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
 
   QImage scaledFrame;
   if (zoomFactor <= 1.001 && !scaledBaseFrame.isNull()) {
-    scaledFrame = scaledBaseFrame.copy();
+    // Qt QImage는 Copy-on-Write를 지원하므로, QPainter가 최초 수정 시 자동 분리됩니다.
+    // copy() 대신 detach()를 사용해 불필요한 전체 프레임 메모리 복사를 제거합니다.
+    scaledFrame = scaledBaseFrame;
+    scaledFrame.detach();
   } else {
     const QSize baseSize =
         scaledBaseFrame.isNull() ? sourceView.size() : scaledBaseFrame.size();

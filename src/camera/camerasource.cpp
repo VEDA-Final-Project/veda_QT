@@ -11,13 +11,15 @@
 
 namespace
 {
+  // UI 렌더링: 30fps(33ms)로 복구.
   constexpr qint64 kUiFrameStaleMs = 120;
   constexpr qint64 kThumbnailFrameStaleMs = 300;
-  constexpr qint64 kUiRenderIntervalMs = 33;
-  constexpr qint64 kThumbnailRenderIntervalMs = 200;
-  constexpr qint64 kOcrFrameStaleMs = 250;
+  constexpr qint64 kUiRenderIntervalMs = 33;        // 30fps
+  constexpr qint64 kThumbnailRenderIntervalMs = 200; 
+  constexpr qint64 kOcrFrameStaleMs = 300;
   constexpr qint64 kOcrDispatchIntervalMs = 200;
   constexpr qint64 kReidDispatchIntervalMs = 800;
+
   constexpr qint64 kZoneSyncIntervalMs = 500;
   constexpr qint64 kRoiSyncIntervalMs = 1000;
   constexpr qint64 kTrackerPruneTimeoutMs = 5000;

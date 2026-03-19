@@ -4,6 +4,7 @@
 #include "ui/windows/mainwindow.h"
 #include "ui/windows/mainwindowcontroller.h"
 #include "video/videothread.h"
+#include <opencv2/core/ocl.hpp>
 #include <vector>
 
 #include <QApplication>
@@ -55,6 +56,19 @@ int main(int argc, char *argv[]) {
       "std::vector<QSharedPointer<cv::Mat>>");
 
   QApplication a(argc, argv);
+
+  // === GPU(OpenCL) 가속 강제 활성화 ===
+  // cv::UMat 연산(resize, cvtColor 등)이 Intel GPU에서 처리되도록 설정
+  if (cv::ocl::haveOpenCL()) {
+    cv::ocl::setUseOpenCL(true);
+    cv::ocl::Device dev = cv::ocl::Device::getDefault();
+    qDebug() << "[GPU] OpenCL enabled:"
+             << QString::fromStdString(dev.name())
+             << "| Vendor:" << QString::fromStdString(dev.vendorName())
+             << "| Compute Units:" << dev.maxComputeUnits();
+  } else {
+    qWarning() << "[GPU] OpenCL NOT available. All image processing runs on CPU.";
+  }
 
   // Load Hanwha fonts
   QDir fontDir(":/resources/fonts");
