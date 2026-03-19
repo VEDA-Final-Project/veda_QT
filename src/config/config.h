@@ -62,6 +62,11 @@ public:
   int authConnectTimeoutMs() const;
   int authRequestTimeoutMs() const;
 
+  // RPi Control
+  QString rpiControlHost() const;
+  int rpiControlPort() const;
+  bool rpiControlAutoConnect() const;
+
 private:
   explicit Config(QObject *parent = nullptr);
   Config(const Config &) = delete;
@@ -76,6 +81,7 @@ private:
   QJsonObject m_reid;
   QJsonObject m_sync;
   QJsonObject m_auth;
+  QJsonObject m_rpiControl;
   QString m_loadedConfigPath;
 };
 

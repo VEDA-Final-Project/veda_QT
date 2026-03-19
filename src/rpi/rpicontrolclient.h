@@ -80,8 +80,8 @@ private:
     QTcpSocket *m_socket         = nullptr;
     QTimer     *m_reconnectTimer = nullptr;
 
-    QString    m_host = QStringLiteral("192.168.0.44");
-    quint16    m_port = 12345;
+    QString    m_host;
+    quint16    m_port = 0;
     QByteArray m_readBuffer;
 
     int  m_reconnectAttempt = 0;
