@@ -174,9 +174,11 @@ void VideoWidget::updateLiveFrame(const SharedVideoFrame &frame) {
   const bool frameChanged = (m_cachedLiveFrameIdentity != frameIdentity);
   const bool targetSizeChanged = (m_cachedLiveTargetSize != targetSize);
 
+  // QImage를 한 번만 생성하여 스케일링 캐시와 렌더링에 모두 재사용 (CPU 절감)
+  QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
+                    frame.mat->step, QImage::Format_BGR888);
+
   if (frameChanged || targetSizeChanged || m_cachedScaledLiveFrame.isNull()) {
-    QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
-                      frame.mat->step, QImage::Format_BGR888);
     const QSize scaledSize =
         sourceView.size().scaled(targetSize, Qt::KeepAspectRatio);
     m_cachedScaledLiveFrame =
@@ -188,8 +190,6 @@ void VideoWidget::updateLiveFrame(const SharedVideoFrame &frame) {
     m_cachedLiveTargetSize = targetSize;
   }
 
-  QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
-                    frame.mat->step, QImage::Format_BGR888);
   renderFrame(sourceView, m_cachedScaledLiveFrame);
 }
 
