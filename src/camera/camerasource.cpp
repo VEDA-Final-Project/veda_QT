@@ -20,6 +20,7 @@ namespace
   constexpr qint64 kReidDispatchIntervalMs = 800;
   constexpr qint64 kZoneSyncIntervalMs = 500;
   constexpr qint64 kRoiSyncIntervalMs = 1000;
+  constexpr qint64 kTrackerPruneTimeoutMs = 5000;
   constexpr int kIdleTargetFps = 5;
   constexpr qint64 kDisplayFrameTimeoutMs = 4000;
   constexpr qint64 kConnectingTimeoutMs = 5000;
@@ -404,7 +405,8 @@ void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects)
   if (m_parkingService)
   {
     m_parkingService->processMetadata(objects, 0, cfg.effectiveWidth(),
-                                      cfg.sourceHeight(), 5000);
+                                      cfg.sourceHeight(),
+                                      kTrackerPruneTimeoutMs);
   }
 
   if (!m_zoneStatusTimer.isValid() ||
@@ -415,17 +417,16 @@ void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects)
   }
 }
 
-void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
-                                   qint64 timestampMs)
+void CameraSource::onFrameCaptured(SharedVideoFrame frame)
 {
-  if (!framePtr || framePtr->empty())
+  if (!frame.isValid())
   {
     return;
   }
 
-  emit rawFrameReady(m_cardIndex, framePtr, timestampMs);
+  emit rawFrameReady(m_cardIndex, frame);
 
-  m_lastFrameTimestampMs = timestampMs;
+  m_lastFrameTimestampMs = frame.timestampMs;
   if (m_healthTimer && !m_healthTimer->isActive())
   {
     m_healthTimer->start();
@@ -436,9 +437,9 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
 
   const QList<ObjectInfo> readyMetadata =
       m_cameraSession.consumeReadyMetadata(QDateTime::currentMSecsSinceEpoch());
-  m_latestFramePtr = framePtr;
+  m_latestFramePtr = frame.mat;
   m_latestFrameObjects = readyMetadata;
-  m_latestBufferedFrameTimestampMs = timestampMs;
+  m_latestBufferedFrameTimestampMs = frame.timestampMs;
 }
 
 void CameraSource::onDisplayRenderTick()
@@ -460,7 +461,9 @@ void CameraSource::onDisplayRenderTick()
     return;
   }
 
-  const auto framePtr = m_latestFramePtr;
+  SharedVideoFrame frame;
+  frame.mat = m_latestFramePtr;
+  frame.timestampMs = timestampMs;
   QList<ObjectInfo> readyMetadata = m_latestFrameObjects;
   if (m_parkingService) {
     for (ObjectInfo &obj : readyMetadata) {
@@ -470,12 +473,9 @@ void CameraSource::onDisplayRenderTick()
       }
     }
   }
-  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
-              QImage::Format_BGR888);
-  const QImage copiedFrame = qimg.copy();
 
   m_lastDisplayRenderedTimestampMs = timestampMs;
-  emit displayFrameReady(copiedFrame, readyMetadata);
+  emit displayFrameReady(frame, readyMetadata);
   if (!m_videoReadyNotified)
   {
     m_videoReadyNotified = true;
@@ -502,12 +502,12 @@ void CameraSource::onThumbnailRenderTick()
     return;
   }
 
-  const auto framePtr = m_latestFramePtr;
-  QImage qimg(framePtr->data, framePtr->cols, framePtr->rows, framePtr->step,
-              QImage::Format_BGR888);
+  SharedVideoFrame frame;
+  frame.mat = m_latestFramePtr;
+  frame.timestampMs = timestampMs;
 
   m_lastThumbnailRenderedTimestampMs = timestampMs;
-  emit thumbnailFrameReady(m_cardIndex, qimg.copy());
+  emit thumbnailFrameReady(m_cardIndex, frame);
 }
 
 void CameraSource::onOcrDispatchTick()
@@ -863,6 +863,17 @@ void CameraSource::onHealthCheck()
   if (!m_shouldRun)
   {
     return;
+  }
+
+  if (m_parkingService)
+  {
+    const bool pruned =
+        m_parkingService->pruneStaleVehicles(kTrackerPruneTimeoutMs);
+    if (pruned)
+    {
+      syncZoneOccupancyFromActiveVehicles();
+      m_zoneStatusTimer.restart();
+    }
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();

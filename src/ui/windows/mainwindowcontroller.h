@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QJsonObject>
 #include <QObject>
+#include <QPixmap>
 #include <QPolygon>
 #include <QRect>
 #include <QSet>
@@ -20,12 +21,13 @@
 #include "logging/logdeduplicator.h"
 #include "mainwindowuirefs.h"
 #include "telegram/telegrambotapi.h"
+#include "video/sharedvideoframe.h"
 
 class CameraChannelRuntime;
 class CameraSource;
 class DbPanelController;
 class RecordPanelController;
-class RpiPanelController;
+class ControllerDialog;
 class MediaRepository;
 class VideoBufferManager;
 class MediaRecorderWorker;
@@ -34,8 +36,6 @@ class ParkingService;
 class RoiService;
 class VideoWidget;
 class QEvent;
-class ControllerDialog;
-class QTimer;
 
 class MainWindowController : public QObject {
   Q_OBJECT
@@ -78,8 +78,7 @@ public slots:
   void onContinuousSettingChanged();
   void onRefreshReidTableAllChannels();
   void onApplyContinuousSettingClicked();
-  void onRawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
-                       qint64 timestampMs);
+  void onRawFrameReady(int cardIndex, SharedVideoFrame frame);
 
 
   void onSendEntry();
@@ -106,7 +105,12 @@ private:
   void startCameraSources();
   void bindRecordPreviewSource(int index);
   void updateRecordPreviewSourceSize();
-  void updateThumbnailForCard(int cardIndex, const QImage &image);
+  void updateThumbnailForCard(int cardIndex, SharedVideoFrame frame);
+  void processJoystickMovement();
+  void onHardwareButtonPressed(int btnCode);
+  void onHardwareJoystickMoved(const QString &dir, int state);
+  void onHardwareEncoderRotated(int delta);
+  void onHardwareEncoderClicked();
   bool isChannelSelected(int index) const;
   bool isCameraSourceRunning(int cardIndex) const;
   int primarySelectedChannelIndex() const;
@@ -141,19 +145,9 @@ private:
   int m_manualRecordChannelIdx = -1;
   uint64_t m_manualRecordStartIdx = 0;
   QString m_currentManualRecordPath;
-
-  // Joystick smooth movement state
   QTimer *m_joystickTimer = nullptr;
   double m_joystickTargetX = 0.0;
   double m_joystickTargetY = 0.0;
-  double m_joystickSpeedX = 0.0;
-  double m_joystickSpeedY = 0.0;
-  void processJoystickMovement();
-
-  // Unified Hardware/GUI Controller Handlers
-  void onHardwareButtonPressed(int btnCode);
-  void onHardwareJoystickMoved(const QString &dir, int state);
-  void onHardwareEncoderRotated(int delta);
 
   std::array<CameraChannelRuntime *, 4> m_channels{
       {nullptr, nullptr, nullptr, nullptr}};
@@ -165,6 +159,12 @@ private:
   QVector<int> m_selectedChannelIndices;
   LogDeduplicator m_logDeduplicator;
   QElapsedTimer m_renderTimerThumbs[4];
+  struct ThumbnailCache {
+    const cv::Mat *frameIdentity = nullptr;
+    QSize labelSize;
+    QPixmap pixmap;
+  };
+  ThumbnailCache m_thumbnailCaches[4];
   QElapsedTimer m_reidRefreshTimer;
   QTimer *m_resizeDebounceTimer = nullptr;
 
@@ -176,9 +176,6 @@ private:
   QTimer *m_cleanupTimer = nullptr;
   QTimer *m_reidTimer = nullptr;
   static constexpr int kRecordPreviewConsumerId = 100;
-
-  // RPi 제어신호 수신 클라이언트
-  RpiPanelController *m_rpiPanelController = nullptr;
 
 };
 

@@ -92,6 +92,11 @@ public:
                                    const QString &plate,
                                    QString *errorMessage = nullptr) const;
 
+  QList<QJsonObject> recentLogsByPlate(const QString &cameraKey,
+                                       const QString &plateNumber,
+                                       int limit = 3,
+                                       QString *errorMessage = nullptr) const;
+
   /**
    * @brief 특정 레코드의 번호판 수정
    */

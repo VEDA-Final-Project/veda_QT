@@ -48,7 +48,7 @@ public:
   void setDisabledObjectTypes(const QSet<QString> &types);
 
 signals:
-  void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
+  void frameCaptured(SharedVideoFrame frame);
   void metadataReceived(const QList<ObjectInfo> &objects);
   void logMessage(const QString &msg);
 

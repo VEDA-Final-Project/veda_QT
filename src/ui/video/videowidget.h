@@ -4,6 +4,7 @@
 #include "metadata/metadatathread.h"
 #include "ui/roi/roiinteractionstate.h"
 #include "ui/video/videoframerenderer.h"
+#include "video/sharedvideoframe.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -40,19 +41,17 @@ public:
   const QList<QPolygon> &roiPolygons() const;
   void startRoiDrawing();
   bool completeRoiDrawing();
-
   void setZoom(double zoom);
   double zoom() const;
   void panZoom(double dx, double dy);
 
 public slots:
   void updateFrame(const QImage &frame);
+  void updateLiveFrame(const SharedVideoFrame &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
   void setOccupiedRoiIndices(const QSet<int> &occupiedRoiIndices);
   void dispatchOcrRequests(const QImage &frame);
   void setShowFps(bool show);
-  void setRecording(bool recording);
-  void triggerCaptureFeedback();
   void setProfileName(const QString &name) { m_profileName = name; }
 
 signals:
@@ -70,7 +69,10 @@ private:
   void mouseMoveEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
   void mouseDoubleClickEvent(QMouseEvent *event) override;
-  void renderFrame(const QImage &frame);
+  void renderFrame(const QImage &sourceFrame, const QImage &scaledBaseFrame);
+  void syncRoiStateToFrameSize(const QSize &frameSize);
+  void updateFrameRateStats();
+  void invalidateLiveFrameCache();
 
   QList<ObjectInfo> m_currentObjects;
   QSize m_lastFrameSize;
@@ -81,6 +83,10 @@ private:
   QStringList m_roiLabels;
   QSet<int> m_occupiedRoiIndices;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
+  SharedVideoFrame m_liveFrame;
+  const cv::Mat *m_cachedLiveFrameIdentity = nullptr;
+  QSize m_cachedLiveTargetSize;
+  QImage m_cachedScaledLiveFrame;
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
@@ -88,12 +94,8 @@ private:
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;
   double m_zoomFactor = 1.0;
-  double m_zoomCenterX = 0.5; // Normalized 0.0 ~ 1.0 (Center)
+  double m_zoomCenterX = 0.5;
   double m_zoomCenterY = 0.5;
-  bool m_isRecording = false;
-  bool m_isCapturing = false;
-  qint64 m_captureStartTime = 0;
-  QTimer *m_animTimer = nullptr;
 };
 
 #endif // VIDEOWIDGET_H

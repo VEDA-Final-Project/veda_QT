@@ -1,6 +1,5 @@
 #include "videoframerenderer.h"
 #include "config/config.h"
-#include <QDateTime>
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
@@ -162,46 +161,54 @@ void VideoFrameRenderer::collectOcrRequests(
   }
 }
 
-QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
+QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
+                                   const QImage &scaledBaseFrame,
                                    const QList<ObjectInfo> &objects,
                                    const QList<QPolygon> &roiPolygons,
                                    const QStringList &roiLabels,
                                    const QSet<int> &occupiedRoiIndices,
                                    bool roiEnabled, bool showFps,
-                                   int currentFps, const QString &profileName,
-                                   double zoomFactor,
-                                   double centerX, double centerY,
-                                   QList<OcrRequest> *ocrRequests) const {
-  (void)ocrRequests;
-  if (targetSize.isEmpty()) {
-    return frame;
+                                   int currentFps,
+                                   const QString &profileName,
+                                   double zoomFactor, double centerX,
+                                   double centerY) const {
+  if (sourceFrame.isNull()) {
+    return sourceFrame;
   }
 
-  // 0. 가용 줌 배율 (1.0x ~ 5.0x)에 따른 크롭 영역 계산 (Digital Zoom with Panning)
-  QImage croppedFrame;
+  QImage sourceView = sourceFrame;
   if (zoomFactor > 1.001) {
-    int cw = static_cast<int>(frame.width() / zoomFactor);
-    int ch = static_cast<int>(frame.height() / zoomFactor);
-    
-    // centerX, centerY (0.0~1.0) 기준 실제 픽셀 좌표 계산
-    int px = static_cast<int>(frame.width() * centerX);
-    int py = static_cast<int>(frame.height() * centerY);
-    
-    // 크롭 영역이 이미지 경계를 넘지 않도록 조정
-    int cx = qBound(0, px - cw / 2, frame.width() - cw);
-    int cy = qBound(0, py - ch / 2, frame.height() - ch);
-    
-    croppedFrame = frame.copy(cx, cy, cw, ch);
-  } else {
-    croppedFrame = frame;
+    const int cropW = static_cast<int>(sourceFrame.width() / zoomFactor);
+    const int cropH = static_cast<int>(sourceFrame.height() / zoomFactor);
+    const int pivotX = static_cast<int>(sourceFrame.width() * centerX);
+    const int pivotY = static_cast<int>(sourceFrame.height() * centerY);
+    const int cropX =
+        qBound(0, pivotX - (cropW / 2), sourceFrame.width() - cropW);
+    const int cropY =
+        qBound(0, pivotY - (cropH / 2), sourceFrame.height() - cropH);
+    sourceView = sourceFrame.copy(cropX, cropY, cropW, cropH);
   }
 
-  // 1. Qt 네이티브 기반 고속 축소 (UI 스레드 병목 및 메모리 복사 제거)
-  const QSize scaledSize = croppedFrame.size().scaled(targetSize, Qt::KeepAspectRatio);
-  QImage scaledFrame =
-      croppedFrame.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  QImage scaledFrame;
+  if (zoomFactor <= 1.001 && !scaledBaseFrame.isNull()) {
+    scaledFrame = scaledBaseFrame.copy();
+  } else {
+    const QSize baseSize =
+        scaledBaseFrame.isNull() ? sourceView.size() : scaledBaseFrame.size();
+    const QSize scaledSize =
+        sourceView.size().scaled(baseSize, Qt::KeepAspectRatio);
+    scaledFrame = scaledSize.isEmpty()
+                      ? sourceView
+                      : sourceView.scaled(scaledSize, Qt::IgnoreAspectRatio,
+                                          Qt::FastTransformation);
+  }
 
-  // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장
+  if (scaledFrame.isNull()) {
+    return sourceView;
+  }
+
+  // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장 (대부분
+  // BGR888/RGB888이므로 변환 패스됨)
   if (scaledFrame.format() != QImage::Format_RGB888 &&
       scaledFrame.format() != QImage::Format_BGR888 &&
       scaledFrame.format() != QImage::Format_RGB32 &&
@@ -219,7 +226,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   painter.setFont(font);
 
   const QList<QPolygon> scaledRoiPolygons =
-      scaleRoiPolygons(roiPolygons, frame.size(), scaledFrame.size());
+      scaleRoiPolygons(roiPolygons, sourceView.size(), scaledFrame.size());
 
   const auto &cfg = Config::instance();
   const double sourceHeight = static_cast<double>(cfg.sourceHeight());
@@ -253,10 +260,12 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                       static_cast<int>(scaledW), static_cast<int>(scaledH));
 
     const double srcX =
-        ((nsRect.x() - cropOffsetX) / effectiveWidth) * frame.width();
-    const double srcY = (nsRect.y() / sourceHeight) * frame.height();
-    const double srcW = (nsRect.width() / effectiveWidth) * frame.width();
-    const double srcH = (nsRect.height() / sourceHeight) * frame.height();
+        ((nsRect.x() - cropOffsetX) / effectiveWidth) * sourceView.width();
+    const double srcY = (nsRect.y() / sourceHeight) * sourceView.height();
+    const double srcW =
+        (nsRect.width() / effectiveWidth) * sourceView.width();
+    const double srcH =
+        (nsRect.height() / sourceHeight) * sourceView.height();
 
     const QRect fullSrcRect(static_cast<int>(srcX), static_cast<int>(srcY),
                             static_cast<int>(srcW), static_cast<int>(srcH));
@@ -306,7 +315,6 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     painter.setPen(pen);
   }
 
-  // 줌이 1.0일 때만 메타데이터 상자 표시 (사용자 요청)
   if (zoomFactor <= 1.001) {
     for (const RenderCandidate &candidate : candidates) {
       const ObjectInfo &obj = candidate.obj;
@@ -319,7 +327,7 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
                            lowerType == QStringLiteral("car") ||
                            lowerType == QStringLiteral("truck") ||
                            lowerType == QStringLiteral("bus");
-  
+
       QString text;
       if (vehicle) {
         const QString displayId =
@@ -348,21 +356,22 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   if (showFps || zoomFactor > 1.001) {
     QString overlayText;
     if (zoomFactor > 1.001) {
-        // 줌 상태에서는 줌 배율만 깔끔하게 표시 (사용자 요청)
-        overlayText = QString("ZOOM: %1x").arg(zoomFactor, 0, 'f', 1);
-        if (showFps) {
-            overlayText += QString(" , FPS: %1").arg(currentFps);
-        }
+      overlayText = QString("ZOOM: %1x").arg(zoomFactor, 0, 'f', 1);
+      if (showFps) {
+        overlayText += QString(" , FPS: %1").arg(currentFps);
+      }
     } else {
-        // 줌이 아닐 때는 기존 정보(프로파일, 해상도, FPS) 표시
-        QString shortProfileName = profileName;
-        if (shortProfileName.contains('/')) {
-            shortProfileName = shortProfileName.split('/').first();
-        }
-        overlayText = QString("%1(%2x%3)").arg(shortProfileName).arg(frame.width()).arg(frame.height());
-        if (showFps) {
-            overlayText += QString(" , FPS: %1").arg(currentFps);
-        }
+      QString shortProfileName = profileName;
+      if (shortProfileName.contains('/')) {
+        shortProfileName = shortProfileName.split('/').first();
+      }
+      overlayText = QString("%1(%2x%3)")
+                        .arg(shortProfileName)
+                        .arg(sourceView.width())
+                        .arg(sourceView.height());
+      if (showFps) {
+        overlayText += QString(" , FPS: %1").arg(currentFps);
+      }
     }
 
     QFont fpsFont = painter.font();

@@ -310,8 +310,8 @@ void RecordPanelController::onRowSelectionChanged() {
   }
 }
 
-void RecordPanelController::updateLiveFrame(const QImage &frame) {
-  if (frame.isNull() || !m_ui.recordVideoWidget) {
+void RecordPanelController::updateLiveFrame(const SharedVideoFrame &frame) {
+  if (!frame.isValid() || !m_ui.recordVideoWidget) {
     return;
   }
 
@@ -329,7 +329,7 @@ void RecordPanelController::updateLiveFrame(const QImage &frame) {
   }
 
   if (!m_hasMediaLoaded && !m_playCap.isOpened()) {
-    m_ui.recordVideoWidget->updateFrame(frame);
+    m_ui.recordVideoWidget->updateLiveFrame(frame);
   }
 }
 

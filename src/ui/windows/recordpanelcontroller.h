@@ -3,6 +3,7 @@
 
 #include "database/mediarepository.h"
 #include "ui/video/videowidget.h"
+#include "video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QCheckBox>
 #include <QComboBox>
@@ -70,7 +71,7 @@ public slots:
   void onDeleteClicked();
   void onRowSelectionChanged();
   void onTriggerEventRecord();
-  void updateLiveFrame(const QImage &frame);
+  void updateLiveFrame(const SharedVideoFrame &frame);
   void onViewContinuousClicked();
   void onApplyEventSettingClicked();
 

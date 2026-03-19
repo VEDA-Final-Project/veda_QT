@@ -21,8 +21,7 @@ std::vector<QSharedPointer<cv::Mat>> VideoBufferManager::getFrames() const {
   return std::vector<QSharedPointer<cv::Mat>>(m_buffer.begin(), m_buffer.end());
 }
 
-std::vector<QSharedPointer<cv::Mat>>
-VideoBufferManager::getFrames(int preSec, int postSec, int fps) const {
+std::vector<QSharedPointer<cv::Mat>>VideoBufferManager::getFrames(int preSec, int postSec, int fps) const {
   QMutexLocker locker(&m_mutex);
   int maxFrames = (preSec + postSec) * fps;
   if (maxFrames <= 0 || m_buffer.empty()) {
@@ -34,8 +33,7 @@ VideoBufferManager::getFrames(int preSec, int postSec, int fps) const {
   return std::vector<QSharedPointer<cv::Mat>>(it, m_buffer.end());
 }
 
-std::vector<QSharedPointer<cv::Mat>>
-VideoBufferManager::getFramesSince(uint64_t startIdx) const {
+std::vector<QSharedPointer<cv::Mat>>VideoBufferManager::getFramesSince(uint64_t startIdx) const {
   QMutexLocker locker(&m_mutex);
   if (startIdx >= m_totalFramesAdded || m_buffer.empty()) {
     return {};

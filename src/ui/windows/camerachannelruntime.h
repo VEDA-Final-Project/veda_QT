@@ -3,6 +3,7 @@
 
 #include "metadata/metadatathread.h"
 #include "parking/vehicletracker.h"
+#include "video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QImage>
 #include <QList>
@@ -61,7 +62,7 @@ signals:
   void zoneStateChanged();
 
 private slots:
-  void onSourceDisplayFrameReady(const QImage &image,
+  void onSourceDisplayFrameReady(SharedVideoFrame frame,
                                  const QList<ObjectInfo> &objects);
   void onSourceRoiDataChanged();
   void onSourceVideoReady();

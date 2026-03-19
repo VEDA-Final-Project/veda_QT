@@ -70,9 +70,6 @@ struct MainWindowUiRefs {
   QPushButton *btnAddUser = nullptr;
   QPushButton *btnEditUser = nullptr;
   QPushButton *btnDeleteUser = nullptr;
-  QTableWidget *vehicleTable = nullptr;
-  QPushButton *btnRefreshVehicles = nullptr;
-  QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
 
@@ -108,15 +105,6 @@ struct MainWindowUiRefs {
   QLabel *lblContinuousStatus = nullptr;
   QPushButton *btnApplyContinuousSetting = nullptr;
   QPushButton *btnViewContinuous = nullptr;
-
-  // RPi 제어신호 수신 클라이언트 UI
-  QLineEdit   *rpiHostEdit              = nullptr;
-  QSpinBox    *rpiPortSpin              = nullptr;
-  QPushButton *btnRpiConnect            = nullptr;
-  QPushButton *btnRpiDisconnect         = nullptr;
-  QLabel      *rpiConnectionStatusLabel = nullptr;
-  QLabel      *rpiLastCmdLabel          = nullptr;
-  QTextEdit   *rpiCtrlLogView           = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H
