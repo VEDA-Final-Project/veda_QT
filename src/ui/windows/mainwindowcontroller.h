@@ -110,6 +110,7 @@ private:
   void onHardwareButtonPressed(int btnCode);
   void onHardwareJoystickMoved(const QString &dir, int state);
   void onHardwareEncoderRotated(int delta);
+  void onHardwareEncoderClicked();
   bool isChannelSelected(int index) const;
   bool isCameraSourceRunning(int cardIndex) const;
   int primarySelectedChannelIndex() const;

@@ -689,6 +689,10 @@ void MainWindowController::onHardwareEncoderRotated(int delta) {
   }
 }
 
+void MainWindowController::onHardwareEncoderClicked() {
+  onHardwareButtonPressed(999);
+}
+
 void MainWindowController::onHardwareButtonPressed(int btnCode) {
   if (btnCode >= 288 && btnCode <= 291) {
     for (int i = 0; i < 4; ++i) {
@@ -764,9 +768,9 @@ void MainWindowController::connectControllerDialog(ControllerDialog *dialog) {
   connect(dialog, &ControllerDialog::simulatedEncoderRotated, this,
           &MainWindowController::onHardwareEncoderRotated,
           Qt::UniqueConnection);
-  connect(dialog, &ControllerDialog::simulatedEncoderClicked, this, [this]() {
-    onHardwareButtonPressed(999);
-  }, Qt::UniqueConnection);
+  connect(dialog, &ControllerDialog::simulatedEncoderClicked, this,
+          &MainWindowController::onHardwareEncoderClicked,
+          Qt::UniqueConnection);
   connect(dialog, &ControllerDialog::simulatedButtonClicked, this,
           &MainWindowController::onHardwareButtonPressed,
           Qt::UniqueConnection);
