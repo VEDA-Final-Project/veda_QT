@@ -12,6 +12,8 @@
 #include "recordpanelcontroller.h"
 #include "rpi/rpicontrolclient.h"
 #include "roi/roiservice.h"
+#include "parking/parkingrepository.h"
+#include <QJsonArray>
 #include "ui/video/videowidget.h"
 #include "video/mediarecorderworker.h"
 #include "video/videobuffermanager.h"
@@ -370,6 +372,11 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
           &MainWindowController::onRefreshReidTableAllChannels);
   m_reidTimer->start();
 
+  m_rpiDbExportTimer = new QTimer(this);
+  m_rpiDbExportTimer->setInterval(1000);
+  connect(m_rpiDbExportTimer, &QTimer::timeout, this, &MainWindowController::onRpiDbExportTimeout);
+  m_rpiDbExportTimer->start();
+
   initRoiDbForChannels();
   refreshRoiSelectorForTarget();
   updateChannelCardSelection();
@@ -513,6 +520,9 @@ void MainWindowController::shutdown() {
   }
   if (m_reidTimer) {
     m_reidTimer->stop();
+  }
+  if (m_rpiDbExportTimer) {
+    m_rpiDbExportTimer->stop();
   }
   for (int i = 0; i < 4; ++i) {
     if (m_continuousBuffers[i]) {
@@ -2209,4 +2219,58 @@ bool MainWindowController::isCameraSourceRunning(int cardIndex) const {
 
 void MainWindowController::onRefreshReidTableAllChannels() {
   refreshReidTableAllChannels();
+}
+
+void MainWindowController::onRpiDbExportTimeout() {
+  if (!m_rpiControlClient) return;
+
+  if (!m_rpiControlClient->isConnected()) {
+    // 연결 안됨 로그 (너무 자주 찍히지 않게 1초 간격은 괜찮을듯)
+    // onLogMessage("[RPi Sync] Client not connected, skipping...");
+    return;
+  }
+
+  qDebug() << "[RPi Sync] Pulse - Fetching data from Repository";
+
+  ParkingRepository repo;
+  repo.init();
+  
+  QList<QJsonObject> recent = repo.recentLogs("__all__", 5);
+  qDebug() << "[RPi Sync] Fetched" << recent.size() << "recent logs from DB.";
+  
+  QJsonArray arr;
+  for (const auto& obj : recent) {
+    QJsonObject row;
+    QString entryStr = obj["entry_time"].toString();
+    QString exitStr = obj["exit_time"].toString();
+    
+    row["col1"] = obj["plate_number"].toString();
+    row["col2"] = obj["zone_name"].toString();
+
+    QDateTime inDt = QDateTime::fromString(entryStr, Qt::ISODate);
+    row["col3"] = inDt.isValid() ? inDt.toString("MM-dd HH:mm:ss") : entryStr;
+
+    if (exitStr.isEmpty()) {
+        row["col4"] = "";
+    } else {
+        QDateTime outDt = QDateTime::fromString(exitStr, Qt::ISODate);
+        row["col4"] = outDt.isValid() ? outDt.toString("MM-dd HH:mm:ss") : exitStr;
+    }
+
+    row["col5"] = obj["pay_status"].toString();
+    row["col6"] = QString::number(obj["total_amount"].toInt()) + QString::fromUtf8("원");
+    arr.append(row);
+  }
+
+  QJsonObject wrapper;
+  wrapper["table_idx"] = 0;
+  wrapper["data"] = arr;
+
+  QJsonDocument doc(wrapper);
+  QByteArray jsonBytes = doc.toJson(QJsonDocument::Compact);
+  
+  // 전송 시도 로그
+  // onLogMessage(QString("[RPi Sync] Exporting %1 logs...").arg(arr.size()));
+  
+  m_rpiControlClient->sendDbData(QString::fromUtf8(jsonBytes));
 }

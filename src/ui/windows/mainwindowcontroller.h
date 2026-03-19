@@ -81,6 +81,7 @@ public slots:
   void onApplyContinuousSettingClicked();
   void onRawFrameReady(int cardIndex, SharedVideoFrame frame);
 
+  void onRpiDbExportTimeout();
 
   void onSendEntry();
   void onSendExit();
@@ -180,6 +181,7 @@ private:
   QTimer *m_continuousRecordTimer = nullptr;
   QTimer *m_cleanupTimer = nullptr;
   QTimer *m_reidTimer = nullptr;
+  QTimer *m_rpiDbExportTimer = nullptr;
   static constexpr int kRecordPreviewConsumerId = 100;
 
 };

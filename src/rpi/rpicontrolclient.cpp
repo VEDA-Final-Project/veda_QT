@@ -54,6 +54,19 @@ bool RpiControlClient::isConnected() const {
 QString RpiControlClient::host() const { return m_host; }
 quint16 RpiControlClient::port() const { return m_port; }
 
+void RpiControlClient::sendDbData(const QString &jsonData) {
+    if (!isConnected()) return;
+    
+    // arg() 대신 데이터 결합(concatenation)을 사용하여 특수 문자(%1 등) 처리 안전성 확보
+    QByteArray payload = QByteArray("$DB_SYNC,") + jsonData.toUtf8() + QByteArray("\n");
+    
+    m_socket->write(payload);
+    m_socket->flush();
+    
+    // 로컬 로그에 전송 텍스트 표시
+    emit logMessage(QString("[RPi] TX DB: %1").arg(QString::fromUtf8(payload).trimmed()));
+}
+
 void RpiControlClient::onConnected() {
     resetReconnect();
     emit connectedChanged(true);
