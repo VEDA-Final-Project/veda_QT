@@ -20,6 +20,7 @@ namespace
   constexpr qint64 kReidDispatchIntervalMs = 800;
   constexpr qint64 kZoneSyncIntervalMs = 500;
   constexpr qint64 kRoiSyncIntervalMs = 1000;
+  constexpr qint64 kTrackerPruneTimeoutMs = 5000;
   constexpr int kIdleTargetFps = 5;
   constexpr qint64 kDisplayFrameTimeoutMs = 4000;
   constexpr qint64 kConnectingTimeoutMs = 5000;
@@ -404,7 +405,8 @@ void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects)
   if (m_parkingService)
   {
     m_parkingService->processMetadata(objects, 0, cfg.effectiveWidth(),
-                                      cfg.sourceHeight(), 5000);
+                                      cfg.sourceHeight(),
+                                      kTrackerPruneTimeoutMs);
   }
 
   if (!m_zoneStatusTimer.isValid() ||
@@ -861,6 +863,17 @@ void CameraSource::onHealthCheck()
   if (!m_shouldRun)
   {
     return;
+  }
+
+  if (m_parkingService)
+  {
+    const bool pruned =
+        m_parkingService->pruneStaleVehicles(kTrackerPruneTimeoutMs);
+    if (pruned)
+    {
+      syncZoneOccupancyFromActiveVehicles();
+      m_zoneStatusTimer.restart();
+    }
   }
 
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();

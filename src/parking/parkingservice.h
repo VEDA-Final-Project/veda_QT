@@ -40,6 +40,7 @@ public:
   void processMetadata(const QList<ObjectInfo> &objects, int cropOffsetX,
                        int effectiveWidth, int sourceHeight,
                        qint64 pruneTimeoutMs = 5000);
+  bool pruneStaleVehicles(qint64 timeoutMs = 5000);
   void updateReidFeatures(const QList<ObjectInfo> &objects);
 
   /**

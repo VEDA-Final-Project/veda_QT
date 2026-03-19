@@ -120,13 +120,17 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
     }
   }
 
+  pruneStaleVehicles(pruneTimeoutMs);
+}
 
-  //타임아웃된 차량 정리 (출차 처리)
-  const QList<VehicleState> departed =
-      m_tracker.pruneStale(nowMs, pruneTimeoutMs);
+bool ParkingService::pruneStaleVehicles(qint64 timeoutMs)
+{
+  const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+  const QList<VehicleState> departed = m_tracker.pruneStale(nowMs, timeoutMs);
   for (const VehicleState &vs : departed) {
     handleDeparture(vs);
   }
+  return !departed.isEmpty();
 }
 
 void ParkingService::updateReidFeatures(const QList<ObjectInfo> &objects)
