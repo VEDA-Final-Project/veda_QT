@@ -207,7 +207,8 @@ void VideoWidget::renderFrame(const QImage &sourceFrame,
   const QImage composed = m_frameRenderer.compose(
       sourceFrame, scaledBaseFrame, m_currentObjects, m_roiState.roiPolygons(),
       m_roiLabels, m_occupiedRoiIndices, m_roiState.roiEnabled(), m_showFps,
-      static_cast<int>(m_currentFps), m_profileName);
+      static_cast<int>(m_currentFps), m_profileName, m_zoomFactor,
+      m_zoomCenterX, m_zoomCenterY);
 
   // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
   m_currentFrame = composed;
@@ -314,6 +315,25 @@ void VideoWidget::mouseReleaseEvent(QMouseEvent *event) {
 
 void VideoWidget::mouseDoubleClickEvent(QMouseEvent *event) {
   QWidget::mouseDoubleClickEvent(event);
+}
+
+void VideoWidget::setZoom(double zoom) {
+  m_zoomFactor = qBound(1.0, zoom, 5.0);
+  if (m_zoomFactor <= 1.001) {
+    m_zoomCenterX = 0.5;
+    m_zoomCenterY = 0.5;
+  }
+}
+
+double VideoWidget::zoom() const { return m_zoomFactor; }
+
+void VideoWidget::panZoom(double dx, double dy) {
+  if (m_zoomFactor <= 1.001) {
+    return;
+  }
+  const double sensitivity = 0.05 / m_zoomFactor;
+  m_zoomCenterX = qBound(0.0, m_zoomCenterX + dx * sensitivity, 1.0);
+  m_zoomCenterY = qBound(0.0, m_zoomCenterY + dy * sensitivity, 1.0);
 }
 
 void VideoWidget::leaveEvent(QEvent *event) {

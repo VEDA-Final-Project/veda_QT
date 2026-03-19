@@ -23,7 +23,8 @@ public:
                  const QStringList &roiLabels,
                  const QSet<int> &occupiedRoiIndices, bool roiEnabled,
                  bool showFps, int currentFps,
-                 const QString &profileName) const;
+                 const QString &profileName, double zoomFactor,
+                 double centerX, double centerY) const;
 };
 
 #endif // VIDEOFRAMERENDERER_H

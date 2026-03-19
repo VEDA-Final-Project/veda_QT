@@ -1,11 +1,13 @@
-    #include "mainwindowcontroller.h"
+#include "mainwindowcontroller.h"
 
 #include "camera/camerasource.h"
 #include "camerachannelruntime.h"
 #include "config/config.h"
+#include "controllerdialog.h"
 #include "database/databasecontext.h"
 #include "database/mediarepository.h"
 #include "dbpanelcontroller.h"
+#include "mainwindow.h"
 #include "parking/parkingservice.h"
 #include "recordpanelcontroller.h"
 #include "roi/roiservice.h"
@@ -34,9 +36,11 @@
 #include <QStyle>
 #include <QTableWidget> // User Table
 #include <QTableWidgetItem>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
+#include <QtGlobal>
 #include <algorithm>
 
 namespace {
@@ -597,6 +601,175 @@ void MainWindowController::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MainWindowController::bindRecordPreviewSource);
   }
+}
+
+void MainWindowController::processJoystickMovement() {
+  if (m_selectedChannelIndices.size() > 1) {
+    if (m_joystickTimer) {
+      m_joystickTimer->stop();
+    }
+    return;
+  }
+
+  CameraChannelRuntime *channel =
+      channelForCardIndex(primarySelectedChannelIndex());
+  if (!channel) {
+    channel = channelAt(0);
+  }
+  if (!channel || !channel->videoWidget()) {
+    if (m_joystickTimer) {
+      m_joystickTimer->stop();
+    }
+    return;
+  }
+
+  if (qFuzzyIsNull(m_joystickTargetX) && qFuzzyIsNull(m_joystickTargetY)) {
+    if (m_joystickTimer) {
+      m_joystickTimer->stop();
+    }
+    return;
+  }
+
+  channel->videoWidget()->panZoom(m_joystickTargetX, m_joystickTargetY);
+}
+
+void MainWindowController::onHardwareJoystickMoved(const QString &dir,
+                                                   int state) {
+  if (m_selectedChannelIndices.size() > 1) {
+    onLogMessage("[Controller] JOY Ignored (Multiple channels visible)");
+    return;
+  }
+  if (!m_joystickTimer) {
+    m_joystickTimer = new QTimer(this);
+    connect(m_joystickTimer, &QTimer::timeout, this,
+            &MainWindowController::processJoystickMovement);
+  }
+
+  if (state == 1) {
+    if (dir == "U") {
+      m_joystickTargetY = -1.0;
+    } else if (dir == "D") {
+      m_joystickTargetY = 1.0;
+    } else if (dir == "L") {
+      m_joystickTargetX = -1.0;
+    } else if (dir == "R") {
+      m_joystickTargetX = 1.0;
+    }
+    if (!m_joystickTimer->isActive()) {
+      m_joystickTimer->start(16);
+    }
+    return;
+  }
+
+  if (dir == "U" && m_joystickTargetY < 0) {
+    m_joystickTargetY = 0.0;
+  } else if (dir == "D" && m_joystickTargetY > 0) {
+    m_joystickTargetY = 0.0;
+  } else if (dir == "L" && m_joystickTargetX < 0) {
+    m_joystickTargetX = 0.0;
+  } else if (dir == "R" && m_joystickTargetX > 0) {
+    m_joystickTargetX = 0.0;
+  }
+}
+
+void MainWindowController::onHardwareEncoderRotated(int delta) {
+  if (m_selectedChannelIndices.size() > 1) {
+    return;
+  }
+
+  CameraChannelRuntime *channel =
+      channelForCardIndex(primarySelectedChannelIndex());
+  if (!channel) {
+    channel = channelAt(0);
+  }
+  if (channel && channel->videoWidget()) {
+    const double nextZoom =
+        channel->videoWidget()->zoom() + ((delta > 0) ? 0.1 : -0.1);
+    channel->videoWidget()->setZoom(nextZoom);
+  }
+}
+
+void MainWindowController::onHardwareButtonPressed(int btnCode) {
+  if (btnCode >= 288 && btnCode <= 291) {
+    for (int i = 0; i < 4; ++i) {
+      CameraChannelRuntime *ch = channelAt(i);
+      if (ch && ch->videoWidget()) {
+        ch->videoWidget()->setZoom(1.0);
+      }
+    }
+    const int ch = btnCode - 288;
+    m_selectedChannelIndices.clear();
+    m_selectedChannelIndices.append(ch);
+    m_selectedChannelIndex = ch;
+    rebuildLiveLayout();
+    onRoiTargetChanged(ch);
+    return;
+  }
+
+  if (btnCode == 292) {
+    if (m_ui.stackedWidget) {
+      m_ui.stackedWidget->setCurrentIndex(MainWindow::kDbPageIndex);
+    }
+    return;
+  }
+
+  if (btnCode == 293) {
+    if (m_ui.stackedWidget &&
+        m_ui.stackedWidget->currentIndex() == MainWindow::kDbPageIndex &&
+        m_ui.dbSubTabs && m_ui.dbSubTabs->count() > 0) {
+      const int nextIndex =
+          (m_ui.dbSubTabs->currentIndex() + 1) % m_ui.dbSubTabs->count();
+      m_ui.dbSubTabs->setCurrentIndex(nextIndex);
+    }
+    return;
+  }
+
+  if (btnCode == 294) {
+    onCaptureManual();
+    return;
+  }
+
+  if (btnCode == 295) {
+    if (m_ui.btnRecordManual) {
+      m_ui.btnRecordManual->toggle();
+    } else {
+      onRecordManualToggled(!m_isManualRecording);
+    }
+    return;
+  }
+
+  if (btnCode == 999) {
+    if (m_selectedChannelIndices.size() > 1) {
+      return;
+    }
+    CameraChannelRuntime *channel =
+        channelForCardIndex(primarySelectedChannelIndex());
+    if (!channel) {
+      channel = channelAt(0);
+    }
+    if (channel && channel->videoWidget()) {
+      channel->videoWidget()->setZoom(1.0);
+    }
+  }
+}
+
+void MainWindowController::connectControllerDialog(ControllerDialog *dialog) {
+  if (!dialog) {
+    return;
+  }
+
+  connect(dialog, &ControllerDialog::simulatedJoystickMoved, this,
+          &MainWindowController::onHardwareJoystickMoved,
+          Qt::UniqueConnection);
+  connect(dialog, &ControllerDialog::simulatedEncoderRotated, this,
+          &MainWindowController::onHardwareEncoderRotated,
+          Qt::UniqueConnection);
+  connect(dialog, &ControllerDialog::simulatedEncoderClicked, this, [this]() {
+    onHardwareButtonPressed(999);
+  }, Qt::UniqueConnection);
+  connect(dialog, &ControllerDialog::simulatedButtonClicked, this,
+          &MainWindowController::onHardwareButtonPressed,
+          Qt::UniqueConnection);
 }
 
 bool MainWindowController::isChannelSelected(int index) const {

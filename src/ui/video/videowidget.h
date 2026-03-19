@@ -41,6 +41,9 @@ public:
   const QList<QPolygon> &roiPolygons() const;
   void startRoiDrawing();
   bool completeRoiDrawing();
+  void setZoom(double zoom);
+  double zoom() const;
+  void panZoom(double dx, double dy);
 
 public slots:
   void updateFrame(const QImage &frame);
@@ -90,6 +93,9 @@ private:
   QString m_profileName;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;
+  double m_zoomFactor = 1.0;
+  double m_zoomCenterX = 0.5;
+  double m_zoomCenterY = 0.5;
 };
 
 #endif // VIDEOWIDGET_H

@@ -27,6 +27,7 @@ class CameraChannelRuntime;
 class CameraSource;
 class DbPanelController;
 class RecordPanelController;
+class ControllerDialog;
 class MediaRepository;
 class VideoBufferManager;
 class MediaRecorderWorker;
@@ -44,6 +45,7 @@ public:
                                 QObject *parent = nullptr);
   void shutdown();
   void startInitialCctv();
+  void connectControllerDialog(ControllerDialog *dialog);
 
 signals:
   void primaryVideoReady();
@@ -104,6 +106,10 @@ private:
   void bindRecordPreviewSource(int index);
   void updateRecordPreviewSourceSize();
   void updateThumbnailForCard(int cardIndex, SharedVideoFrame frame);
+  void processJoystickMovement();
+  void onHardwareButtonPressed(int btnCode);
+  void onHardwareJoystickMoved(const QString &dir, int state);
+  void onHardwareEncoderRotated(int delta);
   bool isChannelSelected(int index) const;
   bool isCameraSourceRunning(int cardIndex) const;
   int primarySelectedChannelIndex() const;
@@ -138,6 +144,9 @@ private:
   int m_manualRecordChannelIdx = -1;
   uint64_t m_manualRecordStartIdx = 0;
   QString m_currentManualRecordPath;
+  QTimer *m_joystickTimer = nullptr;
+  double m_joystickTargetX = 0.0;
+  double m_joystickTargetY = 0.0;
 
   std::array<CameraChannelRuntime *, 4> m_channels{
       {nullptr, nullptr, nullptr, nullptr}};

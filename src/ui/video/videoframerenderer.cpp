@@ -169,12 +169,43 @@ QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
                                    const QSet<int> &occupiedRoiIndices,
                                    bool roiEnabled, bool showFps,
                                    int currentFps,
-                                   const QString &profileName) const {
-  if (scaledBaseFrame.isNull()) {
+                                   const QString &profileName,
+                                   double zoomFactor, double centerX,
+                                   double centerY) const {
+  if (sourceFrame.isNull()) {
     return sourceFrame;
   }
 
-  QImage scaledFrame = scaledBaseFrame.copy();
+  QImage sourceView = sourceFrame;
+  if (zoomFactor > 1.001) {
+    const int cropW = static_cast<int>(sourceFrame.width() / zoomFactor);
+    const int cropH = static_cast<int>(sourceFrame.height() / zoomFactor);
+    const int pivotX = static_cast<int>(sourceFrame.width() * centerX);
+    const int pivotY = static_cast<int>(sourceFrame.height() * centerY);
+    const int cropX =
+        qBound(0, pivotX - (cropW / 2), sourceFrame.width() - cropW);
+    const int cropY =
+        qBound(0, pivotY - (cropH / 2), sourceFrame.height() - cropH);
+    sourceView = sourceFrame.copy(cropX, cropY, cropW, cropH);
+  }
+
+  QImage scaledFrame;
+  if (zoomFactor <= 1.001 && !scaledBaseFrame.isNull()) {
+    scaledFrame = scaledBaseFrame.copy();
+  } else {
+    const QSize baseSize =
+        scaledBaseFrame.isNull() ? sourceView.size() : scaledBaseFrame.size();
+    const QSize scaledSize =
+        sourceView.size().scaled(baseSize, Qt::KeepAspectRatio);
+    scaledFrame = scaledSize.isEmpty()
+                      ? sourceView
+                      : sourceView.scaled(scaledSize, Qt::IgnoreAspectRatio,
+                                          Qt::FastTransformation);
+  }
+
+  if (scaledFrame.isNull()) {
+    return sourceView;
+  }
 
   // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장 (대부분
   // BGR888/RGB888이므로 변환 패스됨)
@@ -195,7 +226,7 @@ QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
   painter.setFont(font);
 
   const QList<QPolygon> scaledRoiPolygons =
-      scaleRoiPolygons(roiPolygons, sourceFrame.size(), scaledFrame.size());
+      scaleRoiPolygons(roiPolygons, sourceView.size(), scaledFrame.size());
 
   const auto &cfg = Config::instance();
   const double sourceHeight = static_cast<double>(cfg.sourceHeight());
@@ -229,12 +260,12 @@ QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
                       static_cast<int>(scaledW), static_cast<int>(scaledH));
 
     const double srcX =
-        ((nsRect.x() - cropOffsetX) / effectiveWidth) * sourceFrame.width();
-    const double srcY = (nsRect.y() / sourceHeight) * sourceFrame.height();
+        ((nsRect.x() - cropOffsetX) / effectiveWidth) * sourceView.width();
+    const double srcY = (nsRect.y() / sourceHeight) * sourceView.height();
     const double srcW =
-        (nsRect.width() / effectiveWidth) * sourceFrame.width();
+        (nsRect.width() / effectiveWidth) * sourceView.width();
     const double srcH =
-        (nsRect.height() / sourceHeight) * sourceFrame.height();
+        (nsRect.height() / sourceHeight) * sourceView.height();
 
     const QRect fullSrcRect(static_cast<int>(srcX), static_cast<int>(srcY),
                             static_cast<int>(srcW), static_cast<int>(srcH));
@@ -244,7 +275,7 @@ QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
     candidates.push_back(RenderCandidate{obj, uRect, fullSrcRect, intersects});
   }
 
-  if (hasActiveRoi) {
+  if (hasActiveRoi && zoomFactor <= 1.001) {
     for (int i = 0; i < scaledRoiPolygons.size(); ++i) {
       const QPolygon &polygon = scaledRoiPolygons[i];
       if (polygon.size() < 3)
@@ -284,53 +315,64 @@ QImage VideoFrameRenderer::compose(const QImage &sourceFrame,
     painter.setPen(pen);
   }
 
-  for (const RenderCandidate &candidate : candidates) {
-    const ObjectInfo &obj = candidate.obj;
-    const QRect &uRect = candidate.scaledRect;
-    painter.drawRect(uRect);
+  if (zoomFactor <= 1.001) {
+    for (const RenderCandidate &candidate : candidates) {
+      const ObjectInfo &obj = candidate.obj;
+      const QRect &uRect = candidate.scaledRect;
+      painter.drawRect(uRect);
 
-    const QString lowerType = obj.type.toLower();
-    const bool vehicle = lowerType == QStringLiteral("vehicle") ||
-                         lowerType == QStringLiteral("vehical") ||
-                         lowerType == QStringLiteral("car") ||
-                         lowerType == QStringLiteral("truck") ||
-                         lowerType == QStringLiteral("bus");
+      const QString lowerType = obj.type.toLower();
+      const bool vehicle = lowerType == QStringLiteral("vehicle") ||
+                           lowerType == QStringLiteral("vehical") ||
+                           lowerType == QStringLiteral("car") ||
+                           lowerType == QStringLiteral("truck") ||
+                           lowerType == QStringLiteral("bus");
 
-    QString text;
-    if (vehicle) {
-      const QString displayId =
-          obj.reidId.isEmpty() ? QStringLiteral("V---") : obj.reidId;
-      text = QString("[%1] Vehicle").arg(displayId);
-    } else {
-      text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
+      QString text;
+      if (vehicle) {
+        const QString displayId =
+            obj.reidId.isEmpty() ? QStringLiteral("V---") : obj.reidId;
+        text = QString("[%1] Vehicle").arg(displayId);
+      } else {
+        text = QString("%1 (ID:%2)").arg(obj.type).arg(obj.id);
+      }
+      if (!obj.extraInfo.isEmpty() && obj.extraInfo != obj.plate) {
+        text += QString(" (%1)").arg(obj.extraInfo);
+      }
+      if (!obj.plate.isEmpty()) {
+        text += QString(" [%1]").arg(obj.plate);
+      }
+
+      QRect textRect = painter.fontMetrics().boundingRect(text);
+      textRect.moveTopLeft(uRect.topLeft() - QPoint(0, textRect.height() + 5));
+
+      painter.fillRect(textRect, Qt::black);
+      painter.setPen(Qt::white);
+      painter.drawText(textRect, Qt::AlignCenter, text);
+      painter.setPen(pen);
     }
-    if (!obj.extraInfo.isEmpty() && obj.extraInfo != obj.plate) {
-      text += QString(" (%1)").arg(obj.extraInfo);
-    }
-    if (!obj.plate.isEmpty()) {
-      text += QString(" [%1]").arg(obj.plate);
-    }
-
-    QRect textRect = painter.fontMetrics().boundingRect(text);
-    textRect.moveTopLeft(uRect.topLeft() - QPoint(0, textRect.height() + 5));
-
-    painter.fillRect(textRect, Qt::black);
-    painter.setPen(Qt::white);
-    painter.drawText(textRect, Qt::AlignCenter, text);
-    painter.setPen(pen);
   }
 
-  if (showFps) {
-    // === 우측 상단 정보 오버레이 강화 (프로파일 + 해상도 + FPS) ===
-    QString shortProfileName = profileName;
-    if (shortProfileName.contains('/')) {
-      shortProfileName = shortProfileName.split('/').first();
+  if (showFps || zoomFactor > 1.001) {
+    QString overlayText;
+    if (zoomFactor > 1.001) {
+      overlayText = QString("ZOOM: %1x").arg(zoomFactor, 0, 'f', 1);
+      if (showFps) {
+        overlayText += QString(" , FPS: %1").arg(currentFps);
+      }
+    } else {
+      QString shortProfileName = profileName;
+      if (shortProfileName.contains('/')) {
+        shortProfileName = shortProfileName.split('/').first();
+      }
+      overlayText = QString("%1(%2x%3)")
+                        .arg(shortProfileName)
+                        .arg(sourceView.width())
+                        .arg(sourceView.height());
+      if (showFps) {
+        overlayText += QString(" , FPS: %1").arg(currentFps);
+      }
     }
-    const QString overlayText = QString("%1(%2x%3) , FPS: %4")
-                                    .arg(shortProfileName)
-                                    .arg(sourceFrame.width())
-                                    .arg(sourceFrame.height())
-                                    .arg(currentFps);
 
     QFont fpsFont = painter.font();
     fpsFont.setPointSize(14);

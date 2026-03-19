@@ -19,6 +19,8 @@ qt_add_executable(rtsp_test
     src/ui/windows/loginpage.h
     src/ui/windows/camerachannelruntime.cpp
     src/ui/windows/camerachannelruntime.h
+    src/ui/windows/controllerdialog.cpp
+    src/ui/windows/controllerdialog.h
     src/ui/windows/mainwindowcontroller.cpp
     src/ui/windows/mainwindowcontroller.h
     src/ui/windows/dbpanelcontroller.cpp
@@ -86,6 +88,8 @@ qt_add_executable(rtsp_test
     src/roi/roiservice.h
     src/rpi/rpiauthclient.cpp
     src/rpi/rpiauthclient.h
+    src/rpi/rpicontrolclient.cpp
+    src/rpi/rpicontrolclient.h
     src/rpi/rpitcpclient.cpp
     src/rpi/rpitcpclient.h
     src/telegram/telegrambotapi.cpp

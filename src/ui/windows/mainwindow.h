@@ -21,11 +21,13 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolButton>
 
 class MainWindowController;
+class ControllerDialog;
 class QGridLayout;
 class QSplitter;
 
@@ -39,6 +41,7 @@ public:
   void attachController(MainWindowController *controller);
   void showCctvSplash(const QString &message = QString());
   void showCctvPage();
+  static constexpr int kDbPageIndex = 3;
 
 protected:
   void closeEvent(QCloseEvent *event) override;
@@ -50,6 +53,10 @@ protected:
   bool nativeEvent(const QByteArray &eventType, void *message,
                    qintptr *result) override;
 #endif
+
+public slots:
+  void navigateToPage(int stackedIndex);
+  void navigateToDbSubTab(int tabIndex);
 
 private:
   static constexpr int kSplashPageIndex = 0;
@@ -102,6 +109,7 @@ private:
 
   QTableWidget *m_zoneTable = nullptr;
   QPushButton *m_btnRefreshZone = nullptr;
+  QTabWidget *m_dbSubTabs = nullptr;
 
   // Object Type Filter Checkboxes
   QCheckBox *m_chkVehicle = nullptr;
@@ -169,6 +177,7 @@ private:
   QPoint m_dragPosition;
 
   MainWindowController *m_controller = nullptr;
+  ControllerDialog *m_controllerDialog = nullptr;
 };
 
 #endif // MAINWINDOW_H

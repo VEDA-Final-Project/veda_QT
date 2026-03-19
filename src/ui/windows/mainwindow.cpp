@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "config/logfilterconfig.h"
+#include "controllerdialog.h"
 #include "mainwindowcontroller.h"
 #include <QDialog>
 
@@ -84,6 +85,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
 MainWindowUiRefs MainWindow::controllerUiRefs() const {
   MainWindowUiRefs uiRefs;
+  uiRefs.stackedWidget = m_stackedWidget;
+  uiRefs.dbSubTabs = m_dbSubTabs;
   for (int i = 0; i < 4; ++i) {
     uiRefs.videoWidgets[i] = m_videoWidgets[i];
     uiRefs.channelCards[i] = m_channelCards[i];
@@ -169,6 +172,9 @@ void MainWindow::attachController(MainWindowController *controller) {
   m_controller = controller;
   if (!m_controller) {
     return;
+  }
+  if (m_controllerDialog) {
+    m_controller->connectControllerDialog(m_controllerDialog);
   }
 
   auto updateFilter = [this]() {
@@ -396,6 +402,21 @@ void MainWindow::setupUi() {
     connect(action, &QAction::triggered, this,
             [=]() { stackedWidget->setCurrentIndex(menuIndices[i]); });
   }
+
+  m_navMenu->addSeparator();
+  QAction *ctrlAction =
+      m_navMenu->addAction(QString::fromUtf8("\xF0\x9F\x8E\xAE 컨트롤러"));
+  connect(ctrlAction, &QAction::triggered, this, [this]() {
+    if (!m_controllerDialog) {
+      m_controllerDialog = new ControllerDialog(this);
+      if (m_controller) {
+        m_controller->connectControllerDialog(m_controllerDialog);
+      }
+    }
+    m_controllerDialog->show();
+    m_controllerDialog->raise();
+    m_controllerDialog->activateWindow();
+  });
 
   m_menuButton->setMenu(m_navMenu);
   headerLayout->addWidget(m_menuButton);
@@ -897,6 +918,7 @@ void MainWindow::setupUi() {
   QVBoxLayout *dbLayout = new QVBoxLayout(parkingDbTab);
 
   QTabWidget *dbSubTabs = new QTabWidget(this);
+  m_dbSubTabs = dbSubTabs;
 
   // --- Sub-Tab 1: 주차 이력 (Parking Logs) ---
   QWidget *logsTab = new QWidget(this);
@@ -1351,6 +1373,20 @@ void MainWindow::showCctvPage() {
   }
   if (m_stackedWidget) {
     m_stackedWidget->setCurrentIndex(kCctvPageIndex);
+  }
+}
+
+void MainWindow::navigateToPage(int stackedIndex) {
+  if (m_stackedWidget && stackedIndex >= 0 &&
+      stackedIndex < m_stackedWidget->count()) {
+    m_stackedWidget->setCurrentIndex(stackedIndex);
+  }
+}
+
+void MainWindow::navigateToDbSubTab(int tabIndex) {
+  navigateToPage(kDbPageIndex);
+  if (m_dbSubTabs && tabIndex >= 0 && tabIndex < m_dbSubTabs->count()) {
+    m_dbSubTabs->setCurrentIndex(tabIndex);
   }
 }
 
