@@ -1,93 +1,16 @@
 #include "parkinglogpanelcontroller.h"
 
-#include "parking/parkingfeepolicy.h"
-#include "parking/parkingservice.h"
-#include <QDateTime>
+#include "application/db/parking/parkinglogapplicationservice.h"
 #include <QLineEdit>
 #include <QPushButton>
-#include <QRectF>
 #include <QSpinBox>
 #include <Qt>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <algorithm>
 #include <utility>
 
 namespace {
-QDateTime parseParkingDateTime(const QString &rawIsoText) {
-  QDateTime dt = QDateTime::fromString(rawIsoText, Qt::ISODateWithMs);
-  if (!dt.isValid()) {
-    dt = QDateTime::fromString(rawIsoText, Qt::ISODate);
-  }
-  return dt;
-}
-
-QString formatParkingDateTime(const QString &rawIsoText) {
-  QDateTime dt = parseParkingDateTime(rawIsoText);
-  if (!dt.isValid()) {
-    return rawIsoText;
-  }
-
-  return dt.toLocalTime().toString(QStringLiteral("yyyy/MM/dd HH:mm"));
-}
-
-int calculateDisplayedParkingFee(const QJsonObject &row) {
-  const QString exitTimeText = row["exit_time"].toString().trimmed();
-  if (!exitTimeText.isEmpty()) {
-    return row["total_amount"].toInt();
-  }
-
-  const QDateTime entryTime = parseParkingDateTime(row["entry_time"].toString());
-  const QDateTime now = QDateTime::currentDateTime();
-  if (!entryTime.isValid() || now <= entryTime) {
-    return row["total_amount"].toInt();
-  }
-  return parking::calculateParkingFee(entryTime, now).totalAmount;
-}
-
-QVector<QJsonObject> combinedRecentLogs(const QVector<ParkingService *> &services,
-                                        int limitPerService) {
-  QVector<QJsonObject> logs;
-  for (ParkingService *service : services) {
-    if (!service) {
-      continue;
-    }
-    const QVector<QJsonObject> serviceLogs = service->recentLogs(limitPerService);
-    for (const QJsonObject &row : serviceLogs) {
-      logs.append(row);
-    }
-  }
-
-  std::sort(logs.begin(), logs.end(),
-            [](const QJsonObject &a, const QJsonObject &b) {
-              return parseParkingDateTime(a["entry_time"].toString()) >
-                     parseParkingDateTime(b["entry_time"].toString());
-            });
-  return logs;
-}
-
-QVector<QJsonObject> combinedSearchLogs(const QVector<ParkingService *> &services,
-                                        const QString &keyword) {
-  QVector<QJsonObject> logs;
-  for (ParkingService *service : services) {
-    if (!service) {
-      continue;
-    }
-    const QVector<QJsonObject> serviceLogs = service->searchByPlate(keyword);
-    for (const QJsonObject &row : serviceLogs) {
-      logs.append(row);
-    }
-  }
-
-  std::sort(logs.begin(), logs.end(),
-            [](const QJsonObject &a, const QJsonObject &b) {
-              return parseParkingDateTime(a["entry_time"].toString()) >
-                     parseParkingDateTime(b["entry_time"].toString());
-            });
-  return logs;
-}
-
-void populateParkingTable(QTableWidget *table, const QVector<QJsonObject> &logs) {
+void populateParkingTable(QTableWidget *table, const QVector<ParkingLogRow> &logs) {
   if (!table) {
     return;
   }
@@ -95,34 +18,19 @@ void populateParkingTable(QTableWidget *table, const QVector<QJsonObject> &logs)
   table->setRowCount(0);
 
   for (int i = 0; i < logs.size(); ++i) {
-    const QJsonObject &row = logs[i];
+    const ParkingLogRow &row = logs[i];
     table->insertRow(i);
-    const QString zoneName = row["zone_name"].toString().trimmed();
-    QTableWidgetItem *idItem =
-        new QTableWidgetItem(QString::number(row["id"].toInt()));
-    idItem->setData(Qt::UserRole, row["camera_key"].toString());
+    QTableWidgetItem *idItem = new QTableWidgetItem(QString::number(row.id));
+    idItem->setData(Qt::UserRole, row.cameraKey);
     table->setItem(i, 0, idItem);
-    table->setItem(
-        i, 1, new QTableWidgetItem(QString::number(row["object_id"].toInt())));
-    table->setItem(i, 2, new QTableWidgetItem(row["plate_number"].toString()));
-    table->setItem(
-        i, 3,
-        new QTableWidgetItem(zoneName.isEmpty()
-                                 ? QStringLiteral("ROI #%1")
-                                       .arg(row["roi_index"].toInt() + 1)
-                                 : zoneName));
-    table->setItem(
-        i, 4,
-        new QTableWidgetItem(formatParkingDateTime(
-            row["entry_time"].toString())));
-    table->setItem(
-        i, 5,
-        new QTableWidgetItem(formatParkingDateTime(
-            row["exit_time"].toString())));
-    table->setItem(i, 6, new QTableWidgetItem(row["pay_status"].toString()));
-    table->setItem(
-        i, 7,
-        new QTableWidgetItem(QString::number(calculateDisplayedParkingFee(row))));
+    table->setItem(i, 1, new QTableWidgetItem(QString::number(row.objectId)));
+    table->setItem(i, 2, new QTableWidgetItem(row.plateNumber));
+    table->setItem(i, 3, new QTableWidgetItem(row.zoneName));
+    table->setItem(i, 4, new QTableWidgetItem(row.entryTime));
+    table->setItem(i, 5, new QTableWidgetItem(row.exitTime));
+    table->setItem(i, 6, new QTableWidgetItem(row.payStatus));
+    table->setItem(i, 7,
+                   new QTableWidgetItem(QString::number(row.displayAmount)));
   }
 }
 } // namespace
@@ -157,15 +65,11 @@ void ParkingLogPanelController::connectSignals() {
 }
 
 void ParkingLogPanelController::onRefreshParkingLogs() {
-  const QVector<ParkingService *> services =
-      m_context.allParkingServicesProvider
-          ? m_context.allParkingServicesProvider()
-          : QVector<ParkingService *>();
-  if (services.isEmpty()) {
+  if (!m_context.service) {
     return;
   }
 
-  const QVector<QJsonObject> logs = combinedRecentLogs(services, 100);
+  const QVector<ParkingLogRow> logs = m_context.service->getRecentLogs(100);
   populateParkingTable(m_ui.parkingLogTable, logs);
   appendLog(QString("[DB][All Channels] 전체 새로고침: %1건 표시")
                 .arg(logs.size()));
@@ -182,15 +86,11 @@ void ParkingLogPanelController::onSearchParkingLogs() {
     return;
   }
 
-  const QVector<ParkingService *> services =
-      m_context.allParkingServicesProvider
-          ? m_context.allParkingServicesProvider()
-          : QVector<ParkingService *>();
-  if (services.isEmpty()) {
+  if (!m_context.service) {
     return;
   }
 
-  const QVector<QJsonObject> logs = combinedSearchLogs(services, keyword);
+  const QVector<ParkingLogRow> logs = m_context.service->searchLogs(keyword);
   populateParkingTable(m_ui.parkingLogTable, logs);
   appendLog(QString("[DB][All Channels] '%1' 검색 결과: %2건")
                 .arg(keyword)
@@ -208,25 +108,13 @@ void ParkingLogPanelController::onForcePlate() {
   const QString cameraKey =
       m_ui.btnForcePlate ? m_ui.btnForcePlate->property("cameraKey").toString()
                          : QString();
-  ParkingService *service =
-      (!cameraKey.isEmpty() && m_context.parkingServiceForCameraKeyProvider)
-          ? m_context.parkingServiceForCameraKeyProvider(cameraKey)
-          : (m_context.parkingServiceProvider
-                 ? m_context.parkingServiceProvider()
-                 : nullptr);
-  if (!service) {
+  if (!m_context.service) {
     return;
   }
 
-  const VehicleState currentState = service->getVehicleState(objectId);
-  const QString type =
-      currentState.type.trimmed().isEmpty() ? QStringLiteral("Vehicle")
-                                            : currentState.type.trimmed();
-  const double score = currentState.score > 0.0 ? currentState.score : 1.0;
-  const QRectF bbox = currentState.boundingBox;
-
-  service->forceObjectData(objectId, type, plate, score, bbox);
-  appendLog(QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId));
+  const OperationResult result =
+      m_context.service->forcePlate(cameraKey, objectId, plate);
+  appendLog(result.message);
 }
 
 void ParkingLogPanelController::onEditPlate() {
@@ -253,20 +141,16 @@ void ParkingLogPanelController::onEditPlate() {
 
   const int recordId = idItem->text().toInt();
   const QString cameraKey = idItem->data(Qt::UserRole).toString();
-  ParkingService *service =
-      m_context.parkingServiceForCameraKeyProvider
-          ? m_context.parkingServiceForCameraKeyProvider(cameraKey)
-          : (m_context.parkingServiceProvider
-                 ? m_context.parkingServiceProvider()
-                 : nullptr);
-  if (service && service->updatePlate(recordId, newPlate)) {
-    appendLog(QString("[DB][%1] 번호판 수정 완료: ID=%2 → %3")
-                  .arg(cameraKey, QString::number(recordId), newPlate));
-    onRefreshParkingLogs();
+  if (!m_context.service) {
     return;
   }
-  appendLog(QString("[DB][%1] 번호판 수정 실패: ID=%2")
-                .arg(cameraKey, QString::number(recordId)));
+
+  const OperationResult result =
+      m_context.service->updateLogPlate(cameraKey, recordId, newPlate);
+  appendLog(result.message);
+  if (result.success && result.shouldRefresh) {
+    onRefreshParkingLogs();
+  }
 }
 
 void ParkingLogPanelController::deleteParkingLog() {
@@ -285,25 +169,15 @@ void ParkingLogPanelController::deleteParkingLog() {
   }
   const int id = idItem->text().toInt();
   const QString cameraKey = idItem->data(Qt::UserRole).toString();
-
-  ParkingService *service =
-      m_context.parkingServiceForCameraKeyProvider
-          ? m_context.parkingServiceForCameraKeyProvider(cameraKey)
-          : (m_context.parkingServiceProvider
-                 ? m_context.parkingServiceProvider()
-                 : nullptr);
-  QString error;
-  if (service && service->deleteLog(id, &error)) {
-    appendLog(QString("[DB][%1] 주차 기록 삭제 완료: ID=%2")
-                  .arg(cameraKey)
-                  .arg(id));
-    onRefreshParkingLogs();
+  if (!m_context.service) {
     return;
   }
 
-  const QString reason = error.isEmpty() ? QStringLiteral("unknown") : error;
-  appendLog(QString("[DB][%1] 주차 기록 삭제 실패: ID=%2 (%3)")
-                .arg(cameraKey, QString::number(id), reason));
+  const OperationResult result = m_context.service->deleteLog(cameraKey, id);
+  appendLog(result.message);
+  if (result.success && result.shouldRefresh) {
+    onRefreshParkingLogs();
+  }
 }
 
 void ParkingLogPanelController::appendLog(const QString &message) const {

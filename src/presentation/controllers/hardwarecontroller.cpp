@@ -3,7 +3,7 @@
 #include "config/config.h"
 #include "presentation/widgets/controllerdialog.h"
 #include "presentation/widgets/videowidget.h"
-#include "rpi/rpicontrolclient.h"
+#include "infrastructure/rpi/rpicontrolclient.h"
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QTabWidget>

@@ -3,7 +3,7 @@
 #include "presentation/pages/loginpage.h"
 #include "presentation/controllers/mainwindowcontroller.h"
 #include "presentation/shell/mainwindow.h"
-#include "video/videothread.h"
+#include "infrastructure/video/videothread.h"
 #include <opencv2/core/ocl.hpp>
 #include <vector>
 
@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
+#include <QTimer>
 
 // ── 카테고리 기반 로그 필터 핸들러 ──
 static QtMessageHandler s_defaultHandler = nullptr;

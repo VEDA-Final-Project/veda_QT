@@ -1,6 +1,6 @@
 #include "userdbpanelcontroller.h"
 
-#include "database/userrepository.h"
+#include "application/db/user/useradminapplicationservice.h"
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -40,30 +40,22 @@ void UserDbPanelController::connectSignals() {
 }
 
 void UserDbPanelController::refreshUserTable() {
-  if (!m_ui.userDbTable) {
+  if (!m_ui.userDbTable || !m_context.service) {
     return;
   }
 
-  UserRepository repo;
-  QString error;
-  const QVector<QJsonObject> users = repo.getAllUsersFull(&error);
+  const QVector<UserRow> users = m_context.service->getAllUsers();
 
   m_ui.userDbTable->setRowCount(0);
   for (int i = 0; i < users.size(); ++i) {
-    const QJsonObject &user = users[i];
+    const UserRow &user = users[i];
     m_ui.userDbTable->insertRow(i);
-    m_ui.userDbTable->setItem(i, 0,
-                              new QTableWidgetItem(user["chat_id"].toString()));
-    m_ui.userDbTable->setItem(
-        i, 1, new QTableWidgetItem(user["plate_number"].toString()));
-    m_ui.userDbTable->setItem(i, 2,
-                              new QTableWidgetItem(user["name"].toString()));
-    m_ui.userDbTable->setItem(i, 3,
-                              new QTableWidgetItem(user["phone"].toString()));
-    m_ui.userDbTable->setItem(
-        i, 4, new QTableWidgetItem(user["payment_info"].toString()));
-    m_ui.userDbTable->setItem(
-        i, 5, new QTableWidgetItem(user["created_at"].toString()));
+    m_ui.userDbTable->setItem(i, 0, new QTableWidgetItem(user.chatId));
+    m_ui.userDbTable->setItem(i, 1, new QTableWidgetItem(user.plateNumber));
+    m_ui.userDbTable->setItem(i, 2, new QTableWidgetItem(user.name));
+    m_ui.userDbTable->setItem(i, 3, new QTableWidgetItem(user.phone));
+    m_ui.userDbTable->setItem(i, 4, new QTableWidgetItem(user.paymentInfo));
+    m_ui.userDbTable->setItem(i, 5, new QTableWidgetItem(user.createdAt));
   }
 }
 
@@ -106,17 +98,18 @@ void UserDbPanelController::addUser() {
     return;
   }
 
-  UserRepository repo;
-  QString error;
-  if (repo.addUser(chatId, plate, eName->text().trimmed(),
-                   ePhone->text().trimmed(), eCard->text().trimmed(),
-                   &error)) {
-    appendLog(QString("[DB] 사용자 추가 완료: ChatID=%1").arg(chatId));
-    refreshUserTable();
+  if (!m_context.service) {
     return;
   }
 
-  appendLog(QString("[DB] 사용자 추가 실패: %1").arg(error));
+  const OperationResult result = m_context.service->addUser(
+      chatId, UserUpsertInput{plate, eName->text().trimmed(),
+                              ePhone->text().trimmed(),
+                              eCard->text().trimmed()});
+  appendLog(result.message);
+  if (result.success && result.shouldRefresh) {
+    refreshUserTable();
+  }
 }
 
 void UserDbPanelController::editUser() {
@@ -162,17 +155,18 @@ void UserDbPanelController::editUser() {
     return;
   }
 
-  UserRepository repo;
-  QString error;
-  if (repo.updateUser(chatId, ePlate->text().trimmed(), eName->text().trimmed(),
-                      ePhone->text().trimmed(), eCard->text().trimmed(),
-                      &error)) {
-    appendLog(QString("[DB] 사용자 수정 완료: ChatID=%1").arg(chatId));
-    refreshUserTable();
+  if (!m_context.service) {
     return;
   }
 
-  appendLog(QString("[DB] 사용자 수정 실패: %1").arg(error));
+  const OperationResult result = m_context.service->updateUser(
+      chatId, UserUpsertInput{ePlate->text().trimmed(), eName->text().trimmed(),
+                              ePhone->text().trimmed(),
+                              eCard->text().trimmed()});
+  appendLog(result.message);
+  if (result.success && result.shouldRefresh) {
+    refreshUserTable();
+  }
 }
 
 void UserDbPanelController::deleteUser() {
@@ -191,19 +185,15 @@ void UserDbPanelController::deleteUser() {
   }
 
   const QString chatId = chatIdItem->text();
-
-  UserRepository repo;
-  QString error;
-  if (repo.deleteUser(chatId, &error)) {
-    appendLog(QString("[DB] 사용자 삭제 완료: ChatID=%1").arg(chatId));
-    if (m_context.userDeleted) {
-      m_context.userDeleted(chatId);
-    }
-    refreshUserTable();
+  if (!m_context.service) {
     return;
   }
 
-  appendLog(QString("[DB] 사용자 삭제 실패: %1").arg(error));
+  const UserDeleteResult result = m_context.service->deleteUser(chatId);
+  appendLog(result.message);
+  if (result.success && result.shouldRefresh) {
+    refreshUserTable();
+  }
 }
 
 void UserDbPanelController::appendLog(const QString &message) const {

@@ -1,7 +1,7 @@
 #ifndef RPIPANELCONTROLLER_H
 #define RPIPANELCONTROLLER_H
 
-#include "rpi/rpitcpclient.h"
+#include "infrastructure/rpi/rpitcpclient.h"
 #include <QObject>
 #include <QString>
 

@@ -3,10 +3,10 @@
 
 #include <QJsonObject>
 #include <QObject>
-#include <QVector>
+#include <QString>
 #include <functional>
 
-class ParkingService;
+class ParkingLogApplicationService;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -29,9 +29,7 @@ public:
   };
 
   struct Context {
-    std::function<ParkingService *()> parkingServiceProvider;
-    std::function<QVector<ParkingService *>()> allParkingServicesProvider;
-    std::function<ParkingService *(const QString &)> parkingServiceForCameraKeyProvider;
+    ParkingLogApplicationService *service = nullptr;
     std::function<void(const QString &)> logMessage;
   };
 

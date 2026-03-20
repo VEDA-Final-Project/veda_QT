@@ -38,6 +38,10 @@ qt_add_executable(rtsp_test
     src/presentation/controllers/zonepanelcontroller.h
     src/presentation/controllers/rpipanelcontroller.cpp
     src/presentation/controllers/rpipanelcontroller.h
+    src/presentation/controllers/camerasessioncontroller.cpp
+    src/presentation/controllers/camerasessioncontroller.h
+    src/presentation/controllers/channelruntimecontroller.cpp
+    src/presentation/controllers/channelruntimecontroller.h
     src/presentation/controllers/recordpanelcontroller.cpp
     src/presentation/controllers/recordpanelcontroller.h
     src/presentation/controllers/recordingworkflowcontroller.cpp
@@ -48,6 +52,8 @@ qt_add_executable(rtsp_test
     src/presentation/controllers/hardwarecontroller.h
     src/presentation/controllers/cctvcontroller.cpp
     src/presentation/controllers/cctvcontroller.h
+    src/presentation/controllers/reidcontroller.cpp
+    src/presentation/controllers/reidcontroller.h
     src/presentation/widgets/videowidget.cpp
     src/presentation/widgets/videowidget.h
     src/presentation/widgets/roiinteractionstate.cpp
@@ -66,77 +72,86 @@ qt_add_executable(rtsp_test
     src/presentation/pages/recordpageview.h
     src/presentation/pages/telegrampageview.cpp
     src/presentation/pages/telegrampageview.h
+    # Application
+    src/application/db/common/operationresult.h
+    src/application/db/parking/parkinglogapplicationservice.cpp
+    src/application/db/parking/parkinglogapplicationservice.h
+    src/application/roi/roiservice.cpp
+    src/application/roi/roiservice.h
+    src/application/db/user/useradminapplicationservice.cpp
+    src/application/db/user/useradminapplicationservice.h
+    src/application/db/zone/zonequeryapplicationservice.cpp
+    src/application/db/zone/zonequeryapplicationservice.h
+    src/shared/result.h
     # Video
-    src/video/videothread.cpp
-    src/video/videothread.h
-    src/video/sharedvideoframe.h
-    src/video/videobuffermanager.cpp
-    src/video/videobuffermanager.h
-    src/video/mediarecorderworker.cpp
-    src/video/mediarecorderworker.h
+    src/infrastructure/video/videothread.cpp
+    src/infrastructure/video/videothread.h
+    src/infrastructure/video/sharedvideoframe.h
+    src/infrastructure/video/videobuffermanager.cpp
+    src/infrastructure/video/videobuffermanager.h
+    src/infrastructure/video/mediarecorderworker.cpp
+    src/infrastructure/video/mediarecorderworker.h
     # Metadata
-    src/metadata/metadatathread.cpp
-    src/metadata/metadatathread.h
+    src/infrastructure/metadata/metadatathread.cpp
+    src/infrastructure/metadata/metadatathread.h
     # OCR
-    src/ocr/ocrmanager.cpp
-    src/ocr/ocrmanager.h
-    src/ocr/ocrtypes.h
-    src/ocr/plateocrcoordinator.cpp
-    src/ocr/plateocrcoordinator.h
-    src/ocr/recognition/llmocrrunner.cpp
-    src/ocr/recognition/llmocrrunner.h
-    src/ocr/recognition/telegramllmrunner.cpp
-    src/ocr/recognition/telegramllmrunner.h
-    src/tracking/reidextractor.cpp
-    src/tracking/reidextractor.h
+    src/infrastructure/ocr/ocrmanager.cpp
+    src/infrastructure/ocr/ocrmanager.h
+    src/infrastructure/ocr/ocrtypes.h
+    src/infrastructure/ocr/plateocrcoordinator.cpp
+    src/infrastructure/ocr/plateocrcoordinator.h
+    src/infrastructure/ocr/recognition/llmocrrunner.cpp
+    src/infrastructure/ocr/recognition/llmocrrunner.h
+    src/infrastructure/ocr/recognition/telegramllmrunner.cpp
+    src/infrastructure/ocr/recognition/telegramllmrunner.h
+    src/infrastructure/vision/reidextractor.cpp
+    src/infrastructure/vision/reidextractor.h
 
     # Core
     src/config/config.cpp
     src/config/config.h
     src/config/logfilterconfig.cpp
     src/config/logfilterconfig.h
-    src/camera/cameramanager.cpp
-    src/camera/cameramanager.h
-    src/camera/camerasource.cpp
-    src/camera/camerasource.h
-    src/camera/camerasessionservice.cpp
-    src/camera/camerasessionservice.h
+    src/infrastructure/camera/cameramanager.cpp
+    src/infrastructure/camera/cameramanager.h
+    src/infrastructure/camera/camerasource.cpp
+    src/infrastructure/camera/camerasource.h
+    src/infrastructure/camera/camerasessionservice.cpp
+    src/infrastructure/camera/camerasessionservice.h
+    src/infrastructure/camera/rtspurl.cpp
+    src/infrastructure/camera/rtspurl.h
     src/logging/logdeduplicator.cpp
     src/logging/logdeduplicator.h
-    src/metadata/metadatasynchronizer.cpp
-    src/metadata/metadatasynchronizer.h
-    src/util/rtspurl.cpp
-    src/util/rtspurl.h
-    src/roi/roirepository.cpp
-    src/roi/roirepository.h
-    src/roi/roiservice.cpp
-    src/roi/roiservice.h
-    src/rpi/rpiauthclient.cpp
-    src/rpi/rpiauthclient.h
-    src/rpi/rpicontrolclient.cpp
-    src/rpi/rpicontrolclient.h
-    src/rpi/rpitcpclient.cpp
-    src/rpi/rpitcpclient.h
-    src/telegram/telegrambotapi.cpp
-    src/telegram/telegrambotapi.h
+    src/infrastructure/metadata/metadatasynchronizer.cpp
+    src/infrastructure/metadata/metadatasynchronizer.h
+    src/infrastructure/persistence/roirepository.cpp
+    src/infrastructure/persistence/roirepository.h
+    src/infrastructure/rpi/rpiauthclient.cpp
+    src/infrastructure/rpi/rpiauthclient.h
+    src/infrastructure/rpi/rpicontrolclient.cpp
+    src/infrastructure/rpi/rpicontrolclient.h
+    src/infrastructure/rpi/rpitcpclient.cpp
+    src/infrastructure/rpi/rpitcpclient.h
+    src/infrastructure/telegram/telegrambotapi.cpp
+    src/infrastructure/telegram/telegrambotapi.h
     # Parking
-    src/parking/vehicletracker.cpp
-    src/parking/vehicletracker.h
-    src/parking/parkingfeepolicy.cpp
-    src/parking/parkingfeepolicy.h
-    src/parking/parkingservice.cpp
-    src/parking/parkingservice.h
-    src/parking/parkingrepository.cpp
-    src/parking/parkingrepository.h
+    src/domain/parking/vehicletracker.cpp
+    src/domain/parking/vehicletracker.h
+    src/domain/parking/parkingfeepolicy.cpp
+    src/domain/parking/parkingfeepolicy.h
+    src/application/parking/parkingservice.cpp
+    src/application/parking/parkingservice.h
+    src/infrastructure/persistence/parkingrepository.cpp
+    src/infrastructure/persistence/parkingrepository.h
     # Database (New Phase 9)
-    src/database/databasecontext.cpp
-    src/database/databasecontext.h
-    src/database/userrepository.cpp
-    src/database/userrepository.h
-    src/database/hardwarelogrepository.cpp
-    src/database/hardwarelogrepository.h
-    src/database/mediarepository.cpp
-    src/database/mediarepository.h
+    src/infrastructure/persistence/databasecontext.cpp
+    src/infrastructure/persistence/databasecontext.h
+    src/infrastructure/persistence/userrepository.cpp
+    src/infrastructure/persistence/userrepository.h
+    src/infrastructure/persistence/hardwarelogrepository.cpp
+    src/infrastructure/persistence/hardwarelogrepository.h
+    src/infrastructure/persistence/mediarepository.cpp
+    src/infrastructure/persistence/mediarepository.h
     resources.qrc
 )
 

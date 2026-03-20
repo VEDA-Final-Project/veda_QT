@@ -1,6 +1,6 @@
 #include "telegrampanelcontroller.h"
 
-#include "telegram/telegrambotapi.h"
+#include "infrastructure/telegram/telegrambotapi.h"
 #include <QLabel>
 #include <QLineEdit>
 #include <QMap>

@@ -1,9 +1,9 @@
 #include "cctvcontroller.h"
 
-#include "camera/camerasource.h"
+#include "application/roi/roiservice.h"
+#include "infrastructure/camera/camerasource.h"
 #include "config/config.h"
 #include "presentation/widgets/videowidget.h"
-#include "roi/roiservice.h"
 #include "ui/windows/camerachannelruntime.h"
 #include <QComboBox>
 #include <QFrame>

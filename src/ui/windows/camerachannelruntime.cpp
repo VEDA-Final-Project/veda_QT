@@ -1,8 +1,8 @@
 #include "camerachannelruntime.h"
 
-#include "camera/camerasource.h"
-#include "parking/parkingservice.h"
-#include "roi/roiservice.h"
+#include "infrastructure/camera/camerasource.h"
+#include "application/parking/parkingservice.h"
+#include "application/roi/roiservice.h"
 #include "presentation/widgets/videowidget.h"
 #include <QCheckBox>
 #include <QColor>

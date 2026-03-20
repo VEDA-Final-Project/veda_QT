@@ -1,13 +1,13 @@
 #ifndef ZONEPANELCONTROLLER_H
 #define ZONEPANELCONTROLLER_H
 
-#include <QJsonObject>
 #include <QObject>
-#include <QVector>
+#include <QString>
 #include <functional>
 
 class QPushButton;
 class QTableWidget;
+class ZoneQueryApplicationService;
 
 class ZonePanelController : public QObject {
   Q_OBJECT
@@ -19,7 +19,7 @@ public:
   };
 
   struct Context {
-    std::function<QVector<QJsonObject>()> allZoneRecordsProvider;
+    ZoneQueryApplicationService *service = nullptr;
     std::function<void(const QString &)> logMessage;
   };
 

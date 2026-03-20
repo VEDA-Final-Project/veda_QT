@@ -1,7 +1,7 @@
 #ifndef RECORDINGWORKFLOWCONTROLLER_H
 #define RECORDINGWORKFLOWCONTROLLER_H
 
-#include "video/sharedvideoframe.h"
+#include "infrastructure/video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QMetaObject>
 #include <QObject>

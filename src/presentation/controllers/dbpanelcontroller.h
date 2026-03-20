@@ -1,14 +1,15 @@
 #ifndef DBPANELCONTROLLER_H
 #define DBPANELCONTROLLER_H
 
-#include <QJsonObject>
 #include <QObject>
-#include <QVector>
+#include <QString>
 #include <functional>
 
-class ParkingService;
+class ParkingLogApplicationService;
 class ParkingLogPanelController;
+class UserAdminApplicationService;
 class UserDbPanelController;
+class ZoneQueryApplicationService;
 class ZonePanelController;
 class QLineEdit;
 class QPushButton;
@@ -41,12 +42,10 @@ public:
   };
 
   struct Context {
-    std::function<ParkingService *()> parkingServiceProvider;
-    std::function<QVector<ParkingService *>()> allParkingServicesProvider;
-    std::function<ParkingService *(const QString &)> parkingServiceForCameraKeyProvider;
-    std::function<QVector<QJsonObject>()> allZoneRecordsProvider;
+    ParkingLogApplicationService *parkingLogService = nullptr;
+    UserAdminApplicationService *userAdminService = nullptr;
+    ZoneQueryApplicationService *zoneQueryService = nullptr;
     std::function<void(const QString &)> logMessage;
-    std::function<void(const QString &)> userDeleted;
   };
 
   explicit DbPanelController(const UiRefs &uiRefs, Context context,

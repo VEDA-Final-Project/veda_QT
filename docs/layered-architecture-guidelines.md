@@ -1,13 +1,13 @@
 # Layered Architecture Guidelines
 
-이 문서는 VEDA Qt 프로젝트를 점진적으로 계층형 아키텍처로 정리하기 위한 기준 문서입니다.
+이 문서는 VEDA Qt 프로젝트의 계층형 아키텍처 기준 문서입니다.
 
 현재 단계의 목표는 다음 두 가지입니다.
 
-- 새 계층 구조의 폴더 뼈대를 먼저 고정한다.
-- 앞으로의 코드 이동과 신규 개발이 같은 의존 규칙을 따르도록 기준을 문서화한다.
+- 현재 구조와 의존 규칙을 일관된 기준으로 유지한다.
+- 남은 리팩토링이 같은 방향을 따르도록 다음 단계 기준을 문서화한다.
 
-이 문서는 "지금 당장 모든 코드를 옮긴 상태"를 설명하지 않습니다. 기존 구조와 새 구조가 한동안 공존하는 과도기 기준 문서입니다.
+현재는 주요 코드 이동이 대부분 완료되었고, 일부 과도기 파일만 남아 있습니다.
 
 ## Target Layout
 
@@ -110,22 +110,25 @@ app -> domain
 1. 화면 코드
 
 - `src/presentation/shell`, `src/presentation/pages`, `src/presentation/widgets`, `src/presentation/controllers`
-- 남은 UI 관련 기존 폴더는 점진적으로 `presentation/` 아래로 이동
+- `MainWindow`는 page/view 조립과 상위 orchestration 위주로 유지
+- `src/ui/windows/camerachannelruntime.*`는 아직 남아 있는 과도기 UI 런타임 코드
 
 2. 유스케이스/오케스트레이션
 
-- `MainWindowController`, `DbPanelController`, `RecordPanelController`, `ParkingService`
-- 컨트롤러는 우선 `presentation/controllers/`에 두고, 이후 기능 흐름을 `application/` 유스케이스로 분리
+- `src/application/db/*`, `src/application/parking/*`, `src/application/roi/*`
+- DB 화면의 조회/수정/삭제 흐름은 application service로 이동 완료
+- 복잡한 기능 흐름은 specialized controller와 application service 조합으로 정리
 
 3. 인프라 구현
 
-- `database/*`, `video/videothread.*`, `metadata/*`, `telegram/*`, `rpi/*`, OCR 엔진 연동부
-- 향후 `infrastructure/` 아래로 이동
+- `src/infrastructure/persistence`, `src/infrastructure/video`, `src/infrastructure/metadata`
+- `src/infrastructure/camera`, `src/infrastructure/ocr`, `src/infrastructure/telegram`, `src/infrastructure/rpi`, `src/infrastructure/vision`
+- RTSP, OCR, FFmpeg, Telegram, DB, RPi 연동은 `infrastructure/` 아래에 둔다
 
 4. 도메인 규칙
 
-- `parking/parkingfeepolicy.*`, ROI 검증 규칙, 차량 상태 모델 등
-- 향후 `domain/` 아래로 이동
+- `src/domain/parking/*`
+- 주차 정책과 추적 규칙처럼 외부 시스템과 무관한 로직은 `domain/`에 둔다
 
 ## Naming Rules
 
@@ -147,23 +150,26 @@ app -> domain
 4. 화면 계층에서 DB/네트워크 객체를 새로 생성하지 않습니다.
 5. 기존 구조와 새 구조가 공존하더라도 의존 방향만큼은 먼저 맞춥니다.
 
-## Recommended First Moves
+## Next Cleanup Priorities
 
-1. `presentation`
+1. 실제 빌드 기준 검증
 
-- `MainWindow`, `HeaderBarView`, `DbPageView`, `RecordPageView`, `TelegramPageView`, `VideoWidget`
+- 폴더 이동 이후 남은 include 누락, forward declaration 문제, CMake 소스 누락을 계속 정리
+- 현재 확인된 빌드 차단 원인은 프로젝트 경로보다 MSVC 표준 라이브러리 include path 환경 문제다
 
-2. `infrastructure`
+2. `presentation` 과도기 정리
 
-- `database/*`, `rpi/*`, `telegram/*`, `metadata/*`, `video/videothread.*`
+- `src/ui/windows/camerachannelruntime.*` 같은 잔여 UI 런타임 코드를 `presentation/` 하위로 통합할지 검토
+- controller 조립 책임이 과도하게 커지지 않도록 composition root 분리 여부 검토
 
-3. `application`
+3. CMake 타깃 분리
 
-- `MainWindowController`에서 기능별 흐름을 `parking`, `roi`, `recording` 유스케이스로 분리
+- 현재는 계층형 폴더 구조지만 단일 executable 중심 빌드
+- 이후 `presentation/application/domain/infrastructure` 라이브러리로 쪼개 의존 방향을 빌드 레벨에서도 강제
 
-4. `domain`
+4. 문서와 구조 동기화
 
-- 주차 요금 정책, ROI 명명/검증, 차량 상태 모델을 정리
+- README, 아키텍처 문서, PR 문서의 경로 예시를 현재 구조 기준으로 갱신
 
 ## Review Checklist
 
@@ -178,15 +184,17 @@ app -> domain
 
 ## Current Scope
 
-이번 단계에서 수행한 일:
+현재까지 수행한 일:
 
-- 새 계층 구조의 폴더 생성
-- `.gitkeep` 추가로 Git 추적 가능 상태 확보
-- 의존 규칙과 전환 기준 문서화
+- `presentation/`, `application/`, `domain/`, `infrastructure/`, `shared/` 기준으로 실제 코드 이동 완료
+- `MainWindowController`의 큰 책임을 specialized controller로 분리
+- DB 화면용 application service 도입
+- repository, RTSP, video, metadata, OCR, Telegram, RPi, ReID extractor를 `infrastructure/` 아래로 이동
+- 주차 정책/추적 규칙을 `domain/parking`으로 이동
 
-이번 단계에서 아직 하지 않은 일:
+현재 남아 있는 일:
 
-- 기존 코드 파일 이동
-- include 경로 정리
+- 실제 Windows/Qt Creator 빌드에서 남는 경로/타입 문제 추가 정리
+- MSVC toolchain include path 문제 해결
 - CMake 타깃 분리
-- 인터페이스 추출 및 DI 도입
+- composition root 및 DI 구조 보강

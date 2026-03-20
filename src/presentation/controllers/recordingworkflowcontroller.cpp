@@ -1,11 +1,11 @@
 #include "recordingworkflowcontroller.h"
 
-#include "camera/camerasource.h"
-#include "database/mediarepository.h"
+#include "infrastructure/camera/camerasource.h"
+#include "infrastructure/persistence/mediarepository.h"
 #include "presentation/controllers/recordpanelcontroller.h"
 #include "presentation/widgets/videowidget.h"
-#include "video/mediarecorderworker.h"
-#include "video/videobuffermanager.h"
+#include "infrastructure/video/mediarecorderworker.h"
+#include "infrastructure/video/videobuffermanager.h"
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>

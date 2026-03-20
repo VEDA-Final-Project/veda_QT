@@ -7,6 +7,7 @@
 
 class QPushButton;
 class QTableWidget;
+class UserAdminApplicationService;
 
 class UserDbPanelController : public QObject {
   Q_OBJECT
@@ -21,8 +22,8 @@ public:
   };
 
   struct Context {
+    UserAdminApplicationService *service = nullptr;
     std::function<void(const QString &)> logMessage;
-    std::function<void(const QString &)> userDeleted;
   };
 
   explicit UserDbPanelController(const UiRefs &uiRefs, Context context,

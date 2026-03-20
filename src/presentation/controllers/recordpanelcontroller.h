@@ -1,9 +1,9 @@
 #ifndef RECORDPANELCONTROLLER_H
 #define RECORDPANELCONTROLLER_H
 
-#include "database/mediarepository.h"
+#include "infrastructure/persistence/mediarepository.h"
 #include "presentation/widgets/videowidget.h"
-#include "video/sharedvideoframe.h"
+#include "infrastructure/video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QCheckBox>
 #include <QComboBox>
