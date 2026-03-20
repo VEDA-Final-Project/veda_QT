@@ -26,11 +26,15 @@ signals:
   void frameReady(const QByteArray &nalUnit, uint32_t timestamp);
   void metadataReady(const QByteArray &xmlData, uint32_t timestamp);
 
+public slots:
+  void requestVideoResync();
+
 private:
   void handleVideoPacket(const QByteArray &payload,
                          uint32_t timestamp,
                          quint16 seqNum,
-                         bool markerBit);
+                         bool markerBit,
+                         quint32 ssrc);
   void handleMetadataPacket(const QByteArray &payload, uint32_t timestamp);
   void appendAnnexBNal(const QByteArray &nalPayload);
   void flushVideoAccessUnit(uint32_t timestamp);
@@ -45,7 +49,9 @@ private:
   QList<QByteArray> m_h264ParameterSets;
   uint32_t m_lastVideoTs = 0;
   uint32_t m_lastMetaTs = 0;
+  quint32 m_lastVideoSsrc = 0;
   quint16 m_lastVideoSeq = 0;
+  bool m_haveLastVideoSsrc = false;
   bool m_haveLastVideoSeq = false;
   bool m_videoAccessUnitDamaged = false;
   bool m_waitingForIdr = true;

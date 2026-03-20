@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QHash>
 #include <QJsonArray>
+#include <QPointer>
 #include <QProcessEnvironment>
 #include <QJsonValue>
 #include <QtConcurrent>
@@ -32,9 +33,15 @@ QString normalizedProfileName(const QString &profile) {
 }
 
 bool useOfficialMikeySampleMode() {
-  return QProcessEnvironment::systemEnvironment()
-      .value("VEDA_SRTP_USE_OFFICIAL_MIKEY_SAMPLE")
-      .trimmed() == QStringLiteral("1");
+  const QString value = QProcessEnvironment::systemEnvironment()
+                            .value("VEDA_SRTP_USE_OFFICIAL_MIKEY_SAMPLE")
+                            .trimmed()
+                            .toLower();
+  if (value.isEmpty()) {
+    return true;
+  }
+  return value == QStringLiteral("1") || value == QStringLiteral("true") ||
+         value == QStringLiteral("yes");
 }
 
 QStringList allowedSrtpDiagnosticCameraKeys() {
@@ -175,6 +182,7 @@ void CameraSource::start() {
 
 void CameraSource::stop() {
   m_shouldRun = false;
+  m_reidProcessing = false;
   m_videoReadyNotified = false;
   m_latestFrameObjects.clear();
   m_latestFramePtr.reset();
@@ -512,7 +520,22 @@ void CameraSource::onReidDispatchTick() {
   QList<ObjectInfo> objects = m_latestFrameObjects;
   QSharedPointer<cv::Mat> framePtr = m_latestFramePtr;
 
-  (void)QtConcurrent::run([this, objects, framePtr]() {
+  QPointer<CameraSource> self(this);
+  (void)QtConcurrent::run([self, objects, framePtr]() {
+    if (!self || !self->m_shouldRun) {
+      if (self) {
+        QMetaObject::invokeMethod(
+            self,
+            [self]() {
+              if (self) {
+                self->m_reidProcessing = false;
+              }
+            },
+            Qt::QueuedConnection);
+      }
+      return;
+    }
+
     QList<ObjectInfo> processedObjects = objects;
     cv::Mat frame = *framePtr; // Swallow copy (ref-counted)
     const int frameW = frame.cols;
@@ -526,6 +549,9 @@ void CameraSource::onReidDispatchTick() {
     int vehicleCount = 0;
 
     for (ObjectInfo &obj : processedObjects) {
+      if (!self || !self->m_shouldRun) {
+        break;
+      }
       bool isVehicle = isVehicleType(obj.type);
       if (!isVehicle)
         continue;
@@ -547,7 +573,7 @@ void CameraSource::onReidDispatchTick() {
 
       // Partial Clone: Only clone the small vehicle area, not the whole 4K frame!
       cv::Mat vehicleCrop = frame(roi).clone(); 
-      obj.reidFeatures = m_reidExtractor.extract(vehicleCrop);
+      obj.reidFeatures = self->m_reidExtractor.extract(vehicleCrop);
 
       if (!obj.reidFeatures.empty()) {
         extractedAny = true;
@@ -556,15 +582,20 @@ void CameraSource::onReidDispatchTick() {
 
     // Update ReID features asynchronously without blocking or slowing down main
     // tracking (30fps)
-    QMetaObject::invokeMethod(
-        this,
-        [this, processedObjects]() {
-          if (m_parkingService) {
-            m_parkingService->updateReidFeatures(processedObjects);
-          }
-          m_reidProcessing = false;
-        },
-        Qt::QueuedConnection);
+    if (self) {
+      QMetaObject::invokeMethod(
+          self,
+          [self, processedObjects]() {
+            if (!self) {
+              return;
+            }
+            if (self->m_parkingService) {
+              self->m_parkingService->updateReidFeatures(processedObjects);
+            }
+            self->m_reidProcessing = false;
+          },
+          Qt::QueuedConnection);
+    }
   });
 }
 
@@ -664,12 +695,7 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   if (useOfficialMikeySampleMode() && connectionInfo.srtpEnabled &&
       !isAllowedSrtpDiagnosticCamera(m_cameraKey)) {
     connectionInfo.srtpEnabled = false;
-    qDebug() << "[DEBUG][CameraSource] forcing non-SRTP for cameraKey:"
-             << m_cameraKey << "(staged SRTP diagnostic mode)";
   }
-
-  qDebug() << "[DEBUG][CameraSource] cameraKey:" << m_cameraKey
-           << ", srtpEnabled from config:" << connectionInfo.srtpEnabled;
 
   connectionInfo.profile = displayProfile.trimmed().isEmpty()
                                ? cfg.cameraProfile(m_cameraKey).trimmed()

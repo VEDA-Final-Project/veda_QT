@@ -1,6 +1,8 @@
 #include "srtporchestrator.h"
 #include <QDebug>
 #include <QAtomicInt>
+#include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QThread>
 
 static QAtomicInt s_nextRtpPort(50000); 
@@ -42,6 +44,15 @@ bool looksLikePlainMetadataRtp(const QByteArray &packet) {
          || payload.contains("<tt:MetadataStream")
          || payload.contains("<wsnt:NotificationMessage");
 }
+
+bool forceMetadataTcpInterleaved() {
+  const QString value = QProcessEnvironment::systemEnvironment()
+                            .value(QStringLiteral("VEDA_SRTP_FORCE_METADATA_TCP"))
+                            .trimmed()
+                            .toLower();
+  return value == QStringLiteral("1") || value == QStringLiteral("true") ||
+         value == QStringLiteral("yes");
+}
 } // namespace
 
 SrtpOrchestrator::SrtpOrchestrator(QObject *parent)
@@ -63,6 +74,8 @@ SrtpOrchestrator::SrtpOrchestrator(QObject *parent)
   m_videoDecoder->moveToThread(m_decoderThread);
 
   m_metaParser = new SrtpMetadataParser(this);
+  m_keepAliveTimer = new QTimer(this);
+  m_keepAliveTimer->setSingleShot(false);
   m_udpSocket = new QUdpSocket(this);
   m_metaUdpSocket = new QUdpSocket(this);
 
@@ -75,9 +88,13 @@ SrtpOrchestrator::SrtpOrchestrator(QObject *parent)
           &SrtpOrchestrator::onInterleavedDataReceived);
   connect(m_udpSocket, &QUdpSocket::readyRead, this, &SrtpOrchestrator::onUdpReadyRead);
   connect(m_metaUdpSocket, &QUdpSocket::readyRead, this, &SrtpOrchestrator::onMetaUdpReadyRead);
+  connect(m_keepAliveTimer, &QTimer::timeout, this,
+          &SrtpOrchestrator::onKeepAliveTimeout);
   connect(m_depacketizer, &RtpDepacketizer::frameReady, m_videoDecoder, &SrtpVideoThread::decodeFrame, Qt::QueuedConnection);
   connect(m_depacketizer, &RtpDepacketizer::metadataReady, m_metaParser, &SrtpMetadataParser::parse);
   connect(m_videoDecoder, &SrtpVideoThread::frameCaptured, this, &SrtpOrchestrator::frameCaptured);
+  connect(m_videoDecoder, &SrtpVideoThread::decoderLostSync, m_depacketizer,
+          &RtpDepacketizer::requestVideoResync, Qt::QueuedConnection);
   connect(m_metaParser, &SrtpMetadataParser::metadataReceived, this, &SrtpOrchestrator::metadataReceived);
 
   m_decoderThread->start();
@@ -129,6 +146,10 @@ void SrtpOrchestrator::clearNegotiationState() {
   m_videoCodecId = AV_CODEC_ID_H264;
   m_hasRtspSession = false;
   m_metadataSetupRetriedWithoutRequire = false;
+  if (m_keepAliveTimer) {
+    m_keepAliveTimer->stop();
+  }
+  m_keepAliveIntervalMs = 20000;
   m_keys = MikeyBuilder::MikeyKeys();
 }
 
@@ -150,6 +171,8 @@ bool SrtpOrchestrator::isRunning() const {
 void SrtpOrchestrator::start() {
   m_stopRequested = false;
   clearNegotiationState();
+  m_videoPreferTcpInterleaved = true;
+  m_metadataPreferUdp = !forceMetadataTcpInterleaved();
   m_phase = HandshakePhase::ConnectingTls;
   bindUdpSockets();
   m_rtspClient->setCredentials(m_user, m_password);
@@ -218,9 +241,6 @@ bool SrtpOrchestrator::retryMetadataSetupWithoutRequire(
     return false;
   }
 
-  qWarning() << "[SRTP][Meta] Metadata SETUP rejected with require option:"
-             << statusCode << statusText << "unsupported:" << unsupported
-             << "Retrying without Require header.";
   m_metadataSetupRetriedWithoutRequire = true;
   m_metadataRequire.clear();
   m_rtspClient->sendSetup(m_metaTrackUrl, m_pendingMetaTransport, QByteArray(),
@@ -259,8 +279,6 @@ void SrtpOrchestrator::applyTransportSelection(bool isMetadata,
     m_metadataUsesInterleaved = usesInterleaved;
     if (!m_metadataUsesInterleaved) {
       m_metadataUsesSrtp = false;
-      qDebug() << "[SRTP][Meta] Camera fell back to UDP transport for metadata:"
-               << transport;
     }
     return;
   }
@@ -279,7 +297,10 @@ void SrtpOrchestrator::processVideoPacket(const QByteArray &packet) {
 
 void SrtpOrchestrator::processMetadataPacket(const QByteArray &packet) {
   QByteArray metaPacket = packet;
-  if (m_metadataUsesSrtp && !looksLikePlainMetadataRtp(packet)) {
+  const bool bypassMetadataDecrypt =
+      m_metadataUsesInterleaved && forceMetadataTcpInterleaved();
+  if (!bypassMetadataDecrypt && m_metadataUsesSrtp &&
+      !looksLikePlainMetadataRtp(packet)) {
     metaPacket = m_decryptor->decrypt(packet);
   }
   if (!metaPacket.isEmpty()) {
@@ -362,6 +383,8 @@ void SrtpOrchestrator::onRtspResponse(int cseq,
     handleSetupResponse(headers);
   } else if (effectiveMethod == QStringLiteral("PLAY")) {
     handlePlayResponse(headers);
+  } else if (effectiveMethod == QStringLiteral("GET_PARAMETER")) {
+    return;
   } else {
     qWarning() << "[SRTP] Received 200 OK for unhandled RTSP method:"
                << effectiveMethod;
@@ -436,7 +459,6 @@ void SrtpOrchestrator::handleDescribeResponse(const QMap<QString, QString> &head
   m_metaTrackUrl = metaUrl;
   m_videoCodecId = detectedCodecId;
 
-  qDebug() << "[SRTP][SDP] Selected video codec:" << detectedCodecName;
   m_depacketizer->setH264ParameterSets(detectedParameterSets);
 
   QMetaObject::invokeMethod(
@@ -453,7 +475,6 @@ void SrtpOrchestrator::handleDescribeResponse(const QMap<QString, QString> &head
   }
   
   configurePendingTransports();
-  qDebug() << "[SRTP][Step2] Sending SETUP for video track:" << m_videoTrackUrl;
   m_phase = HandshakePhase::AwaitingSetupVideo;
   m_rtspClient->sendSetup(m_videoTrackUrl, m_pendingTransport, m_keys.mikeyBlob,
                           false);
@@ -461,6 +482,7 @@ void SrtpOrchestrator::handleDescribeResponse(const QMap<QString, QString> &head
 
 void SrtpOrchestrator::handleSetupResponse(const QMap<QString, QString> &headers) {
   QString responseSessionId = headers.value("Session");
+  const QString sessionHeader = responseSessionId;
   const QString transport = headers.value(QStringLiteral("Transport"));
   int sep = responseSessionId.indexOf(';');
   if (sep != -1) responseSessionId = responseSessionId.left(sep);
@@ -471,6 +493,7 @@ void SrtpOrchestrator::handleSetupResponse(const QMap<QString, QString> &headers
 
   if (m_phase == HandshakePhase::AwaitingSetupVideo) {
     m_sessionId = responseSessionId;
+    updateKeepAliveInterval(sessionHeader);
     applyTransportSelection(false, transport);
     if (!m_decryptor->init(m_keys.masterKey, m_keys.masterSalt, m_keys.mkiId)) {
       failHandshake(QStringLiteral("Failed to initialize SRTP decryptor after SETUP."),
@@ -480,7 +503,6 @@ void SrtpOrchestrator::handleSetupResponse(const QMap<QString, QString> &headers
     m_hasRtspSession = true;
 
     if (!m_metaTrackUrl.isEmpty()) {
-      qDebug() << "[SRTP][Step2] Sending SETUP for metadata track:" << m_metaTrackUrl;
       m_phase = HandshakePhase::AwaitingSetupMetadata;
       m_rtspClient->sendSetup(m_metaTrackUrl, m_pendingMetaTransport, QByteArray(),
                               true, m_sessionId, m_metadataRequire);
@@ -488,13 +510,23 @@ void SrtpOrchestrator::handleSetupResponse(const QMap<QString, QString> &headers
     }
   } else if (m_phase == HandshakePhase::AwaitingSetupMetadata) {
     applyTransportSelection(true, transport);
+    if (forceMetadataTcpInterleaved()) {
+      if (m_metadataUsesInterleaved) {
+        qWarning() << "[SRTP][Meta] Metadata transport accepted on TLS "
+                      "interleaved channel:"
+                   << transport;
+      } else {
+        qWarning() << "[SRTP][Meta] Metadata transport did not stay on TLS "
+                      "interleaved channel:"
+                   << transport;
+      }
+    }
     if (m_sessionId != responseSessionId) {
       qWarning() << "[SRTP][Step2] Metadata SETUP returned different Session id:"
                  << responseSessionId << "expected:" << m_sessionId;
     }
   }
 
-  qDebug() << "[SRTP] SETUP OK. Session:" << m_sessionId << "Sending PLAY...";
   m_phase = HandshakePhase::AwaitingPlay;
   m_rtspClient->sendPlay(baseUrl(), m_sessionId);
 }
@@ -502,7 +534,36 @@ void SrtpOrchestrator::handleSetupResponse(const QMap<QString, QString> &headers
 void SrtpOrchestrator::handlePlayResponse(const QMap<QString, QString> &headers) {
   Q_UNUSED(headers);
   m_phase = HandshakePhase::Streaming;
-  qDebug() << "[SRTP] Streaming active!";
+  if (m_keepAliveTimer && !m_sessionId.isEmpty()) {
+    m_keepAliveTimer->start(m_keepAliveIntervalMs);
+  }
+}
+
+void SrtpOrchestrator::onKeepAliveTimeout() {
+  if (m_phase != HandshakePhase::Streaming || m_sessionId.isEmpty() ||
+      !m_session->isEncrypted()) {
+    return;
+  }
+  m_rtspClient->sendGetParameter(baseUrl(), m_sessionId);
+}
+
+void SrtpOrchestrator::updateKeepAliveInterval(const QString &sessionHeader) {
+  static const QRegularExpression timeoutRe(QStringLiteral("timeout=(\\d+)"),
+                                            QRegularExpression::CaseInsensitiveOption);
+  const QRegularExpressionMatch match = timeoutRe.match(sessionHeader);
+  if (!match.hasMatch()) {
+    m_keepAliveIntervalMs = 20000;
+    return;
+  }
+
+  const int timeoutSec = match.captured(1).toInt();
+  if (timeoutSec <= 0) {
+    m_keepAliveIntervalMs = 20000;
+    return;
+  }
+
+  const int keepAliveSec = qMax(10, timeoutSec / 2);
+  m_keepAliveIntervalMs = keepAliveSec * 1000;
 }
 
 void SrtpOrchestrator::onUdpReadyRead() {

@@ -32,6 +32,7 @@ public:
                  const QString &sessionId = QString(),
                  const QString &metadataRequire = QString());
   void sendPlay(const QString &url, const QString &sessionId);
+  void sendGetParameter(const QString &url, const QString &sessionId);
   void sendTeardown(const QString &url, const QString &sessionId);
 
 signals:

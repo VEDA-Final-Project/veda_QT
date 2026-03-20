@@ -38,6 +38,7 @@ public slots:
 signals:
   void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void logMessage(const QString &msg);
+  void decoderLostSync();
 
 private:
   void cleanup();

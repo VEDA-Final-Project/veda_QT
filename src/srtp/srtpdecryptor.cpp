@@ -45,10 +45,6 @@ bool SrtpDecryptor::init(const QByteArray &masterKey,
 
   m_failureLogBudget = 8;
   m_failureSuppressedLogged = false;
-  qDebug() << "[SRTP][Step4] Decryptor received key material."
-           << "mkiId:" << mkiId.toHex()
-           << "masterKey:" << masterKey.toHex()
-           << "masterSalt:" << masterSalt.toHex();
   return configureSession(mkiId);
 }
 
@@ -94,8 +90,6 @@ bool SrtpDecryptor::configureSession(const QByteArray &mkiId) {
   }
 
   m_initialized = true;
-  qDebug() << "[SRTP][Step4] SRTP Decryptor session initialized. useMki:" << m_useMki
-           << "mkiId:" << m_mkiId.toHex();
   return true;
 }
 

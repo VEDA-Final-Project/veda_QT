@@ -18,7 +18,6 @@ SrtpSession::~SrtpSession() {
 
 void SrtpSession::connectToCamera(const QString &ip, int port) {
   m_targetIp = ip;
-  qDebug() << "[SRTP][Step1] Connecting to TLS tunnel:" << ip << ":" << port;
 
   QSslConfiguration sslConfig = m_sslSocket->sslConfiguration();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -46,16 +45,11 @@ QString SrtpSession::errorString() const {
 }
 
 void SrtpSession::onEncrypted() {
-  qDebug() << "[SRTP][Step1] TLS Handshake Success! Tunnel encrypted."
-           << "protocol:" << m_sslSocket->sessionProtocol()
-           << "cipher:" << m_sslSocket->sessionCipher().name();
   emit encrypted();
 }
 
 void SrtpSession::onSslErrors(const QList<QSslError> &errors) {
-  for (const QSslError &error : errors) {
-    qDebug() << "[SRTP][Step1] SSL Error (Ignoring):" << error.errorString();
-  }
+  Q_UNUSED(errors);
   m_sslSocket->ignoreSslErrors();
 }
 
@@ -65,6 +59,5 @@ void SrtpSession::onErrorOccurred(QAbstractSocket::SocketError socketError) {
 }
 
 void SrtpSession::onDisconnected() {
-  qDebug() << "[SRTP][Step1] TLS Tunnel disconnected.";
   emit disconnected();
 }

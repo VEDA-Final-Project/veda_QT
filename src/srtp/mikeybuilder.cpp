@@ -156,9 +156,15 @@ void loadTemplateKeyMaterial(MikeyBuilder::MikeyKeys &keys) {
 }
 
 bool useOfficialSampleUnchanged() {
-  return QProcessEnvironment::systemEnvironment()
-      .value("VEDA_SRTP_USE_OFFICIAL_MIKEY_SAMPLE")
-      .trimmed() == QStringLiteral("1");
+  const QString value = QProcessEnvironment::systemEnvironment()
+                            .value("VEDA_SRTP_USE_OFFICIAL_MIKEY_SAMPLE")
+                            .trimmed()
+                            .toLower();
+  if (value.isEmpty()) {
+    return true;
+  }
+  return value == QStringLiteral("1") || value == QStringLiteral("true") ||
+         value == QStringLiteral("yes");
 }
 
 } // namespace
@@ -170,7 +176,6 @@ MikeyBuilder::MikeyKeys MikeyBuilder::generate(const QByteArray &preSharedSecret
     keys.mikeyBlob = hanwhaMikeyTemplate();
     loadTemplateKeyMaterial(keys);
     keys.base64Data = QString::fromLatin1(keys.mikeyBlob.toBase64());
-    qDebug() << "[SRTP][Step3] Diagnostic mode: using official Hanwha SETUP MIKEY sample unchanged.";
     return keys;
   }
   
@@ -201,7 +206,6 @@ MikeyBuilder::MikeyKeys MikeyBuilder::generate(const QByteArray &preSharedSecret
   // 4. Base64 인코딩
   keys.base64Data = QString::fromLatin1(keys.mikeyBlob.toBase64());
 
-  qDebug() << "[SRTP][Step3] Generated PSK MIKEY for SETUP.";
   return keys;
 }
 

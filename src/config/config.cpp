@@ -201,7 +201,6 @@ QString Config::cameraPassword(const QString &cameraKey) const {
 bool Config::cameraSrtpEnabled(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
   const QJsonValue val = (cameraObj.isEmpty() ? m_camera : cameraObj)["srtpEnabled"];
-  qDebug() << "[DEBUG][Config] cameraKey:" << cameraKey << "srtpEnabled JSON val:" << val;
   return val.toBool(false);
 }
 

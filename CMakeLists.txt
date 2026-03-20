@@ -253,19 +253,27 @@ else()
                         $<TARGET_FILE_DIR:rtsp_test>
             )
         endif()
-    else()
-        message(FATAL_ERROR
+else()
+    message(FATAL_ERROR
             "ONNX Runtime package not found. Set ONNXRUNTIME_ROOT to the extracted folder "
             "(it must contain include/onnxruntime_cxx_api.h and lib/onnxruntime.lib).")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_SOURCE_DIR}/CMakeLists_OpenVINO_Fragment.txt")
+    include("${CMAKE_SOURCE_DIR}/CMakeLists_OpenVINO_Fragment.txt")
+endif()
+
 # SRTP & FFmpeg 연동
 find_package(FFmpeg QUIET)
-find_library(FFMPEG_AVCODEC NAMES avcodec PATHS "C:/vcpkg/installed/x64-windows/lib")
-find_library(FFMPEG_AVFORMAT NAMES avformat PATHS "C:/vcpkg/installed/x64-windows/lib")
-find_library(FFMPEG_AVUTIL NAMES avutil PATHS "C:/vcpkg/installed/x64-windows/lib")
-find_library(FFMPEG_SWSCALE NAMES swscale PATHS "C:/vcpkg/installed/x64-windows/lib")
+unset(FFMPEG_AVCODEC CACHE)
+unset(FFMPEG_AVFORMAT CACHE)
+unset(FFMPEG_AVUTIL CACHE)
+unset(FFMPEG_SWSCALE CACHE)
+find_library(FFMPEG_AVCODEC NAMES avcodec PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
+find_library(FFMPEG_AVFORMAT NAMES avformat PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
+find_library(FFMPEG_AVUTIL NAMES avutil PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
+find_library(FFMPEG_SWSCALE NAMES swscale PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
 
 if(FFMPEG_AVCODEC AND FFMPEG_AVFORMAT AND FFMPEG_AVUTIL AND FFMPEG_SWSCALE)
     target_include_directories(rtsp_test PRIVATE "C:/vcpkg/installed/x64-windows/include")
@@ -276,8 +284,14 @@ else()
     message(WARNING "FFmpeg libavcodec/avformat/avutil/swscale not found in vcpkg struct.")
 endif()
 
-find_path(SRTP_INCLUDE_DIR srtp2/srtp.h)
-find_library(SRTP_LIBRARY NAMES srtp2)
+find_path(SRTP_INCLUDE_DIR srtp2/srtp.h
+    PATHS
+        "C:/vcpkg/installed/x64-windows/include"
+        "D:/vcpkg/installed/x64-windows/include")
+find_library(SRTP_LIBRARY NAMES srtp2
+    PATHS
+        "C:/vcpkg/installed/x64-windows/lib"
+        "D:/vcpkg/installed/x64-windows/lib")
 if(SRTP_INCLUDE_DIR AND SRTP_LIBRARY)
     target_include_directories(rtsp_test PRIVATE ${SRTP_INCLUDE_DIR})
     target_link_libraries(rtsp_test PRIVATE ${SRTP_LIBRARY})

@@ -24,7 +24,8 @@ void RtpDepacketizer::processPacket(const QByteArray &rtpPacket) {
   const quint16 seqNum =
       qFromBigEndian<quint16>(reinterpret_cast<const uchar *>(rtpPacket.data() + 2));
   uint32_t timestamp = qFromBigEndian<uint32_t>(reinterpret_cast<const uchar*>(rtpPacket.data() + 4));
-  // uint32_t ssrc = qFromBigEndian<uint32_t>(reinterpret_cast<const uchar*>(rtpPacket.data() + 8));
+  const quint32 ssrc =
+      qFromBigEndian<quint32>(reinterpret_cast<const uchar *>(rtpPacket.data() + 8));
   int packetSize = rtpPacket.size();
 
   const bool hasPadding = (v_p_x_cc & 0x20) != 0;
@@ -56,7 +57,7 @@ void RtpDepacketizer::processPacket(const QByteArray &rtpPacket) {
   // 한화비전의 경우 보통 영상은 96, 메타데이터는 100~105 사이인 경우가 많음
   
   if (payloadType == 96 || payloadType == 97 || payloadType == 98) {
-    handleVideoPacket(payload, timestamp, seqNum, markerBit);
+    handleVideoPacket(payload, timestamp, seqNum, markerBit, ssrc);
   } else if (payloadType == 107) {
     handleMetadataPacket(payload, timestamp);
   } else {
@@ -75,8 +76,17 @@ void RtpDepacketizer::processPacket(const QByteArray &rtpPacket) {
 void RtpDepacketizer::handleVideoPacket(const QByteArray &payload,
                                         uint32_t timestamp,
                                         quint16 seqNum,
-                                        bool markerBit) {
+                                        bool markerBit,
+                                        quint32 ssrc) {
   if (payload.isEmpty()) return;
+
+  if (m_haveLastVideoSsrc && ssrc != m_lastVideoSsrc) {
+    qWarning() << "[SRTP][RTP] Video SSRC changed. expected:" << m_lastVideoSsrc
+               << "actual:" << ssrc << "timestamp:" << timestamp;
+    requestVideoResync();
+  }
+  m_lastVideoSsrc = ssrc;
+  m_haveLastVideoSsrc = true;
 
   if (m_lastVideoTs != 0 && timestamp != m_lastVideoTs) {
     flushVideoAccessUnit(m_lastVideoTs);
@@ -89,6 +99,7 @@ void RtpDepacketizer::handleVideoPacket(const QByteArray &payload,
       qWarning() << "[SRTP][RTP] Video packet loss/reorder detected. expectedSeq:"
                  << expectedSeq << "actualSeq:" << seqNum << "timestamp:" << timestamp;
       m_videoAccessUnitDamaged = true;
+      m_waitingForIdr = true;
       m_forceParameterSetsOnNextIdr = true;
       m_fuBuffer.clear();
     }
@@ -119,6 +130,9 @@ void RtpDepacketizer::handleVideoPacket(const QByteArray &payload,
     }
 
     if (m_fuBuffer.isEmpty()) {
+      m_videoAccessUnitDamaged = true;
+      m_waitingForIdr = true;
+      m_forceParameterSetsOnNextIdr = true;
       return;
     }
 
@@ -182,6 +196,7 @@ void RtpDepacketizer::discardVideoAccessUnit(const char *reason, uint32_t timest
   m_fuBuffer.clear();
   m_videoAccessUnitDamaged = false;
   if (qstrcmp(reason, "damaged_access_unit") == 0) {
+    m_waitingForIdr = true;
     m_forceParameterSetsOnNextIdr = true;
   }
 }
@@ -259,4 +274,16 @@ void RtpDepacketizer::handleMetadataPacket(const QByteArray &payload, uint32_t t
     emit metadataReady(m_metadataBuffer, timestamp);
     m_metadataBuffer.clear();
   }
+}
+
+void RtpDepacketizer::requestVideoResync() {
+  m_videoBuffer.clear();
+  m_fuBuffer.clear();
+  m_videoAccessUnitDamaged = false;
+  m_waitingForIdr = true;
+  m_forceParameterSetsOnNextIdr = true;
+  m_lastVideoTs = 0;
+  m_lastVideoSsrc = 0;
+  m_haveLastVideoSsrc = false;
+  m_haveLastVideoSeq = false;
 }

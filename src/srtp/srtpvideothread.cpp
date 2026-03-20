@@ -80,7 +80,6 @@ bool SrtpVideoThread::initCodec(AVCodecID codecId) {
   }
 
   m_initialized = true;
-  qDebug() << "[SRTP][Step5] FFmpeg Video Decoder initialized. Codec:" << codec->name;
   return true;
 }
 
@@ -123,6 +122,8 @@ bool SrtpVideoThread::sendPacketToDecoder(const uint8_t *data, int size) {
   int ret = avcodec_send_packet(m_codecCtx, m_packet);
   if (ret < 0) {
     qWarning() << "[SRTP][Step5] Error sending a packet for decoding";
+    avcodec_flush_buffers(m_codecCtx);
+    emit decoderLostSync();
     return false;
   }
 
@@ -132,6 +133,8 @@ bool SrtpVideoThread::sendPacketToDecoder(const uint8_t *data, int size) {
       break;
     } else if (ret < 0) {
       qWarning() << "[SRTP][Step5] Error during decoding";
+      avcodec_flush_buffers(m_codecCtx);
+      emit decoderLostSync();
       return false;
     }
 

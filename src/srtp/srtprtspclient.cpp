@@ -88,6 +88,15 @@ void SrtpRtspClient::sendPlay(const QString &url, const QString &sessionId) {
   sendRequest("PLAY", url, headers);
 }
 
+void SrtpRtspClient::sendGetParameter(const QString &url,
+                                      const QString &sessionId) {
+  RtspHeaderList headers;
+  headers.append(qMakePair(QStringLiteral("Session"), sessionId));
+  headers.append(
+      qMakePair(QStringLiteral("Content-Type"), QStringLiteral("text/parameters")));
+  sendRequest("GET_PARAMETER", url, headers);
+}
+
 void SrtpRtspClient::sendTeardown(const QString &url, const QString &sessionId) {
   RtspHeaderList headers;
   headers.append(qMakePair(QStringLiteral("Session"), sessionId));
@@ -207,12 +216,6 @@ void SrtpRtspClient::onReadyRead() {
     }
 
     const RtspRequestInfo requestInfo = m_pendingRequests.take(cseq);
-    qDebug() << "[SRTP][Step2] Received RTSP Response:" << statusCode << statusText << "CSeq:" << cseq << "BodyLen:" << body.size();
-    if (requestInfo.method.isEmpty()) {
-      qWarning() << "[SRTP][Trace] Response CSeq" << cseq
-                 << "did not match any pending request. Pending keys:"
-                 << m_pendingRequests.keys();
-    }
     emit responseReceived(cseq, statusCode, statusText, headers, body,
                           requestInfo.method, requestInfo.url,
                           !requestInfo.method.isEmpty());

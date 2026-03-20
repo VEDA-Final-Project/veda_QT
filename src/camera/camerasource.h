@@ -125,6 +125,8 @@ private:
   int m_reconnectAttempt = 0;
   QElapsedTimer m_roiSyncTimer;
   QElapsedTimer m_zoneStatusTimer;
+  QElapsedTimer m_frameCapturedTraceTimer;
+  QElapsedTimer m_displayRenderTraceTimer;
   QTimer *m_healthTimer = nullptr;
   QTimer *m_reconnectTimer = nullptr;
   QTimer *m_displayRenderTimer = nullptr;

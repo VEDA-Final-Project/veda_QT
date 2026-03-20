@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QUdpSocket>
 #include <QThread>
 #include <QList>
@@ -60,6 +61,7 @@ private slots:
   void onInterleavedDataReceived(quint8 channel, const QByteArray &data);
   void onUdpReadyRead();
   void onMetaUdpReadyRead();
+  void onKeepAliveTimeout();
 
 private:
   QString baseUrl() const;
@@ -78,6 +80,7 @@ private:
   void applyTransportSelection(bool isMetadata, const QString &transport);
   void processVideoPacket(const QByteArray &packet);
   void processMetadataPacket(const QByteArray &packet);
+  void updateKeepAliveInterval(const QString &sessionHeader);
 
   SrtpSession *m_session;
   SrtpRtspClient *m_rtspClient;
@@ -86,6 +89,7 @@ private:
   SrtpVideoThread *m_videoDecoder;
   QThread *m_decoderThread;
   SrtpMetadataParser *m_metaParser;
+  QTimer *m_keepAliveTimer;
   QUdpSocket *m_udpSocket;
   QUdpSocket *m_metaUdpSocket;
 
@@ -109,6 +113,7 @@ private:
   bool m_hasRtspSession = false;
   bool m_stopRequested = false;
   bool m_metadataSetupRetriedWithoutRequire = false;
+  int m_keepAliveIntervalMs = 20000;
   MikeyBuilder::MikeyKeys m_keys;
 };
 

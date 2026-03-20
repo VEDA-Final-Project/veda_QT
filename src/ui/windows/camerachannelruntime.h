@@ -84,6 +84,7 @@ private:
   bool m_reidPanelActive = false;
   QElapsedTimer m_renderTimer;
   QElapsedTimer m_reidTimer;
+  QElapsedTimer m_displayFrameTraceTimer;
 };
 
 #endif // CAMERACHANNELRUNTIME_H
