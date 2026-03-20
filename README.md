@@ -16,6 +16,9 @@
 
 프로젝트는 기능별 디렉토리로 분리되어 있습니다.
 
+계층형 아키텍처 전환을 위한 새 폴더 뼈대와 의존 규칙은
+`docs/layered-architecture-guidelines.md` 문서를 기준으로 관리합니다.
+
 ```text
 veda_QT/
 ├── CMakeLists.txt

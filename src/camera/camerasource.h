@@ -6,7 +6,7 @@
 #include "parking/parkingservice.h"
 #include "roi/roiservice.h"
 #include "tracking/reidextractor.h"
-#include "ui/video/videoframerenderer.h"
+#include "presentation/widgets/videoframerenderer.h"
 #include "video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QHash>

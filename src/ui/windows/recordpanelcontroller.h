@@ -2,7 +2,7 @@
 #define RECORDPANELCONTROLLER_H
 
 #include "database/mediarepository.h"
-#include "ui/video/videowidget.h"
+#include "presentation/widgets/videowidget.h"
 #include "video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QCheckBox>

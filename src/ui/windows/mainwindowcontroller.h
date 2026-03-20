@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "logging/logdeduplicator.h"
-#include "mainwindowuirefs.h"
+#include "presentation/shell/mainwindowuirefs.h"
 #include "telegram/telegrambotapi.h"
 #include "video/sharedvideoframe.h"
 

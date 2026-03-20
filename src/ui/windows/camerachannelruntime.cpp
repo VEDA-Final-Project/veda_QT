@@ -3,7 +3,7 @@
 #include "camera/camerasource.h"
 #include "parking/parkingservice.h"
 #include "roi/roiservice.h"
-#include "ui/video/videowidget.h"
+#include "presentation/widgets/videowidget.h"
 #include <QCheckBox>
 #include <QColor>
 #include <QDateTime>

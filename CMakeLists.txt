@@ -12,15 +12,15 @@ qt_add_executable(rtsp_test
     # Main
     src/main.cpp
     # UI
-    src/ui/windows/mainwindow.cpp
-    src/ui/windows/mainwindow.h
-    src/ui/windows/mainwindowuirefs.h
-    src/ui/windows/loginpage.cpp
-    src/ui/windows/loginpage.h
+    src/presentation/shell/mainwindow.cpp
+    src/presentation/shell/mainwindow.h
+    src/presentation/shell/mainwindowuirefs.h
+    src/presentation/pages/loginpage.cpp
+    src/presentation/pages/loginpage.h
     src/ui/windows/camerachannelruntime.cpp
     src/ui/windows/camerachannelruntime.h
-    src/ui/windows/controllerdialog.cpp
-    src/ui/windows/controllerdialog.h
+    src/presentation/widgets/controllerdialog.cpp
+    src/presentation/widgets/controllerdialog.h
     src/ui/windows/mainwindowcontroller.cpp
     src/ui/windows/mainwindowcontroller.h
     src/ui/windows/dbpanelcontroller.cpp
@@ -35,12 +35,12 @@ qt_add_executable(rtsp_test
     src/ui/windows/rpipanelcontroller.h
     src/ui/windows/recordpanelcontroller.cpp
     src/ui/windows/recordpanelcontroller.h
-    src/ui/video/videowidget.cpp
-    src/ui/video/videowidget.h
-    src/ui/roi/roiinteractionstate.cpp
-    src/ui/roi/roiinteractionstate.h
-    src/ui/video/videoframerenderer.cpp
-    src/ui/video/videoframerenderer.h
+    src/presentation/widgets/videowidget.cpp
+    src/presentation/widgets/videowidget.h
+    src/presentation/widgets/roiinteractionstate.cpp
+    src/presentation/widgets/roiinteractionstate.h
+    src/presentation/widgets/videoframerenderer.cpp
+    src/presentation/widgets/videoframerenderer.h
     # Video
     src/video/videothread.cpp
     src/video/videothread.h
