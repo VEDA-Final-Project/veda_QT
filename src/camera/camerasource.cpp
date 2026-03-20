@@ -1,10 +1,13 @@
 #include "camera/camerasource.h"
+#include <QDebug>
 
 #include "config/config.h"
 #include "telegram/telegrambotapi.h"
 #include <QDateTime>
+#include <QDebug>
 #include <QHash>
 #include <QJsonArray>
+#include <QProcessEnvironment>
 #include <QJsonValue>
 #include <QtConcurrent>
 #include <algorithm>
@@ -26,6 +29,21 @@ constexpr int kReconnectMaxDelayMs = 30000;
 
 QString normalizedProfileName(const QString &profile) {
   return profile.trimmed().toLower();
+}
+
+bool useOfficialMikeySampleMode() {
+  return QProcessEnvironment::systemEnvironment()
+      .value("VEDA_SRTP_USE_OFFICIAL_MIKEY_SAMPLE")
+      .trimmed() == QStringLiteral("1");
+}
+
+QStringList allowedSrtpDiagnosticCameraKeys() {
+  return {QStringLiteral("camera"), QStringLiteral("camera2"),
+          QStringLiteral("camera3"), QStringLiteral("camera4")};
+}
+
+bool isAllowedSrtpDiagnosticCamera(const QString &cameraKey) {
+  return allowedSrtpDiagnosticCameraKeys().contains(cameraKey.trimmed());
 }
 } // namespace
 
@@ -639,6 +657,20 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   connectionInfo.ip = cfg.cameraIp(m_cameraKey).trimmed();
   connectionInfo.username = cfg.cameraUsername(m_cameraKey).trimmed();
   connectionInfo.password = cfg.cameraPassword(m_cameraKey);
+  connectionInfo.srtpEnabled = cfg.cameraSrtpEnabled(m_cameraKey);
+
+  // 공식 MIKEY 샘플 검증 중에는 허용된 카메라만 SRTP를 타게 해서
+  // RTSP 요청/응답 흐름을 단계적으로 확장합니다.
+  if (useOfficialMikeySampleMode() && connectionInfo.srtpEnabled &&
+      !isAllowedSrtpDiagnosticCamera(m_cameraKey)) {
+    connectionInfo.srtpEnabled = false;
+    qDebug() << "[DEBUG][CameraSource] forcing non-SRTP for cameraKey:"
+             << m_cameraKey << "(staged SRTP diagnostic mode)";
+  }
+
+  qDebug() << "[DEBUG][CameraSource] cameraKey:" << m_cameraKey
+           << ", srtpEnabled from config:" << connectionInfo.srtpEnabled;
+
   connectionInfo.profile = displayProfile.trimmed().isEmpty()
                                ? cfg.cameraProfile(m_cameraKey).trimmed()
                                : displayProfile.trimmed();

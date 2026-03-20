@@ -195,6 +195,16 @@ QString Config::cameraPassword(const QString &cameraKey) const {
   return (cameraObj.isEmpty() ? m_camera : cameraObj)["password"].toString("");
 }
 
+/**
+ * @brief SRTP 보안 스트리밍 활성화 여부
+ */
+bool Config::cameraSrtpEnabled(const QString &cameraKey) const {
+  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+  const QJsonValue val = (cameraObj.isEmpty() ? m_camera : cameraObj)["srtpEnabled"];
+  qDebug() << "[DEBUG][Config] cameraKey:" << cameraKey << "srtpEnabled JSON val:" << val;
+  return val.toBool(false);
+}
+
 QString Config::defaultCameraProfile() const {
   return profileValue(QJsonObject(), m_cameraDefaults, "profile",
                       kFallbackCameraProfile);

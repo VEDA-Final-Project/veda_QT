@@ -9,21 +9,25 @@
     "inputHeight": 256
   },
   "camera": {
+    "srtpEnabled": true,
     "ip": "192.168.0.23",
     "username": "admin",
     "password": "1team@@@"
   },
   "camera2": {
+    "srtpEnabled": true,
     "ip": "192.168.0.34",
     "username": "admin",
     "password": "1team@@@"
   },
   "camera3": {
+    "srtpEnabled": true,
     "ip": "192.168.0.76",
     "username": "admin",
     "password": "1team@@@"
   },
   "camera4": {
+    "srtpEnabled": true,
     "ip": "192.168.0.78",
     "username": "admin",
     "password": "1team@@@"

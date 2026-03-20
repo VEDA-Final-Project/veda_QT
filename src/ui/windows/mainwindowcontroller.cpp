@@ -352,9 +352,7 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   updateChannelCardSelection();
   refreshReidTableAllChannels(true);
   connectSignals();
-  bindRecordPreviewSource(m_ui.cmbManualCamera
-                              ? m_ui.cmbManualCamera->currentIndex()
-                              : 0);
+  bindRecordPreviewSource(-1);
   // 상시 녹화 초기화
   for (int i = 0; i < 4; ++i) {
     // 5 FPS 기준 1분(60초) = 300프레임. 넉넉하게 600으로 설정

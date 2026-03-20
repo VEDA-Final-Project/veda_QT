@@ -1,18 +1,15 @@
 #include "cameramanager.h"
-#include "util/rtspurl.h"
+#include <QDebug>
+#include <QDateTime>
 #include <QElapsedTimer>
+#include "util/rtspurl.h"
 
 namespace {
 constexpr unsigned long kThreadStopTimeoutMs = 2000;
-constexpr unsigned long kForceStopWaitMs = 500;
 } // namespace
 
-/**
- * @brief CameraManager 생성자
- */
 CameraManager::CameraManager(QObject *parent)
-    : QObject(parent), m_videoThread(nullptr), m_metadataThread(nullptr) {
-  createDisplayThread();
+    : QObject(parent), m_videoThread(nullptr), m_metadataThread(nullptr), m_srtpOrchestrator(nullptr) {
 }
 
 CameraManager::~CameraManager() { stop(); }
@@ -20,10 +17,8 @@ CameraManager::~CameraManager() { stop(); }
 void CameraManager::createDisplayThread() {
   if (!m_videoThread) {
     m_videoThread = new VideoThread(this);
-    connect(m_videoThread, &VideoThread::frameCaptured, this,
-            &CameraManager::frameCaptured);
-    connect(m_videoThread, &VideoThread::logMessage, this,
-            &CameraManager::logMessage);
+    connect(m_videoThread, &VideoThread::frameCaptured, this, &CameraManager::frameCaptured);
+    connect(m_videoThread, &VideoThread::logMessage, this, &CameraManager::logMessage);
   }
 }
 
@@ -31,202 +26,65 @@ void CameraManager::createAnalyticsThreads() {
   if (!m_metadataThread) {
     m_metadataThread = new MetadataThread(this);
     m_metadataThread->setDisabledTypes(m_disabledTypes);
-    connect(m_metadataThread, &MetadataThread::metadataReceived, this,
-            &CameraManager::metadataReceived);
-    connect(m_metadataThread, &MetadataThread::logMessage, this,
-            &CameraManager::logMessage);
+    connect(m_metadataThread, &MetadataThread::metadataReceived, this, &CameraManager::metadataReceived);
+    connect(m_metadataThread, &MetadataThread::logMessage, this, &CameraManager::logMessage);
   }
 }
 
-void CameraManager::setConnectionInfo(
-    const CameraConnectionInfo &connectionInfo) {
+void CameraManager::setConnectionInfo(const CameraConnectionInfo &connectionInfo) {
   m_connectionInfo = connectionInfo;
 }
 
 void CameraManager::startDisplayPipeline() {
-  createDisplayThread();
-
-  if (!m_connectionInfo.isValid()) {
-    emit logMessage("Error: camera connection info is not configured.");
+  if (m_connectionInfo.srtpEnabled) {
+    if (!m_srtpOrchestrator) {
+      m_srtpOrchestrator = new SrtpOrchestrator(this);
+      connect(m_srtpOrchestrator, &SrtpOrchestrator::frameCaptured, this, &CameraManager::frameCaptured);
+      connect(m_srtpOrchestrator, &SrtpOrchestrator::metadataReceived, this, &CameraManager::metadataReceived);
+      connect(m_srtpOrchestrator, &SrtpOrchestrator::logMessage, this, &CameraManager::logMessage);
+    }
+    m_srtpOrchestrator->setConnectionInfo(m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password, m_connectionInfo.profile);
+    m_srtpOrchestrator->start();
     return;
   }
-
-  const QString url =
-      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
-                   m_connectionInfo.password, m_connectionInfo.profile);
-  emit logMessage(
-      QString("Starting camera[%1] display pipeline with IP=%2, profile=%3")
-          .arg(m_connectionInfo.cameraId.isEmpty() ? QStringLiteral("camera-1")
-                                                   : m_connectionInfo.cameraId,
-               m_connectionInfo.ip, m_connectionInfo.profile));
-
-  m_videoThread->setUrl(url);
+  createDisplayThread();
+  if (!m_connectionInfo.isValid()) return;
+  m_videoThread->setUrl(buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password, m_connectionInfo.profile));
   m_videoThread->start();
 }
 
 void CameraManager::startAnalyticsPipeline() {
+  if (m_connectionInfo.srtpEnabled) return;
   createAnalyticsThreads();
-
-  if (!m_connectionInfo.isValid()) {
-    emit logMessage("Error: camera connection info is not configured.");
-    return;
-  }
-
-  const QString ocrProfile = m_connectionInfo.subProfile.trimmed().isEmpty()
-                                 ? m_connectionInfo.profile
-                                 : m_connectionInfo.subProfile.trimmed();
-
-  m_metadataThread->setConnectionInfo(
-      m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password,
-      ocrProfile);
-  if (m_metadataThread && !m_metadataThread->isRunning()) {
-    m_metadataThread->start();
-  }
+  if (!m_connectionInfo.isValid()) return;
+  m_metadataThread->setConnectionInfo(m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password, m_connectionInfo.subProfile.isEmpty() ? m_connectionInfo.profile : m_connectionInfo.subProfile);
+  if (!m_metadataThread->isRunning()) m_metadataThread->start();
 }
 
-void CameraManager::start() {
-  startDisplayOnly();
-  startAnalytics();
-}
-
-void CameraManager::startDisplayOnly() {
-  if (isDisplayRunning()) {
-    return;
-  }
-
-  createDisplayThread();
-
-  if (!m_connectionInfo.isValid()) {
-    emit logMessage("Error: camera connection info is not configured.");
-    return;
-  }
-
-  const QString url =
-      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
-                   m_connectionInfo.password, m_connectionInfo.profile);
-
-  emit logMessage(
-      QString("Starting camera[%1] video-only with IP=%2, profile=%3")
-          .arg(m_connectionInfo.cameraId.isEmpty() ? QStringLiteral("camera-1")
-                                                   : m_connectionInfo.cameraId,
-               m_connectionInfo.ip, m_connectionInfo.profile));
-
-  m_videoThread->setUrl(url);
-  m_videoThread->start();
-}
-
-void CameraManager::startAnalytics() {
-  if (isAnalyticsRunning()) {
-    return;
-  }
-
-  startAnalyticsPipeline();
-}
-
-void CameraManager::stopAnalytics() {
-  stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
-
-  if (m_metadataThread) {
-    m_metadataThread->deleteLater();
-    m_metadataThread = nullptr;
-  }
-}
-
-void CameraManager::setTargetFps(int fps) {
-  if (m_videoThread) {
-    m_videoThread->setTargetFps(fps);
-  }
-}
-
-void CameraManager::setDisabledObjectTypes(const QSet<QString> &types) {
-  m_disabledTypes = types;
-  if (m_metadataThread) {
-    m_metadataThread->setDisabledTypes(m_disabledTypes);
-  }
-}
-
-void CameraManager::restart() {
-  this->stop();
-  this->start();
-}
-
-void CameraManager::restartDisplayPipeline() {
-  if (!m_connectionInfo.isValid()) {
-    emit logMessage("Error: camera connection info is not configured.");
-    return;
-  }
-
-  createDisplayThread();
-  stopThread(m_videoThread, QStringLiteral("display video thread"), false);
-
-  const QString url =
-      buildRtspUrl(m_connectionInfo.ip, m_connectionInfo.username,
-                   m_connectionInfo.password, m_connectionInfo.profile);
-  emit logMessage(
-      QString("Starting camera[%1] display pipeline with IP=%2, profile=%3")
-          .arg(m_connectionInfo.cameraId.isEmpty() ? QStringLiteral("camera-1")
-                                                   : m_connectionInfo.cameraId,
-               m_connectionInfo.ip, m_connectionInfo.profile));
-
-  m_videoThread->setUrl(url);
-  m_videoThread->start();
-}
-
-void CameraManager::stopThread(QThread *thread, const QString &name,
-                               bool warnOnFailure) {
-  if (!thread || !thread->isRunning()) {
-    return;
-  }
-
-  if (auto *videoThread = qobject_cast<VideoThread *>(thread)) {
-    videoThread->stop();
-  } else if (auto *metadataThread = qobject_cast<MetadataThread *>(thread)) {
-    metadataThread->stop();
-  } else {
-    thread->quit();
-  }
-
-  if (!thread->wait(kThreadStopTimeoutMs)) {
-    if (warnOnFailure) {
-      emit logMessage(QString("Warning: %1 stop timeout (%2 ms). Thread will finish in background.")
-                          .arg(name)
-                          .arg(kThreadStopTimeoutMs));
-    }
-    // thread->terminate(); <- Removed to prevent OpenCV global FFmpeg mutex lock leakage
-  }
-}
+void CameraManager::start() { startDisplayOnly(); startAnalytics(); }
+void CameraManager::startDisplayOnly() { if (!isDisplayRunning()) startDisplayPipeline(); }
+void CameraManager::startAnalytics() { if (!isAnalyticsRunning()) startAnalyticsPipeline(); }
 
 void CameraManager::stop() {
-  QElapsedTimer shutdownTimer;
-  shutdownTimer.start();
-
-  stopThread(m_videoThread, QStringLiteral("display video thread"), false);
-  stopThread(m_metadataThread, QStringLiteral("metadata thread"), false);
-
-  if (m_videoThread) {
-    m_videoThread->deleteLater();
-    m_videoThread = nullptr;
-  }
-
-  if (m_metadataThread) {
-    m_metadataThread->deleteLater();
-    m_metadataThread = nullptr;
-  }
-
-  emit logMessage(
-      QString("Camera stop completed in %1 ms.").arg(shutdownTimer.elapsed()));
+  if (m_videoThread) { m_videoThread->stop(); m_videoThread->deleteLater(); m_videoThread = nullptr; }
+  if (m_metadataThread) { m_metadataThread->stop(); m_metadataThread->deleteLater(); m_metadataThread = nullptr; }
+  if (m_srtpOrchestrator) { m_srtpOrchestrator->stop(); m_srtpOrchestrator->deleteLater(); m_srtpOrchestrator = nullptr; }
 }
 
-bool CameraManager::isRunning() const {
-  bool videoRunning = m_videoThread && m_videoThread->isRunning();
-  bool metaRunning = m_metadataThread && m_metadataThread->isRunning();
-  return videoRunning || metaRunning;
-}
-
+bool CameraManager::isRunning() const { return isDisplayRunning() || isAnalyticsRunning(); }
 bool CameraManager::isDisplayRunning() const {
-  return m_videoThread && m_videoThread->isRunning();
+  return m_connectionInfo.srtpEnabled
+             ? (m_srtpOrchestrator && m_srtpOrchestrator->isRunning())
+             : (m_videoThread && m_videoThread->isRunning());
 }
-
 bool CameraManager::isAnalyticsRunning() const {
-  return m_metadataThread && m_metadataThread->isRunning();
+  return m_connectionInfo.srtpEnabled
+             ? (m_srtpOrchestrator && m_srtpOrchestrator->isRunning())
+             : (m_metadataThread && m_metadataThread->isRunning());
 }
+void CameraManager::stopAnalytics() { if (m_metadataThread) { m_metadataThread->stop(); m_metadataThread->deleteLater(); m_metadataThread = nullptr; } }
+void CameraManager::setTargetFps(int fps) { if (m_videoThread) m_videoThread->setTargetFps(fps); }
+void CameraManager::setDisabledObjectTypes(const QSet<QString> &types) { m_disabledTypes = types; if (m_metadataThread) m_metadataThread->setDisabledTypes(m_disabledTypes); }
+void CameraManager::restart() { stop(); start(); }
+void CameraManager::restartDisplayPipeline() { stop(); startDisplayPipeline(); }
+void CameraManager::stopThread(QThread *thread, const QString &name, bool warn) { if (thread && thread->isRunning()) { thread->quit(); thread->wait(kThreadStopTimeoutMs); } }

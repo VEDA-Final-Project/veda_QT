@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 project(rtsp_test LANGUAGES CXX)
 
 # Qt6 필수 구성 요소 찾기
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql Multimedia)
 
 qt_standard_project_setup()
 
@@ -98,6 +98,23 @@ qt_add_executable(rtsp_test
     src/parking/parkingservice.h
     src/parking/parkingrepository.cpp
     src/parking/parkingrepository.h
+    # SRTP
+    src/srtp/srtpsession.cpp
+    src/srtp/srtpsession.h
+    src/srtp/srtprtspclient.cpp
+    src/srtp/srtprtspclient.h
+    src/srtp/mikeybuilder.cpp
+    src/srtp/mikeybuilder.h
+    src/srtp/srtpdecryptor.cpp
+    src/srtp/srtpdecryptor.h
+    src/srtp/rtpdepacketizer.cpp
+    src/srtp/rtpdepacketizer.h
+    src/srtp/srtpvideothread.cpp
+    src/srtp/srtpvideothread.h
+    src/srtp/srtpmetadataparser.cpp
+    src/srtp/srtpmetadataparser.h
+    src/srtp/srtporchestrator.cpp
+    src/srtp/srtporchestrator.h
     # Database (New Phase 9)
     src/database/databasecontext.cpp
     src/database/databasecontext.h
@@ -136,6 +153,7 @@ target_link_libraries(rtsp_test
         Qt::Network
         Qt::Concurrent
         Qt::Sql
+        Qt::Multimedia
 )
 
 # 설치 설정
@@ -240,4 +258,29 @@ else()
             "ONNX Runtime package not found. Set ONNXRUNTIME_ROOT to the extracted folder "
             "(it must contain include/onnxruntime_cxx_api.h and lib/onnxruntime.lib).")
     endif()
+endif()
+
+# SRTP & FFmpeg 연동
+find_package(FFmpeg QUIET)
+find_library(FFMPEG_AVCODEC NAMES avcodec PATHS "C:/vcpkg/installed/x64-windows/lib")
+find_library(FFMPEG_AVFORMAT NAMES avformat PATHS "C:/vcpkg/installed/x64-windows/lib")
+find_library(FFMPEG_AVUTIL NAMES avutil PATHS "C:/vcpkg/installed/x64-windows/lib")
+find_library(FFMPEG_SWSCALE NAMES swscale PATHS "C:/vcpkg/installed/x64-windows/lib")
+
+if(FFMPEG_AVCODEC AND FFMPEG_AVFORMAT AND FFMPEG_AVUTIL AND FFMPEG_SWSCALE)
+    target_include_directories(rtsp_test PRIVATE "C:/vcpkg/installed/x64-windows/include")
+    target_link_libraries(rtsp_test PRIVATE 
+        ${FFMPEG_AVCODEC} ${FFMPEG_AVFORMAT} ${FFMPEG_AVUTIL} ${FFMPEG_SWSCALE}
+    )
+else()
+    message(WARNING "FFmpeg libavcodec/avformat/avutil/swscale not found in vcpkg struct.")
+endif()
+
+find_path(SRTP_INCLUDE_DIR srtp2/srtp.h)
+find_library(SRTP_LIBRARY NAMES srtp2)
+if(SRTP_INCLUDE_DIR AND SRTP_LIBRARY)
+    target_include_directories(rtsp_test PRIVATE ${SRTP_INCLUDE_DIR})
+    target_link_libraries(rtsp_test PRIVATE ${SRTP_LIBRARY})
+else()
+    message(WARNING "libsrtp2 not found. Make sure vcpkg is correctly installed.")
 endif()

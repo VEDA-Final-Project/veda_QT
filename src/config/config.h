@@ -25,6 +25,7 @@ public:
   QString cameraIp(const QString &cameraKey = QString()) const;
   QString cameraUsername(const QString &cameraKey = QString()) const;
   QString cameraPassword(const QString &cameraKey = QString()) const;
+  bool cameraSrtpEnabled(const QString &cameraKey = QString()) const;
   QString defaultCameraProfile() const;
   QString defaultCameraSubProfile() const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
