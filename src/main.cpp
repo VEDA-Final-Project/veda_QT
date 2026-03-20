@@ -1,8 +1,8 @@
 #include "config/config.h"
 #include "config/logfilterconfig.h"
 #include "presentation/pages/loginpage.h"
+#include "presentation/controllers/mainwindowcontroller.h"
 #include "presentation/shell/mainwindow.h"
-#include "ui/windows/mainwindowcontroller.h"
 #include "video/videothread.h"
 #include <opencv2/core/ocl.hpp>
 #include <vector>

@@ -209,8 +209,8 @@ end note
 
 관련 파일:
 
-- `src/ui/windows/mainwindowcontroller.h`
-- `src/ui/windows/mainwindowcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.h`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
 
 ### 7. RecordPanelController
 
@@ -227,8 +227,8 @@ end note
 
 관련 파일:
 
-- `src/ui/windows/recordpanelcontroller.h`
-- `src/ui/windows/recordpanelcontroller.cpp`
+- `src/presentation/controllers/recordpanelcontroller.h`
+- `src/presentation/controllers/recordpanelcontroller.cpp`
 
 ### 8. MediaRecorderWorker
 

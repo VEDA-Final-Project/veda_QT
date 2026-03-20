@@ -4,6 +4,7 @@ project(rtsp_test LANGUAGES CXX)
 if(POLICY CMP0144)
     cmake_policy(SET CMP0144 NEW)
 endif()
+set(CMAKE_POLICY_DEFAULT_CMP0144 NEW)
 
 # Qt6 필수 구성 요소 찾기
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql)
@@ -25,20 +26,28 @@ qt_add_executable(rtsp_test
     src/ui/windows/camerachannelruntime.h
     src/presentation/widgets/controllerdialog.cpp
     src/presentation/widgets/controllerdialog.h
-    src/ui/windows/mainwindowcontroller.cpp
-    src/ui/windows/mainwindowcontroller.h
-    src/ui/windows/dbpanelcontroller.cpp
-    src/ui/windows/dbpanelcontroller.h
-    src/ui/windows/parkinglogpanelcontroller.cpp
-    src/ui/windows/parkinglogpanelcontroller.h
-    src/ui/windows/userdbpanelcontroller.cpp
-    src/ui/windows/userdbpanelcontroller.h
-    src/ui/windows/zonepanelcontroller.cpp
-    src/ui/windows/zonepanelcontroller.h
-    src/ui/windows/rpipanelcontroller.cpp
-    src/ui/windows/rpipanelcontroller.h
-    src/ui/windows/recordpanelcontroller.cpp
-    src/ui/windows/recordpanelcontroller.h
+    src/presentation/controllers/mainwindowcontroller.cpp
+    src/presentation/controllers/mainwindowcontroller.h
+    src/presentation/controllers/dbpanelcontroller.cpp
+    src/presentation/controllers/dbpanelcontroller.h
+    src/presentation/controllers/parkinglogpanelcontroller.cpp
+    src/presentation/controllers/parkinglogpanelcontroller.h
+    src/presentation/controllers/userdbpanelcontroller.cpp
+    src/presentation/controllers/userdbpanelcontroller.h
+    src/presentation/controllers/zonepanelcontroller.cpp
+    src/presentation/controllers/zonepanelcontroller.h
+    src/presentation/controllers/rpipanelcontroller.cpp
+    src/presentation/controllers/rpipanelcontroller.h
+    src/presentation/controllers/recordpanelcontroller.cpp
+    src/presentation/controllers/recordpanelcontroller.h
+    src/presentation/controllers/recordingworkflowcontroller.cpp
+    src/presentation/controllers/recordingworkflowcontroller.h
+    src/presentation/controllers/telegrampanelcontroller.cpp
+    src/presentation/controllers/telegrampanelcontroller.h
+    src/presentation/controllers/hardwarecontroller.cpp
+    src/presentation/controllers/hardwarecontroller.h
+    src/presentation/controllers/cctvcontroller.cpp
+    src/presentation/controllers/cctvcontroller.h
     src/presentation/widgets/videowidget.cpp
     src/presentation/widgets/videowidget.h
     src/presentation/widgets/roiinteractionstate.cpp

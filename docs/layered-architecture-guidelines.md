@@ -18,7 +18,7 @@ src/
 │   ├── shell/            # MainWindow, HeaderBar, 페이지 전환
 │   ├── pages/            # CCTV/DB/Record/Telegram 등 화면 단위
 │   ├── widgets/          # VideoWidget, ROI interaction, 공용 UI 위젯
-│   └── presenters/       # UI 이벤트 -> application 호출
+│   └── controllers/      # UI 이벤트 -> application 호출
 ├── application/          # 유스케이스, orchestration, ports
 │   ├── camera/
 │   ├── parking/
@@ -109,13 +109,13 @@ app -> domain
 
 1. 화면 코드
 
-- `src/ui/windows`, `src/ui/windows/views`, `src/ui/video`, `src/ui/roi`
-- 향후 `presentation/` 아래로 이동
+- `src/presentation/shell`, `src/presentation/pages`, `src/presentation/widgets`, `src/presentation/controllers`
+- 남은 UI 관련 기존 폴더는 점진적으로 `presentation/` 아래로 이동
 
 2. 유스케이스/오케스트레이션
 
 - `MainWindowController`, `DbPanelController`, `RecordPanelController`, `ParkingService`
-- 향후 `application/` 또는 `presentation/presenters/`로 분리
+- 컨트롤러는 우선 `presentation/controllers/`에 두고, 이후 기능 흐름을 `application/` 유스케이스로 분리
 
 3. 인프라 구현
 

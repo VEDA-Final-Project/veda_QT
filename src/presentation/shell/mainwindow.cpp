@@ -5,9 +5,9 @@
 #include "presentation/pages/dbpageview.h"
 #include "presentation/pages/recordpageview.h"
 #include "presentation/pages/telegrampageview.h"
+#include "presentation/controllers/mainwindowcontroller.h"
 #include "presentation/shell/headerbarview.h"
 #include "presentation/widgets/controllerdialog.h"
-#include "ui/windows/mainwindowcontroller.h"
 #include <QAction>
 #include <QAbstractSpinBox>
 #include <QCheckBox>
