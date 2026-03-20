@@ -21,14 +21,32 @@
 // ============================================================
 #ifdef HAVE_OPENVINO
 
+#include <QtConcurrent>
+#include <map>
+
+// ============================================================
+// 전역 모델 캐시 관리 (여러 CameraSource가 동일 모델 공유)
+// ============================================================
+struct ModelCache {
+    std::shared_ptr<ov::Core> core;
+    std::map<std::string, ov::CompiledModel> compiledModels;
+    std::mutex mutex;
+
+    static ModelCache& instance() {
+        static ModelCache cache;
+        return cache;
+    }
+    
+    ModelCache() : core(std::make_shared<ov::Core>()) {}
+};
+
 struct ReIDFeatureExtractor::Impl {
-    std::unique_ptr<ov::Core> core;
     ov::CompiledModel compiledModel;
     ov::InferRequest  inferRequest;
-    bool              ready = false;
+    std::atomic<bool> ready{false};
     std::string       device;
 
-    Impl() : core(nullptr), ready(false) {}
+    Impl() : ready(false) {}
 };
 
 ReIDFeatureExtractor::ReIDFeatureExtractor()
@@ -37,75 +55,71 @@ ReIDFeatureExtractor::ReIDFeatureExtractor()
 ReIDFeatureExtractor::~ReIDFeatureExtractor() = default;
 
 bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
-    std::cout << "[ReID][OV] Attempting to load: " << modelPath.toStdString() << std::endl << std::flush;
+    if (modelPath.isEmpty()) return false;
 
     QFileInfo fi(modelPath);
     if (!fi.exists()) {
-        std::cerr << "[ReID][OV] Model file not found: " << modelPath.toStdString() << std::endl << std::flush;
+        std::cerr << "[ReID][OV] Model file not found: " << modelPath.toStdString() << std::endl;
         return false;
     }
 
     pimpl->ready = false;
-    try {
-        // Core를 매번 새로 생성하여 플러그인 탐색 시도 (정적 생성 지양)
-        pimpl->core = std::make_unique<ov::Core>();
-        
-        // 플러그인 로드 확인
-        std::vector<std::string> availableDevices = pimpl->core->get_available_devices();
-        std::cout << "[ReID][OV] Available devices: ";
-        for (auto &d : availableDevices) std::cout << d << " ";
-        std::cout << std::endl << std::flush;
+    
+    // 비동기 모델 로딩 (UI 프리징 방지)
+    (void)QtConcurrent::run([this, modelPath]() {
+        try {
+            ModelCache& cache = ModelCache::instance();
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            
+            std::string pathStr = modelPath.toStdString();
+            
+            // 1. 이미 컴파일된 모델이 있는지 확인
+            if (cache.compiledModels.find(pathStr) == cache.compiledModels.end()) {
+                std::cout << "[ReID][OV] Loading and compiling new model: " << pathStr << std::endl;
+                
+                auto model = cache.core->read_model(pathStr);
+                
+                // 최적의 디바이스 자동 선택
+                std::vector<std::string> availableDevices = cache.core->get_available_devices();
+                std::string targetDevice = "CPU";
+                for (const auto &d : availableDevices) {
+                    if (d.find("GPU") != std::string::npos) {
+                        targetDevice = "GPU";
+                        break;
+                    }
+                }
 
-        if (availableDevices.empty()) {
-            std::cerr << "[ReID][OV] NO DEVICES FOUND. OpenVINO plugins may be missing from the EXE folder." << std::endl << std::flush;
-            return false;
-        }
+                ov::AnyMap config;
+                if (targetDevice == "GPU") {
+                    config[ov::hint::inference_precision.name()] = ov::element::f16;
+                    config[ov::hint::performance_mode.name()]    = ov::hint::PerformanceMode::LATENCY;
+                } else {
+                    config[ov::hint::performance_mode.name()]    = ov::hint::PerformanceMode::LATENCY;
+                    config[ov::inference_num_threads.name()]     = 2;
+                }
 
-        // 우선순위 결정
-        std::string targetDevice = "CPU"; // 기본값
-        for (const auto &d : availableDevices) {
-            if (d.find("GPU") != std::string::npos) {
-                targetDevice = "GPU"; // GPU 있으면 GPU 사용
-                break;
+                cache.compiledModels[pathStr] = cache.core->compile_model(model, targetDevice, config);
+            } else {
+                std::cout << "[ReID][OV] Using cached model for: " << pathStr << std::endl;
             }
+
+            // 2. 개별 InferRequest 생성
+            pimpl->compiledModel = cache.compiledModels[pathStr];
+            pimpl->inferRequest  = pimpl->compiledModel.create_infer_request();
+            pimpl->ready         = true;
+
+            std::cout << "[ReID][OV] Async model load/ready complete" << std::endl;
+
+        } catch (const std::exception &e) {
+            std::cerr << "[ReID][OV] ERROR during async load: " << e.what() << std::endl;
         }
+    });
 
-        std::cout << "[ReID][OV] Selected device: " << targetDevice << std::endl << std::flush;
-
-        // 모델 읽기
-        auto model = pimpl->core->read_model(modelPath.toStdString());
-
-        // 타겟 디바이스 설정
-        ov::AnyMap config;
-        if (targetDevice == "GPU") {
-            config[ov::hint::inference_precision.name()] = ov::element::f16;
-            config[ov::hint::performance_mode.name()]    = ov::hint::PerformanceMode::LATENCY;
-        } else {
-            config[ov::hint::performance_mode.name()]    = ov::hint::PerformanceMode::LATENCY;
-            config[ov::inference_num_threads.name()]     = 2;
-        }
-
-        // 모델 컴파일 (이 단계에서 실제 플러그인 DLL 로드 시도)
-        pimpl->compiledModel = pimpl->core->compile_model(model, targetDevice, config);
-        pimpl->inferRequest  = pimpl->compiledModel.create_infer_request();
-        pimpl->device        = targetDevice;
-        pimpl->ready         = true;
-
-        std::cout << "[ReID][OV] Model loaded on " << targetDevice << " successfully!" << std::endl << std::flush;
-        return true;
-
-    } catch (const std::exception &e) {
-        std::cerr << "[ReID][OV] CRITICAL ERROR during load: " << e.what() << std::endl << std::flush;
-    } catch (...) {
-        std::cerr << "[ReID][OV] UNKNOWN CRITICAL ERROR during load." << std::endl << std::flush;
-    }
-
-    pimpl->ready = false;
-    return false;
+    return true; // 비동기로 시작되었으므로 true 반환 (나중에 pimpl->ready 체크)
 }
 
 std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) {
-    if (!pimpl->ready || image.empty()) return {};
+    if (!pimpl || !pimpl->ready || image.empty()) return {};
 
     try {
         cv::Mat resized;
