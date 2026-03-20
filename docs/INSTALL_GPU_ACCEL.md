@@ -14,18 +14,25 @@
 
 ### 2. 필수 라이브러리 설치 (Libraries)
 
-#### A. 인텔 OpenVINO 런타임 (Manual Install)
-1.  [OpenVINO 2025.4.1 LTS Archive](https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4.1/windows/)에서 `w_openvino_toolkit_windows_2025.4.1.xxx_x86_64.zip` 파일을 다운로드합니다.
-2.  `C:\openvino_2025.4.1` 폴더에 압축을 풉니다.
-    *   *주의: 폴더명이 다르면 `CMakeLists.txt` 상단의 `OPENVINO_ROOT` 경로를 수정해야 합니다.*
+#### A. 인텔 OpenVINO 런타임 설치 (두 가지 방법 중 선택)
 
-#### B. vcpkg 의존성 설치 (Package Manager)
-터미널(PowerShell)에서 다음 명령어를 실행하여 필수 패키지를 설치합니다:
+**방법 1: vcpkg를 통한 설치 (권장)**
+가장 깔끔한 방법입니다. 터미널(PowerShell)에서 다음을 실행합니다:
 ```powershell
-# 1. vcpkg 폴더로 이동 (예: C:\vcpkg)
 cd C:\vcpkg
+.\vcpkg.exe install openvino:x64-windows
+```
 
-# 2. 필수 패키지 설치 (x64-windows 버전)
+**방법 2: 수동 설치 (Manual Install)**
+특정 버전이 필요하거나 vcpkg 빌드가 오래 걸릴 때 사용합니다.
+1. [OpenVINO Archive](https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4.1/windows/)에서 압축 파일을 다운로드합니다.
+2. `C:\intel\openvino_2025.4.1` 등 원하는 경로에 압축을 풉니다.
+3. `CMakeLists.txt`의 `OPENVINO_ROOT`를 해당 경로로 수정합니다.
+
+#### B. vcpkg 의존성 설치 (OpenCV 등)
+OpenCV가 OpenCL 가속을 지원하도록 설치해야 합니다:
+```powershell
+# 필수 패키지 설치 (x64-windows 버전)
 .\vcpkg.exe install opencv4[ffmpeg,dnn,opencl,directml]:x64-windows
 .\vcpkg.exe install protobuf:x64-windows
 ```
@@ -46,8 +53,7 @@ cd C:\vcpkg
 
 ### 4. 실행 및 확인 (Execution)
 프로그램 실행 후 하단 로그 또는 콘솔 창에서 다음 메시지를 확인하세요:
-*   `[ReID][OV] Available devices: GPU, CPU`: GPU가 정상 인식됨.
-*   `[ReID][OV] Model loaded on GPU successfully!`: GPU 가속이 활발하게 작동 중.
+*   `[ReID][OV] Model loaded on GPU successfully!`: **OpenVINO**를 통한 GPU 가속이 활발하게 작동 중임을 의미합니다.
 
 ---
 
