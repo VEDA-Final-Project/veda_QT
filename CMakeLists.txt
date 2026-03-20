@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.19)
 project(rtsp_test LANGUAGES CXX)
 
+if(POLICY CMP0144)
+    cmake_policy(SET CMP0144 NEW)
+endif()
+
 # Qt6 필수 구성 요소 찾기
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql)
 
@@ -41,6 +45,18 @@ qt_add_executable(rtsp_test
     src/presentation/widgets/roiinteractionstate.h
     src/presentation/widgets/videoframerenderer.cpp
     src/presentation/widgets/videoframerenderer.h
+    src/presentation/shell/headerbarview.cpp
+    src/presentation/shell/headerbarview.h
+    src/presentation/pages/cctvdashboardview.cpp
+    src/presentation/pages/cctvdashboardview.h
+    src/presentation/pages/cctvsplashpageview.cpp
+    src/presentation/pages/cctvsplashpageview.h
+    src/presentation/pages/dbpageview.cpp
+    src/presentation/pages/dbpageview.h
+    src/presentation/pages/recordpageview.cpp
+    src/presentation/pages/recordpageview.h
+    src/presentation/pages/telegrampageview.cpp
+    src/presentation/pages/telegrampageview.h
     # Video
     src/video/videothread.cpp
     src/video/videothread.h
