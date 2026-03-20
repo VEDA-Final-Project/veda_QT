@@ -11,11 +11,6 @@
 // HAVE_OPENVINO는 CMakeLists.txt에서 정의됨
 #ifdef HAVE_OPENVINO
 #include <openvino/openvino.hpp>
-#define USE_OPENVINO 1
-#else
-#define USE_OPENVINO 0
-#include <dml_provider_factory.h>
-#include <onnxruntime_cxx_api.h>
 #endif
 
 #include <opencv2/dnn.hpp>
@@ -24,7 +19,7 @@
 // ============================================================
 // OpenVINO 구현부
 // ============================================================
-#if USE_OPENVINO
+#ifdef HAVE_OPENVINO
 
 struct ReIDFeatureExtractor::Impl {
     std::unique_ptr<ov::Core> core;
@@ -163,21 +158,19 @@ std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) {
 #else 
 
 struct ReIDFeatureExtractor::Impl {
-    Ort::Session *session = nullptr;
-    std::string cachedInputName;
-    std::string cachedOutputName;
-    bool namesCached = false;
-    ~Impl() { delete session; session = nullptr; }
+    bool ready = false;
 };
 
 ReIDFeatureExtractor::ReIDFeatureExtractor() : pimpl(std::make_unique<Impl>()) {}
 ReIDFeatureExtractor::~ReIDFeatureExtractor() = default;
 
 bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
-    std::cout << "[ReID][ORT] OpenVINO not enabled. Loading with ORT..." << std::endl;
-    return false; // 기존 ORT 로직이 필요한 경우 여기에 작성
+    std::cout << "[ReID] OpenVINO not enabled. GPU acceleration disabled." << std::endl;
+    return false;
 }
 
-std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) { return {}; }
+std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) {
+    return {};
+}
 
 #endif
