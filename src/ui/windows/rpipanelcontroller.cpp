@@ -1,10 +1,10 @@
 #include "rpipanelcontroller.h"
 
+#include <QDebug>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QTextEdit>
 
 RpiPanelController::RpiPanelController(const UiRefs &uiRefs, QObject *parent)
     : QObject(parent), m_ui(uiRefs) {
@@ -158,7 +158,5 @@ void RpiPanelController::onRpiLogMessage(const QString &message) {
 }
 
 void RpiPanelController::appendLog(const QString &message) {
-  if (m_ui.logView) {
-    m_ui.logView->append(message);
-  }
+  qDebug().noquote() << message;
 }

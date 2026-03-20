@@ -12,7 +12,6 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QMainWindow>
 #include <QMenu>
 #include <QMouseEvent>
@@ -22,7 +21,6 @@
 #include <QStackedWidget>
 #include <QTableWidget>
 #include <QTabWidget>
-#include <QTextEdit>
 #include <QTimer>
 #include <QToolButton>
 
@@ -74,7 +72,6 @@ private:
   QComboBox *m_roiTargetCombo = nullptr;
   QLineEdit *m_roiNameEdit = nullptr;
   QComboBox *m_roiSelectorCombo = nullptr;
-  QTextEdit *m_logView = nullptr;
   QPushButton *m_btnExit = nullptr;
   QPushButton *m_btnApplyRoi = nullptr;
   QPushButton *m_btnFinishRoi = nullptr;
@@ -119,7 +116,6 @@ private:
   QCheckBox *m_chkOther = nullptr;
 
   // Log Filter
-  QCheckBox *m_chkShowPlateLogs = nullptr;
   QCheckBox *m_chkShowFps = nullptr;
   QLabel *m_lblAvgFps = nullptr;
 
@@ -133,7 +129,6 @@ private:
   QLabel *m_footerTimeLabel = nullptr;
   QLabel *m_footerRecordingLabel = nullptr;
   QLabel *m_recordingDot = nullptr;
-  QListWidget *m_eventListWidget = nullptr;
 
   QPushButton *m_btnCaptureManual = nullptr;
   QPushButton *m_btnRecordManual = nullptr;

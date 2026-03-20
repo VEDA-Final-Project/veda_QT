@@ -9,7 +9,6 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
-class QTextEdit;
 
 class RpiPanelController : public QObject {
   Q_OBJECT
@@ -29,7 +28,6 @@ public:
     QLabel *ledStatusLabel = nullptr;
     QLabel *irRawLabel = nullptr;
     QLabel *servoAngleLabel = nullptr;
-    QTextEdit *logView = nullptr;
   };
 
   explicit RpiPanelController(const UiRefs &uiRefs, QObject *parent = nullptr);

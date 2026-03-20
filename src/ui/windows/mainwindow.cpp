@@ -19,7 +19,6 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QProgressBar>
@@ -96,7 +95,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.roiTargetCombo = m_roiTargetCombo;
   uiRefs.roiNameEdit = m_roiNameEdit;
   uiRefs.roiSelectorCombo = m_roiSelectorCombo;
-  uiRefs.logView = m_logView;
   for (int i = 0; i < 4; ++i) {
     uiRefs.thumbnailLabels[i] = m_thumbnailLabels[i];
   }
@@ -122,7 +120,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnForcePlate = m_btnForcePlate;
   uiRefs.editPlateInput = m_editPlateInput;
   uiRefs.btnEditPlate = m_btnEditPlate;
-  uiRefs.chkShowPlateLogs = m_chkShowPlateLogs;
   uiRefs.chkShowFps = m_chkShowFps;
   uiRefs.lblAvgFps = m_lblAvgFps;
   uiRefs.reidTable = m_reidTable;
@@ -137,7 +134,6 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   uiRefs.btnDeleteUser = m_btnDeleteUser;
   uiRefs.zoneTable = m_zoneTable;
   uiRefs.btnRefreshZone = m_btnRefreshZone;
-  uiRefs.eventListWidget = m_eventListWidget;
 
   uiRefs.recordLogTable = m_recordLogTable;
   uiRefs.btnRefreshRecordLogs = m_btnRefreshRecordLogs;
@@ -741,29 +737,8 @@ void MainWindow::setupUi() {
     mainSplitter->setSizes(sizes);
   });
 
-  QPushButton *btnToggleEvent =
-      new QPushButton(QString::fromUtf8("\xE2\x96\xB6"), this);
-  btnToggleEvent->setObjectName("btnToggleSidebar");
-  btnToggleEvent->setFixedSize(24, 24);
-  btnToggleEvent->setCursor(Qt::PointingHandCursor);
-  btnToggleEvent->setToolTip(QString::fromUtf8("이벤트 로그 보이기/숨기기"));
-  connect(btnToggleEvent, &QPushButton::clicked, this, [=]() {
-    QList<int> sizes = mainSplitter->sizes();
-    if (sizes[2] > 0) {
-      sizes[1] += sizes[2];
-      sizes[2] = 0;
-      btnToggleEvent->setText(QString::fromUtf8("\xE2\x97\x80"));
-    } else {
-      sizes[1] -= 250;
-      sizes[2] = 250;
-      btnToggleEvent->setText(QString::fromUtf8("\xE2\x96\xB6"));
-    }
-    mainSplitter->setSizes(sizes);
-  });
-
   toggleBarLayout->addWidget(btnToggleChannel);
   toggleBarLayout->addStretch();
-  toggleBarLayout->addWidget(btnToggleEvent);
   centerLayout->addLayout(toggleBarLayout);
 
   QWidget *videoGridPanel = new QWidget(this);
@@ -785,35 +760,14 @@ void MainWindow::setupUi() {
 
   centerLayout->addWidget(videoGridPanel, 1);
 
-  // ── Right Panel: Event Log ──
-  QFrame *eventPanel = new QFrame(this);
-  eventPanel->setObjectName("eventPanel");
-  eventPanel->setMinimumWidth(0); // 0으로 설정하여 완전 접기 허용
-  eventPanel->setMaximumWidth(400);
-  QVBoxLayout *eventPanelLayout = new QVBoxLayout(eventPanel);
-  eventPanelLayout->setContentsMargins(12, 12, 12, 12);
-  eventPanelLayout->setSpacing(8);
-
-  QLabel *eventTitle = new QLabel(QString::fromUtf8("EVENT LOG"), this);
-  eventTitle->setObjectName("panelTitle");
-  eventPanelLayout->addWidget(eventTitle);
-
-  m_eventListWidget = new QListWidget(this);
-  m_eventListWidget->setAlternatingRowColors(false);
-  m_eventListWidget->setWordWrap(true);
-  m_eventListWidget->setSpacing(2);
-  eventPanelLayout->addWidget(m_eventListWidget, 1);
-
-  // 3-Panel 조합 (Splitter)
+  // 2-Panel 조합 (Splitter)
   mainSplitter->addWidget(channelScrollArea);
   mainSplitter->addWidget(centerPanel);
-  mainSplitter->addWidget(eventPanel);
   mainSplitter->setCollapsible(0, true);  // 좌측 채널 패널 접기 가능
   mainSplitter->setCollapsible(1, false); // 중앙 패널은 접히지 않음
-  mainSplitter->setCollapsible(2, true);  // 우측 이벤트 패널 접기 가능
   mainSplitter->setStretchFactor(
       1, 1); // 중앙 화면이 남는 공간을 모두 차지하도록 설정 (매우 중요)
-  mainSplitter->setSizes({220, 850, 0});
+  mainSplitter->setSizes({220, 1070});
 
   // 이제 Splitter 전체를 꽉 차게 cctvLayout에 바로 추가 (여백 없음)
   cctvLayout->addWidget(mainSplitter, 1);
@@ -1341,14 +1295,6 @@ void MainWindow::setupUi() {
 
   // 상위 레이아웃 구성
   layout->addWidget(stackedWidget, 1);
-
-  // 로그 위젯은 컨트롤러에서 참조하므로 생성만 하고 숨김 처리
-  m_chkShowPlateLogs = new QCheckBox(QString::fromUtf8("번호판 인식 로그 표시"),
-                                     hiddenContainer);
-  m_chkShowPlateLogs->setChecked(true);
-
-  m_logView = new QTextEdit(hiddenContainer);
-  m_logView->setReadOnly(true);
 
   showCctvSplash();
 }

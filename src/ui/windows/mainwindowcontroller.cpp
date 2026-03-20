@@ -26,7 +26,6 @@
 #include <QGridLayout>
 #include <QJsonDocument>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QMap>
 #include <QMessageBox>
 #include <QPixmap>
@@ -38,7 +37,6 @@
 #include <QTableWidget> // User Table
 #include <QTableWidgetItem>
 #include <QTabWidget>
-#include <QTextEdit>
 #include <QThread>
 #include <QTimer>
 #include <QtGlobal>
@@ -111,7 +109,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   dbUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
   dbUiRefs.zoneTable = m_ui.zoneTable;
   dbUiRefs.btnRefreshZone = m_ui.btnRefreshZone;
-  dbUiRefs.logView = m_ui.logView;
 
   DbPanelController::Context dbContext;
   dbContext.parkingServiceProvider = [this]() {
@@ -470,8 +467,8 @@ void MainWindowController::shutdown() {
   timer.start();
 
   const QString summary = m_logDeduplicator.flushPending();
-  if (!summary.isEmpty() && m_ui.logView) {
-    m_ui.logView->append(summary);
+  if (!summary.isEmpty()) {
+    qDebug().noquote() << summary;
   }
 
   for (CameraChannelRuntime *channel : m_channels) {
@@ -499,10 +496,7 @@ void MainWindowController::shutdown() {
   const QString shutdownLog =
       QString("[Shutdown] camera/session stop finished in %1 ms")
           .arg(timer.elapsed());
-  qDebug() << shutdownLog;
-  if (m_ui.logView) {
-    m_ui.logView->append(shutdownLog);
-  }
+  qDebug().noquote() << shutdownLog;
 
   // 상시 녹화 타이머 중지 및 버퍼 정리
   if (m_continuousRecordTimer) {
@@ -1078,13 +1072,9 @@ void MainWindowController::refreshRoiSelectorForTarget() {
 }
 
 void MainWindowController::appendRoiStructuredLog(const QJsonObject &roiData) {
-  if (!m_ui.logView) {
-    return;
-  }
   const QString line =
       QString::fromUtf8(QJsonDocument(roiData).toJson(QJsonDocument::Compact));
-  qDebug().noquote() << line;
-  m_ui.logView->append(line);
+  qDebug().noquote() << QString("[ROI][Structured] %1").arg(line);
 }
 
 void MainWindowController::initChannelCards() {
@@ -1446,63 +1436,28 @@ void MainWindowController::updateObjectFilter(
 }
 
 void MainWindowController::onLogMessage(const QString &msg) {
-  if (!m_ui.logView) {
-    return;
-  }
-
-  bool showInUi = true;
-  if (m_ui.chkShowPlateLogs && !m_ui.chkShowPlateLogs->isChecked()) {
-    if (msg.startsWith(QStringLiteral("[Parking]"))) {
-      showInUi = false;
-    }
-  }
-
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   const LogDeduplicator::IngestResult ingestResult =
       m_logDeduplicator.ingest(msg, nowMs);
 
-  if (!ingestResult.flushSummary.isEmpty() && showInUi) {
-    m_ui.logView->append(ingestResult.flushSummary);
+  if (!ingestResult.flushSummary.isEmpty()) {
+    qDebug().noquote() << ingestResult.flushSummary;
   }
   if (ingestResult.suppressed) {
     return;
   }
 
-  if (showInUi) {
-    m_ui.logView->append(msg);
-  }
-
-  if (m_ui.eventListWidget) {
-    static const QStringList eventPrefixes = {"[Camera]", "[Parking]", "[OCR]",
-                                              "[ROI]",    "[A]",       "[B]"};
-    bool isEvent = false;
-    for (const QString &prefix : eventPrefixes) {
-      if (msg.contains(prefix)) {
-        isEvent = true;
-        break;
-      }
-    }
-    if (isEvent) {
-      const QString timestamp =
-          QDateTime::currentDateTime().toString("HH:mm:ss");
-      const QString eventText = QString("[%1] %2").arg(timestamp, msg);
-      m_ui.eventListWidget->insertItem(0, eventText);
-      while (m_ui.eventListWidget->count() > 100) {
-        delete m_ui.eventListWidget->takeItem(m_ui.eventListWidget->count() -
-                                              1);
-      }
-    }
-  }
+  qDebug().noquote() << msg;
 }
 
 void MainWindowController::onStartRoiDraw() {
   ensureChannelSelected(static_cast<int>(m_roiTarget));
   VideoWidget *targetWidget = videoWidgetForTarget(m_roiTarget);
-  if (!targetWidget || !m_ui.logView) {
+  if (!targetWidget) {
     return;
   }
   targetWidget->startRoiDrawing();
-  m_ui.logView->append(
+  onLogMessage(
       QString("[ROI] Draw mode (%1): left-click points, then press 'ROI 완료'.")
           .arg(roiTargetLabel(m_roiTarget)));
 }
@@ -1511,25 +1466,25 @@ void MainWindowController::onCompleteRoiDraw() {
   ensureChannelSelected(static_cast<int>(m_roiTarget));
   VideoWidget *targetWidget = videoWidgetForTarget(m_roiTarget);
   RoiService *targetService = roiServiceForTarget(m_roiTarget);
-  if (!targetWidget || !targetService || !m_ui.logView) {
+  if (!targetWidget || !targetService) {
     return;
   }
   const QString typedName =
       m_ui.roiNameEdit ? m_ui.roiNameEdit->text().trimmed() : QString();
   if (auto nameError = targetService->isValidName(typedName);
       nameError.has_value()) {
-    m_ui.logView->append(QString("[ROI] 완료 실패: %1").arg(nameError.value()));
+    onLogMessage(QString("[ROI] 완료 실패: %1").arg(nameError.value()));
     return;
   }
   if (targetService->isDuplicateName(typedName)) {
-    m_ui.logView->append(
+    onLogMessage(
         QString("[ROI] 완료 실패: 이름 '%1' 이(가) 이미 존재합니다.")
             .arg(typedName));
     return;
   }
 
   if (!targetWidget->completeRoiDrawing()) {
-    m_ui.logView->append("[ROI] 완료 실패: 최소 3개 점이 필요합니다.");
+    onLogMessage("[ROI] 완료 실패: 최소 3개 점이 필요합니다.");
   }
 }
 
@@ -1539,7 +1494,7 @@ void MainWindowController::onDeleteSelectedRoi() {
   RoiService *targetService = roiServiceForTarget(m_roiTarget);
   CameraSource *targetSource = sourceAt(static_cast<int>(m_roiTarget));
   if (!m_ui.roiSelectorCombo || !targetSource || !targetWidget ||
-      !targetService || !m_ui.logView) {
+      !targetService) {
     return;
   }
   if (m_ui.roiSelectorCombo->currentIndex() < 0) {
@@ -1547,19 +1502,17 @@ void MainWindowController::onDeleteSelectedRoi() {
   }
   const int recordIndex = m_ui.roiSelectorCombo->currentData().toInt();
   if (recordIndex < 0 || recordIndex >= targetService->count()) {
-    m_ui.logView->append("[ROI] 삭제 실패: ROI를 선택해주세요.");
+    onLogMessage("[ROI] 삭제 실패: ROI를 선택해주세요.");
     return;
   }
 
   const Result<QString> deleteResult = targetService->removeAt(recordIndex);
   if (!deleteResult.isOk()) {
-    m_ui.logView->append(
-        QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
+    onLogMessage(QString("[ROI][DB] 삭제 실패: %1").arg(deleteResult.error));
     return;
   }
   if (!targetWidget->removeRoiAt(recordIndex)) {
-    m_ui.logView->append(
-        "[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
+    onLogMessage("[ROI] 삭제 실패: ROI 상태와 목록이 일치하지 않습니다.");
     return;
   }
 
@@ -1575,33 +1528,27 @@ void MainWindowController::onDeleteSelectedRoi() {
                              ? m_ui.roiSelectorCombo->findData(nextRecordIndex)
                              : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
-  m_ui.logView->append(QString("[ROI] 삭제 완료: %1").arg(deleteResult.data));
+  onLogMessage(QString("[ROI] 삭제 완료: %1").arg(deleteResult.data));
 }
 
 void MainWindowController::onRoiChanged(const QRect &roi) {
-  if (!m_ui.logView) {
-    return;
-  }
   const VideoWidget *sourceWidget = qobject_cast<VideoWidget *>(sender());
   const int cardIndex = cardIndexForVideoWidget(sourceWidget);
   const QString channel =
       (cardIndex >= 0) ? QString("Ch%1").arg(cardIndex + 1)
                        : QStringLiteral("Unknown");
-  m_ui.logView->append(QString("[ROI][%1] bbox x:%2 y:%3 w:%4 h:%5")
-                           .arg(channel)
-                           .arg(roi.x())
-                           .arg(roi.y())
-                           .arg(roi.width())
-                           .arg(roi.height()));
+  onLogMessage(QString("[ROI][%1] bbox x:%2 y:%3 w:%4 h:%5")
+                   .arg(channel)
+                   .arg(roi.x())
+                   .arg(roi.y())
+                   .arg(roi.width())
+                   .arg(roi.height()));
 }
 
 void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
                                                const QSize &frameSize) {
-  if (!m_ui.logView) {
-    return;
-  }
   if (frameSize.isEmpty()) {
-    m_ui.logView->append("[ROI] 저장 실패: 프레임 크기가 유효하지 않습니다.");
+    onLogMessage("[ROI] 저장 실패: 프레임 크기가 유효하지 않습니다.");
     return;
   }
 
@@ -1628,8 +1575,7 @@ void MainWindowController::onRoiPolygonChanged(const QPolygon &polygon,
     if (targetWidget->roiCount() > 0) {
       targetWidget->removeRoiAt(targetWidget->roiCount() - 1);
     }
-    m_ui.logView->append(
-        QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
+    onLogMessage(QString("[ROI][DB] 저장 실패: %1").arg(createResult.error));
     if (target == m_roiTarget) {
       refreshRoiSelectorForTarget();
     }
@@ -1679,36 +1625,32 @@ void MainWindowController::onRawFrameReady(int cardIndex,
   refreshReidTableAllChannels(false);
 }
 void MainWindowController::onSendEntry() {
-  if (!m_ui.entryPlateInput || !m_ui.logView) {
+  if (!m_ui.entryPlateInput) {
     return;
   }
 
   const QString plate = m_ui.entryPlateInput->text().trimmed();
   if (plate.isEmpty()) {
-    m_ui.logView->append("[Telegram] 차량번호를 입력해주세요.");
+    onLogMessage("[Telegram] 차량번호를 입력해주세요.");
     return;
   }
   m_telegramApi->sendEntryNotice(plate);
 }
 
 void MainWindowController::onSendExit() {
-  if (!m_ui.exitPlateInput || !m_ui.feeInput || !m_ui.logView) {
+  if (!m_ui.exitPlateInput || !m_ui.feeInput) {
     return;
   }
 
   const QString plate = m_ui.exitPlateInput->text().trimmed();
   if (plate.isEmpty()) {
-    m_ui.logView->append("[Telegram] 차량번호를 입력해주세요.");
+    onLogMessage("[Telegram] 차량번호를 입력해주세요.");
     return;
   }
   m_telegramApi->sendExitNotice(plate, m_ui.feeInput->value());
 }
 
-void MainWindowController::onTelegramLog(const QString &msg) {
-  if (m_ui.logView) {
-    m_ui.logView->append(msg);
-  }
-}
+void MainWindowController::onTelegramLog(const QString &msg) { onLogMessage(msg); }
 
 void MainWindowController::onUsersUpdated(int count) {
   if (m_ui.userCountLabel) {
@@ -1746,21 +1688,15 @@ void MainWindowController::onPaymentConfirmed(const QString &plate,
     }
   }
 
-  if (m_ui.logView) {
-    const QString msg =
-        QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
-            .arg(plate)
-            .arg(amount);
-
-    if (!m_ui.chkShowPlateLogs || m_ui.chkShowPlateLogs->isChecked()) {
-      m_ui.logView->append(msg);
-      if (updated) {
-        m_ui.logView->append(
-            QString("[Payment] DB 결제 상태 반영 완료: %1, %2원")
-                .arg(plate)
-                .arg(amount));
-      }
-    }
+  const QString msg =
+      QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
+          .arg(plate)
+          .arg(amount);
+  onLogMessage(msg);
+  if (updated) {
+    onLogMessage(QString("[Payment] DB 결제 상태 반영 완료: %1, %2원")
+                     .arg(plate)
+                     .arg(amount));
   }
 
   if (updated && m_dbPanelController) {
@@ -1798,11 +1734,8 @@ void MainWindowController::onReidTableCellClicked(int row, int column) {
 
 void MainWindowController::onAdminSummoned(const QString &chatId,
                                            const QString &name) {
-  if (m_ui.logView) {
-    m_ui.logView->append(
-        QString("[알림] 🚨 관리자 호출 수신! (User: %1, ChatID: %2)")
-            .arg(name, chatId));
-  }
+  onLogMessage(QString("[알림] 🚨 관리자 호출 수신! (User: %1, ChatID: %2)")
+                   .arg(name, chatId));
 
   QMessageBox *box = new QMessageBox(nullptr);
   box->setWindowTitle("관리자 호출");

@@ -7,12 +7,10 @@ class QDoubleSpinBox;
 class QComboBox;
 class QLabel;
 class QLineEdit;
-class QListWidget;
 class QPushButton;
 class QSlider;
 class QSpinBox;
 class QTableWidget;
-class QTextEdit;
 class VideoWidget;
 class QFrame;
 class QGridLayout;
@@ -31,7 +29,6 @@ struct MainWindowUiRefs {
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
   QComboBox *roiSelectorCombo = nullptr;
-  QTextEdit *logView = nullptr;
   QPushButton *btnPlay = nullptr;
   QPushButton *btnApplyRoi = nullptr;
   QPushButton *btnFinishRoi = nullptr;
@@ -56,7 +53,6 @@ struct MainWindowUiRefs {
   QPushButton *btnForcePlate = nullptr;
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;
-  QCheckBox *chkShowPlateLogs = nullptr;
   QCheckBox *chkShowFps = nullptr;
   QLabel *lblAvgFps = nullptr;
   QTableWidget *reidTable = nullptr;
@@ -72,9 +68,6 @@ struct MainWindowUiRefs {
   QPushButton *btnDeleteUser = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
-
-  // CCTV Event Log Panel
-  QListWidget *eventListWidget = nullptr;
 
   QPushButton *btnCaptureManual = nullptr;
   QPushButton *btnRecordManual = nullptr;

@@ -14,7 +14,6 @@ class QLineEdit;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
-class QTextEdit;
 
 class DbPanelController : public QObject {
   Q_OBJECT
@@ -39,8 +38,6 @@ public:
 
     QTableWidget *zoneTable = nullptr;
     QPushButton *btnRefreshZone = nullptr;
-
-    QTextEdit *logView = nullptr;
   };
 
   struct Context {
