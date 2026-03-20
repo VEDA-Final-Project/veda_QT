@@ -45,7 +45,7 @@
 #include <algorithm>
 
 namespace {
-constexpr int kCameraStartStaggerMs = 350;
+constexpr int kCameraStartStaggerMs = 0;
 constexpr int kMaxLiveSlots = 4;
 constexpr qint64 kReidRefreshIntervalMs = 300;
 }

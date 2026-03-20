@@ -1,8 +1,8 @@
 # ============================================================
 # OpenVINO 2025.4.1 (Intel GPU / CPU 가속)
-# C:\intel\openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64
+# C:\intel\openvino_2025.4.1
 # ============================================================
-set(OPENVINO_ROOT "C:/intel/openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64"
+set(OPENVINO_ROOT "C:/intel/openvino_2025.4.1"
     CACHE PATH "Path to OpenVINO installation")
 
 set(OPENVINO_INCLUDE_DIR "${OPENVINO_ROOT}/runtime/include")
