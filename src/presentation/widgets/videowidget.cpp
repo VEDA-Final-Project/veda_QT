@@ -88,12 +88,10 @@ const QList<QPolygon> &VideoWidget::roiPolygons() const {
 
 void VideoWidget::startRoiDrawing() {
   if (m_lastFrameSize.isEmpty()) {
-    m_lastFrameSize = QSize(
-        1920, 1080); // 비디오 프레임이 없을 경우 기본 크기 적용 (멈춤 방지)
+    m_lastFrameSize = QSize(1920, 1080);
   }
   m_roiState.startDrawing(m_lastFrameSize);
-  setCursor(Qt::ArrowCursor);
-  qDebug() << "[ROI][VideoWidget] polygon drawing mode enabled";
+  setCursor(Qt::CrossCursor);
   update();
 }
 
@@ -116,10 +114,6 @@ bool VideoWidget::completeRoiDrawing() {
     }
     emit roiChanged(result.boundingRect);
     emit roiPolygonChanged(result.polygon, m_lastFrameSize);
-    qDebug() << "[ROI][VideoWidget] polygon drawn: points="
-             << result.polygon.size() << "bounds=" << result.boundingRect;
-  } else {
-    qDebug() << "[ROI][VideoWidget] polygon canceled: need at least 3 points";
   }
 
   unsetCursor();
@@ -131,8 +125,7 @@ void VideoWidget::updateMetadata(const QList<ObjectInfo> &objects) {
   m_currentObjects = objects;
 }
 
-void VideoWidget::setOccupiedRoiIndices(
-    const QSet<int> &occupiedRoiIndices) {
+void VideoWidget::setOccupiedRoiIndices(const QSet<int> &occupiedRoiIndices) {
   m_occupiedRoiIndices = occupiedRoiIndices;
 }
 
@@ -174,7 +167,6 @@ void VideoWidget::updateLiveFrame(const SharedVideoFrame &frame) {
   const bool frameChanged = (m_cachedLiveFrameIdentity != frameIdentity);
   const bool targetSizeChanged = (m_cachedLiveTargetSize != targetSize);
 
-  // QImage를 한 번만 생성하여 스케일링 캐시와 렌더링에 모두 재사용 (CPU 절감)
   QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
                     frame.mat->step, QImage::Format_BGR888);
 
@@ -207,12 +199,10 @@ void VideoWidget::renderFrame(const QImage &sourceFrame,
   const QImage composed = m_frameRenderer.compose(
       sourceFrame, scaledBaseFrame, m_currentObjects, m_roiState.roiPolygons(),
       m_roiLabels, m_occupiedRoiIndices, m_roiState.roiEnabled(), m_showFps,
-      static_cast<int>(m_currentFps), m_profileName, m_zoomFactor,
-      m_zoomCenterX, m_zoomCenterY);
+      static_cast<int>(m_currentFps), m_profileName, m_zoom, m_panX, m_panY);
 
-  // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
   m_currentFrame = composed;
-  update(); // paintEvent 트리거
+  update();
 }
 
 void VideoWidget::syncRoiStateToFrameSize(const QSize &frameSize) {
@@ -244,7 +234,6 @@ void VideoWidget::syncRoiStateToFrameSize(const QSize &frameSize) {
 }
 
 void VideoWidget::updateFrameRateStats() {
-  // --- FPS Calculation ---
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_fpsHistory1s.enqueue(nowMs);
   m_fpsHistory.enqueue(nowMs);
@@ -265,7 +254,6 @@ void VideoWidget::updateFrameRateStats() {
     }
   }
   emit avgFpsUpdated(avgFps);
-  // -----------------------
 }
 
 void VideoWidget::invalidateLiveFrameCache() {
@@ -280,7 +268,6 @@ void VideoWidget::paintEvent(QPaintEvent *event) {
 
   if (!m_currentFrame.isNull()) {
     QPainter p(this);
-    // 위젯 중앙에 QImage를 직접 그립니다 (QPixmap 변환 비용 0)
     const int x = (width() - m_currentFrame.width()) / 2;
     const int y = (height() - m_currentFrame.height()) / 2;
     p.drawImage(x, y, m_currentFrame);
@@ -318,32 +305,34 @@ void VideoWidget::mouseDoubleClickEvent(QMouseEvent *event) {
 }
 
 void VideoWidget::setZoom(double zoom) {
-  m_zoomFactor = qBound(1.0, zoom, 5.0);
-  if (m_zoomFactor <= 1.001) {
-    m_zoomCenterX = 0.5;
-    m_zoomCenterY = 0.5;
+  m_zoom = qBound(1.0, zoom, 10.0);
+  if (m_zoom <= 1.001) {
+    m_panX = 0.5;
+    m_panY = 0.5;
   }
+  update();
 }
 
-double VideoWidget::zoom() const { return m_zoomFactor; }
+double VideoWidget::zoom() const { return m_zoom; }
 
 void VideoWidget::panZoom(double dx, double dy) {
-  if (m_zoomFactor <= 1.001) {
+  if (m_zoom <= 1.001) {
     return;
   }
-  const double sensitivity = 0.05 / m_zoomFactor;
-  m_zoomCenterX = qBound(0.0, m_zoomCenterX + dx * sensitivity, 1.0);
-  m_zoomCenterY = qBound(0.0, m_zoomCenterY + dy * sensitivity, 1.0);
+  const double sensitivity = 0.05 / m_zoom;
+  m_panX = qBound(0.0, m_panX + dx * sensitivity, 1.0);
+  m_panY = qBound(0.0, m_panY + dy * sensitivity, 1.0);
+  update();
 }
 
 QRectF VideoWidget::currentZoomRect() const {
-  if (m_zoomFactor <= 1.001) {
+  if (m_zoom <= 1.001) {
     return QRectF();
   }
-  double w = 1.0 / m_zoomFactor;
-  double h = 1.0 / m_zoomFactor;
-  double x = m_zoomCenterX - w / 2.0;
-  double y = m_zoomCenterY - h / 2.0;
+  double w = 1.0 / m_zoom;
+  double h = 1.0 / m_zoom;
+  double x = m_panX - w / 2.0;
+  double y = m_panY - h / 2.0;
 
   x = qBound(0.0, x, 1.0 - w);
   y = qBound(0.0, y, 1.0 - h);

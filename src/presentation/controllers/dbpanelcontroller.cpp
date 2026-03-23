@@ -1,10 +1,8 @@
 #include "dbpanelcontroller.h"
 
-#include "application/db/parking/parkinglogapplicationservice.h"
-#include "application/db/user/useradminapplicationservice.h"
-#include "application/db/zone/zonequeryapplicationservice.h"
 #include "parkinglogpanelcontroller.h"
 #include "userdbpanelcontroller.h"
+#include "vehicleinfopanelcontroller.h"
 #include "zonepanelcontroller.h"
 #include <utility>
 
@@ -43,6 +41,17 @@ DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
   m_userDbPanelController =
       new UserDbPanelController(userUiRefs, userContext, this);
 
+  VehicleInfoPanelController::UiRefs vehicleUiRefs;
+  vehicleUiRefs.vehicleTable = m_ui.vehicleTable;
+  vehicleUiRefs.btnRefreshVehicles = m_ui.btnRefreshVehicles;
+  vehicleUiRefs.btnDeleteVehicle = m_ui.btnDeleteVehicle;
+
+  VehicleInfoPanelController::Context vehicleContext;
+  vehicleContext.logMessage = m_context.logMessage;
+
+  m_vehicleInfoPanelController =
+      new VehicleInfoPanelController(vehicleUiRefs, vehicleContext, this);
+
   ZonePanelController::UiRefs zoneUiRefs;
   zoneUiRefs.zoneTable = m_ui.zoneTable;
   zoneUiRefs.btnRefreshZone = m_ui.btnRefreshZone;
@@ -66,6 +75,9 @@ void DbPanelController::connectSignals() {
   if (m_userDbPanelController) {
     m_userDbPanelController->connectSignals();
   }
+  if (m_vehicleInfoPanelController) {
+    m_vehicleInfoPanelController->connectSignals();
+  }
   if (m_zonePanelController) {
     m_zonePanelController->connectSignals();
   }
@@ -74,6 +86,7 @@ void DbPanelController::connectSignals() {
 void DbPanelController::refreshAll() {
   onRefreshParkingLogs();
   refreshUserTable();
+  refreshVehicleTable();
   refreshZoneTable();
 }
 
@@ -128,6 +141,18 @@ void DbPanelController::addUser() {
 void DbPanelController::editUser() {
   if (m_userDbPanelController) {
     m_userDbPanelController->editUser();
+  }
+}
+
+void DbPanelController::refreshVehicleTable() {
+  if (m_vehicleInfoPanelController) {
+    m_vehicleInfoPanelController->refreshVehicleTable();
+  }
+}
+
+void DbPanelController::deleteVehicle() {
+  if (m_vehicleInfoPanelController) {
+    m_vehicleInfoPanelController->deleteVehicle();
   }
 }
 

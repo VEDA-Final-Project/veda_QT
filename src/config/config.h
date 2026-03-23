@@ -25,6 +25,7 @@ public:
   QString cameraIp(const QString &cameraKey = QString()) const;
   QString cameraUsername(const QString &cameraKey = QString()) const;
   QString cameraPassword(const QString &cameraKey = QString()) const;
+  bool cameraSrtpEnabled(const QString &cameraKey = QString()) const;
   QString defaultCameraProfile() const;
   QString defaultCameraSubProfile() const;
   QString cameraProfile(const QString &cameraKey = QString()) const;
@@ -42,11 +43,12 @@ public:
   QString ocrDictPath() const;
   int ocrInputWidth() const;
   int ocrInputHeight() const;
-
+  
   // ReID
   QString reidModelPath() const;
   int reidInputWidth() const;
   int reidInputHeight() const;
+
 
   // Gemini
   QString geminiApiKey() const;
@@ -61,8 +63,8 @@ public:
   int authPort() const;
   int authConnectTimeoutMs() const;
   int authRequestTimeoutMs() const;
-
-  // RPi Control
+  bool authTlsEnabled() const;
+  QStringList authPinnedSha256() const;
   QString rpiControlHost() const;
   int rpiControlPort() const;
   bool rpiControlAutoConnect() const;
@@ -81,7 +83,6 @@ private:
   QJsonObject m_reid;
   QJsonObject m_sync;
   QJsonObject m_auth;
-  QJsonObject m_rpiControl;
   QString m_loadedConfigPath;
 };
 

@@ -1,10 +1,9 @@
 #include "config/config.h"
 #include "config/logfilterconfig.h"
 #include "presentation/pages/loginpage.h"
-#include "presentation/controllers/mainwindowcontroller.h"
 #include "presentation/shell/mainwindow.h"
+#include "presentation/controllers/mainwindowcontroller.h"
 #include "infrastructure/video/videothread.h"
-#include <opencv2/core/ocl.hpp>
 #include <vector>
 
 #include <QApplication>
@@ -58,19 +57,6 @@ int main(int argc, char *argv[]) {
 
   QApplication a(argc, argv);
 
-  // === GPU(OpenCL) 가속 강제 활성화 ===
-  // cv::UMat 연산(resize, cvtColor 등)이 Intel GPU에서 처리되도록 설정
-  if (cv::ocl::haveOpenCL()) {
-    cv::ocl::setUseOpenCL(true);
-    cv::ocl::Device dev = cv::ocl::Device::getDefault();
-    qDebug() << "[GPU] OpenCL enabled:"
-             << QString::fromStdString(dev.name())
-             << "| Vendor:" << QString::fromStdString(dev.vendorName())
-             << "| Compute Units:" << dev.maxComputeUnits();
-  } else {
-    qWarning() << "[GPU] OpenCL NOT available. All image processing runs on CPU.";
-  }
-
   // Load Hanwha fonts
   QDir fontDir(":/resources/fonts");
   for (const QString &fileName :
@@ -113,21 +99,18 @@ int main(int argc, char *argv[]) {
     w.attachController(controller);
   };
 
-  // [Pre-load] 로그인 화면이 떠 있는 동안 백그라운드에서 CCTV 연결 시작
-  attachControllerIfNeeded();
-  if (controller) {
-    controller->startInitialCctv();
-  }
-
   QObject::connect(&loginPage, &LoginPage::loginSucceeded, &a, [&]() {
     isAuthenticated = true;
+    attachControllerIfNeeded();
     w.showCctvSplash(QStringLiteral("CCTV 화면을 준비하고 있습니다..."));
     w.show();
     w.raise();
     w.activateWindow();
-    
-    // 이미 백그라운드에서 로딩 중이므로 1초만 대기 후 메인 화면 전환
-    QTimer::singleShot(1000, &w, [&]() { w.showCctvPage(); });
+    if (controller) {
+      controller->startInitialCctv();
+    }
+    // 2초 후 강제로 메인 화면(CCTV 페이지)으로 전환하는 타이머 추가
+    QTimer::singleShot(2000, &w, [&]() { w.showCctvPage(); });
     loginPage.close();
   });
 

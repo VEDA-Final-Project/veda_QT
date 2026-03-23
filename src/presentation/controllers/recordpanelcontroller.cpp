@@ -354,8 +354,8 @@ void RecordPanelController::onRowSelectionChanged() {
   }
 }
 
-void RecordPanelController::updateLiveFrame(const SharedVideoFrame &frame) {
-  if (!frame.isValid() || !m_ui.recordVideoWidget) {
+void RecordPanelController::updateLiveFrame(const QImage &frame) {
+  if (frame.isNull() || !m_ui.recordVideoWidget) {
     return;
   }
 
@@ -373,8 +373,23 @@ void RecordPanelController::updateLiveFrame(const SharedVideoFrame &frame) {
   }
 
   if (!m_hasMediaLoaded && !m_playCap.isOpened()) {
-    m_ui.recordVideoWidget->updateLiveFrame(frame);
+    m_ui.recordVideoWidget->updateFrame(frame);
   }
+}
+
+void RecordPanelController::updateLiveFrame(const SharedVideoFrame &frame) {
+  if (!frame.isValid() || !frame.mat) {
+    return;
+  }
+
+  const cv::Mat &mat = *frame.mat;
+  if (mat.empty()) {
+    return;
+  }
+
+  const QImage image(mat.data, mat.cols, mat.rows, mat.step,
+                     QImage::Format_BGR888);
+  updateLiveFrame(image.copy());
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -711,8 +726,6 @@ void RecordPanelController::onTriggerEventRecord() {
     postSec = MAX_TOTAL_SEC - preSec;
     if (postSec < 1)
       postSec = 1; // 최소 1초
-
-    // Interval is unified, no need to set postSec spinbox separately
   }
 
   if (desc.trimmed().isEmpty())

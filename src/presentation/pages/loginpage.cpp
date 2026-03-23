@@ -204,18 +204,12 @@ void LoginPage::handleLogin() {
 void LoginPage::handleLoginStepFinished(bool ok, const QString &code,
                                         const QString &message) {
   if (ok) {
-    currentStep_ = LoginStep::OtpStep;
-    otpInput_->clear();
-    updateStepUi();
     setLoginUiBusy(false);
-
-    showProgressMessage(
-        message.isEmpty() ? QStringLiteral("2FA 코드를 입력하세요.") : message);
-    otpInput_->setFocus();
-
-    showStatusMessage(QStringLiteral("개발 모드: OTP 생략"), true);
+    loginSucceeded_ = true;
+    showStatusMessage(message.isEmpty() ? QStringLiteral("개발 모드: OTP 생략")
+                                        : message,
+                      true);
     emit loginSucceeded();
-
     return;
   }
 
@@ -393,6 +387,12 @@ QString LoginPage::messageForAuthCode(const QString &code,
                ? QStringLiteral("인증 서버에 연결할 수 없습니다.")
                : fallbackMessage;
   }
+  if (code == QStringLiteral("token_expired") ||
+      code == QStringLiteral("unauthorized")) {
+    return fallbackMessage.isEmpty()
+               ? QStringLiteral("로그인 세션이 만료되었습니다. 다시 로그인하세요.")
+               : fallbackMessage;
+  }
   if (code == QStringLiteral("protocol_error")) {
     return fallbackMessage.isEmpty()
                ? QStringLiteral("인증 서버 응답이 올바르지 않습니다.")
@@ -404,7 +404,7 @@ QString LoginPage::messageForAuthCode(const QString &code,
 }
 
 void LoginPage::closeEvent(QCloseEvent *event) {
-  if (authClient_) {
+  if (authClient_ && !loginSucceeded_) {
     authClient_->cancel();
   }
   if (!loginSucceeded_) {

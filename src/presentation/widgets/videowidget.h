@@ -4,7 +4,6 @@
 #include "infrastructure/metadata/metadatathread.h"
 #include "presentation/widgets/roiinteractionstate.h"
 #include "presentation/widgets/videoframerenderer.h"
-#include "infrastructure/video/sharedvideoframe.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -39,12 +38,16 @@ public:
   bool removeRoiAt(int index);
   int roiCount() const;
   const QList<QPolygon> &roiPolygons() const;
-  void startRoiDrawing();
-  bool completeRoiDrawing();
+
+  // Zoom / Pan
+  void panZoom(double dx, double dy);
   void setZoom(double zoom);
   double zoom() const;
-  void panZoom(double dx, double dy);
   QRectF currentZoomRect() const;
+
+  // ROI UI control
+  void startRoiDrawing();
+  bool completeRoiDrawing();
 
 public slots:
   void updateFrame(const QImage &frame);
@@ -91,12 +94,14 @@ private:
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
+  double m_zoom = 1.0;
   QString m_profileName;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;
-  double m_zoomFactor = 1.0;
-  double m_zoomCenterX = 0.5;
-  double m_zoomCenterY = 0.5;
+
+  // Pan offsets (normalized 0.0-1.0)
+  double m_panX = 0.5;
+  double m_panY = 0.5;
 };
 
 #endif // VIDEOWIDGET_H

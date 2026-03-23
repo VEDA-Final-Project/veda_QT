@@ -4,16 +4,20 @@
 #include <QTcpSocket>
 #include <QUrl>
 #include <QtGlobal>
-#include <opencv2/core/ocl.hpp>
 
+/**
+ * @brief VideoThread 생성자
+ * - OpenCV 기반 RTSP 비디오 수신 전용 스레드
+ */
+VideoThread::VideoThread(QObject *parent) : QThread(parent), m_stop(false) {}
 
-VideoThread::VideoThread(QObject *parent) : QThread(parent), m_stop(false) {
-  qRegisterMetaType<SharedVideoFrame>("SharedVideoFrame");
-}
-
+/**
+ * @brief VideoThread 소멸자
+ * - 실행 중인 스레드를 안전하게 종료
+ */
 VideoThread::~VideoThread() {
-  stop();
-  wait(); 
+  stop(); // 종료 플래그 설정
+  wait(); // 스레드 종료 대기
 }
 
 /**
@@ -33,6 +37,10 @@ void VideoThread::setTargetFps(int fps) {
   m_targetFps = fps;
 }
 
+/**
+ * @brief 비디오 스레드 종료 요청
+ * - run() 루프에서 주기적으로 플래그 확인
+ */
 void VideoThread::stop() {
   QMutexLocker locker(&m_mutex);
   m_stop = true;
@@ -110,13 +118,7 @@ void VideoThread::run() {
    * OpenCV FFmpeg 백엔드 타임아웃을 환경 변수로 전달 (단위: 마이크로초)
    * stimeout: TCP 기반 RTSP 연결 및 읽기 타임아웃 2초 (2,000,000)
    */
-  // FFmpeg 캡처 옵션 설정: D3D11VA 하드웨어 디코딩 활성화 + RTSP TCP 전송 + 타임아웃 2초
-  qputenv("OPENCV_FFMPEG_CAPTURE_OPTIONS",
-          "hwaccel;d3d11va|rtsp_transport;tcp|stimeout;2000000");
-
-  // === 하드웨어 가속을 스트림 열기 전에 설정 (중요!) ===
-  m_cap.set(cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_D3D11);
-  m_cap.set(cv::CAP_PROP_HW_DEVICE, 0);  // 첫 번째 GPU 디바이스
+  qputenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", "stimeout;2000000");
 
   // === RTSP 스트림 열기 ===
   if (!m_cap.open(url.toStdString(), cv::CAP_FFMPEG)) {
@@ -129,23 +131,10 @@ void VideoThread::run() {
     return;
   }
 
-  // 하드웨어 가속 상태 확인
-  int hw_accel = static_cast<int>(m_cap.get(cv::CAP_PROP_HW_ACCELERATION));
-  emit logMessage(QString("[Video] Hardware Acceleration for %1: mode=%2 (0=None, 1=Any, 2=D3D11, 3=VAAPI, 4=MFX)")
-                      .arg(url)
-                      .arg(hw_accel));
-
-  // 내부 버퍼 최소화 (지연 시간 감소를 위해 1로 설정)
-  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 1);
+  // 내부 버퍼 최소화 (FFmpeg 캡처가 열린 후에 적용 가능)
+  m_cap.set(cv::CAP_PROP_BUFFERSIZE, 0);
 
   const double sourceFps = m_cap.get(cv::CAP_PROP_FPS);
-  
-  // OpenCL 가속 상태 확인 로그 추가
-  bool has_ocl = cv::ocl::haveOpenCL();
-  bool use_ocl = cv::ocl::useOpenCL();
-  emit logMessage(QString("[Video] OpenCL status: Available=%1, Active=%2")
-                  .arg(has_ocl ? "Yes" : "No")
-                  .arg(use_ocl ? "Yes" : "No"));
   {
     QMutexLocker locker(&m_mutex);
     if (sourceFps > 0)
@@ -170,7 +159,8 @@ void VideoThread::run() {
       if (shouldStop())
         break;
       const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-      if (lastReadErrorLogMs == 0 ||(nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
+      if (lastReadErrorLogMs == 0 ||
+          (nowMs - lastReadErrorLogMs) >= kReadErrorLogIntervalMs) {
         if (suppressedReadErrors > 0) {
           emit logMessage(
               QString("Error: Cannot read frame (repeated %1 times)")
@@ -229,12 +219,10 @@ void VideoThread::run() {
     }
 
     // 내부 파이프라인은 BGR 원본을 유지하고, UI/OCR 직전에만 QImage 변환한다.
-    SharedVideoFrame sharedFrame;
-    sharedFrame.mat = QSharedPointer<cv::Mat>::create(std::move(frame));
-    sharedFrame.timestampMs = QDateTime::currentMSecsSinceEpoch();
+    auto sharedFrame = QSharedPointer<cv::Mat>::create(std::move(frame));
 
     // === 프레임 전달 (UI 등 외부로) ===
-    emit frameCaptured(sharedFrame);
+    emit frameCaptured(sharedFrame, QDateTime::currentMSecsSinceEpoch());
   }
 
   // === 스트림 정리 ===

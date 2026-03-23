@@ -3,6 +3,7 @@
 
 #include "infrastructure/metadata/metadatathread.h"
 #include "infrastructure/video/videothread.h"
+#include "srtp/srtporchestrator.h"
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -15,6 +16,7 @@ struct CameraConnectionInfo {
   QString password;
   QString profile;
   QString subProfile;
+  bool srtpEnabled = false;
 
   bool isValid() const { return !ip.isEmpty() && !username.isEmpty(); }
 };
@@ -48,12 +50,14 @@ public:
   void setDisabledObjectTypes(const QSet<QString> &types);
 
 signals:
-  void frameCaptured(SharedVideoFrame frame);
+  void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void metadataReceived(const QList<ObjectInfo> &objects);
   void logMessage(const QString &msg);
 
 private:
   void createDisplayThread();
+
+
   void createAnalyticsThreads();
   void startDisplayPipeline();
   void startAnalyticsPipeline();
@@ -63,6 +67,7 @@ private:
   QSet<QString> m_disabledTypes;
   VideoThread *m_videoThread;
   MetadataThread *m_metadataThread;
+  SrtpOrchestrator *m_srtpOrchestrator;
 };
 
 #endif // CAMERAMANAGER_H

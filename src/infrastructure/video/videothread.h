@@ -2,8 +2,9 @@
 #ifndef VIDEOTHREAD_H
 #define VIDEOTHREAD_H
 
-#include "infrastructure/video/sharedvideoframe.h"
+#include <QImage>
 #include <QMutex>
+#include <QSharedPointer>
 #include <QString>
 #include <QThread>
 #include <opencv2/opencv.hpp>
@@ -21,7 +22,7 @@ public:
   double getActualFps() const; // 실제 스트림 FPS 반환
 
 signals:
-  void frameCaptured(SharedVideoFrame frame);
+  void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void logMessage(const QString &msg);
 
 protected:
