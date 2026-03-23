@@ -51,7 +51,6 @@ int matchedVehicleObjectId(const QImage &frame, const QList<ObjectInfo> &objects
     }
 
     // 번호판은 보통 차량 하단에 위치하므로, 차량 바운딩 박스의 하단 절반 영역과만 겹침도를 계산합니다.
-    // 이는 차량이 줄지어 서 있을 때 뒤차의 번호판이 앞차의 상단 영역과 겹쳐 오인식되는 것을 방지합니다.
     QRect lowerHalf = vehicleRect;
     lowerHalf.setTop(vehicleRect.top() + vehicleRect.height() / 2);
 
@@ -120,15 +119,6 @@ QList<QPolygon> scaleRoiPolygons(const QList<QPolygon> &roiPolygons,
 
   return scaledPolygons;
 }
-
-// ROI 영역의 픽셀 면적 계산
-double regionPixelArea(const QRegion &region) {
-  double area = 0.0;
-  for (const QRect &r : region) {
-    area += static_cast<double>(r.width()) * r.height();
-  }
-  return area;
-}
 } // namespace
 
 void VideoFrameRenderer::collectOcrRequests(
@@ -159,34 +149,53 @@ void VideoFrameRenderer::collectOcrRequests(
   }
 }
 
-QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
-                                   const QList<ObjectInfo> &objects,
-                                   const QList<QPolygon> &roiPolygons,
-                                   const QStringList &roiLabels,
-                                   const QSet<int> &occupiedRoiIndices,
-                                   bool roiEnabled, bool showFps,
-                                   int currentFps, const QString &profileName,
-                                   QList<OcrRequest> *ocrRequests) const {
+QImage VideoFrameRenderer::compose(
+    const QImage &sourceFrame, const QImage &scaledBaseFrame,
+    const QList<ObjectInfo> &objects, const QList<QPolygon> &roiPolygons,
+    const QStringList &roiLabels, const QSet<int> &occupiedRoiIndices,
+    bool roiEnabled, bool showFps, int currentFps, const QString &profileName,
+    double zoom, double panX, double panY) const {
 
-  if (targetSize.isEmpty()) {
-    return frame;
+  if (scaledBaseFrame.isNull() || sourceFrame.isNull()) {
+    return scaledBaseFrame;
   }
 
-  // 1. Qt 네이티브 기반 고속 축소 (UI 스레드 병목 및 메모리 복사 제거)
-  const QSize scaledSize = frame.size().scaled(targetSize, Qt::KeepAspectRatio);
-  QImage scaledFrame =
-      frame.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  QImage renderTarget;
+  QRectF zoomWindow; // Normalized (0.0 - 1.0) window on sourceFrame
+  const QSize outputSize = scaledBaseFrame.size();
 
-  // QPainter 엔진이 안전하게 그릴 수 있도록 포맷 보장 (대부분
-  // BGR888/RGB888이므로 변환 패스됨)
-  if (scaledFrame.format() != QImage::Format_RGB888 &&
-      scaledFrame.format() != QImage::Format_BGR888 &&
-      scaledFrame.format() != QImage::Format_RGB32 &&
-      scaledFrame.format() != QImage::Format_ARGB32_Premultiplied) {
-    scaledFrame = scaledFrame.convertToFormat(QImage::Format_RGB888);
+  if (zoom > 1.001) {
+    const double w = 1.0 / zoom;
+    const double h = 1.0 / zoom;
+    // panX, panY is the center of the zoom window (normalized)
+    double x = panX - w / 2.0;
+    double y = panY - h / 2.0;
+    x = qBound(0.0, x, 1.0 - w);
+    y = qBound(0.0, y, 1.0 - h);
+    zoomWindow = QRectF(x, y, w, h);
+
+    const int srcX = static_cast<int>(zoomWindow.x() * sourceFrame.width());
+    const int srcY = static_cast<int>(zoomWindow.y() * sourceFrame.height());
+    const int srcW = static_cast<int>(zoomWindow.width() * sourceFrame.width());
+    const int srcH =
+        static_cast<int>(zoomWindow.height() * sourceFrame.height());
+
+    const QImage crop = sourceFrame.copy(srcX, srcY, srcW, srcH);
+    renderTarget =
+        crop.scaled(outputSize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  } else {
+    zoomWindow = QRectF(0, 0, 1.0, 1.0);
+    renderTarget = scaledBaseFrame.copy();
   }
 
-  QPainter painter(&scaledFrame);
+  if (renderTarget.format() != QImage::Format_RGB888 &&
+      renderTarget.format() != QImage::Format_BGR888 &&
+      renderTarget.format() != QImage::Format_RGB32 &&
+      renderTarget.format() != QImage::Format_ARGB32_Premultiplied) {
+    renderTarget = renderTarget.convertToFormat(QImage::Format_RGB888);
+  }
+
+  QPainter painter(&renderTarget);
   QPen pen(Qt::green, 3);
   painter.setPen(pen);
 
@@ -199,74 +208,55 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   font.setBold(true);
   painter.setFont(font);
 
-  const QList<QPolygon> scaledRoiPolygons =
-      scaleRoiPolygons(roiPolygons, frame.size(), scaledFrame.size());
+  // ROI / Object coordinates mapping function (Source -> RenderTarget)
+  auto mapPoint = [&](const QPointF &sourcePt) -> QPoint {
+    // 1. Convert sourcePt (pixel on sourceFrame) to normalized (0.0-1.0)
+    double normX = sourcePt.x() / sourceFrame.width();
+    double normY = sourcePt.y() / sourceFrame.height();
 
-  const double effectiveWidth = static_cast<double>(cfg.effectiveWidth());
-  const double cropOffsetX = static_cast<double>(cfg.cropOffsetX());
-  const QRegion roiRegion =
-      roiRegionOnFrame(scaledFrame.rect(), scaledRoiPolygons);
-  const bool hasActiveRoi = roiEnabled && !roiRegion.isEmpty();
+    // 2. Map normalized source coordinates to zoomed normalized coordinates
+    double zoomX = (normX - zoomWindow.x()) / zoomWindow.width();
+    double zoomY = (normY - zoomWindow.y()) / zoomWindow.height();
 
-  struct RenderCandidate {
-    ObjectInfo obj;
-    QRect scaledRect;
-    QRect srcRect;
-    bool intersectsRoi = false;
+    // 3. Map to renderTarget pixels
+    return QPoint(static_cast<int>(zoomX * outputSize.width()),
+                  static_cast<int>(zoomY * outputSize.height()));
   };
-  QVector<RenderCandidate> candidates;
-  candidates.reserve(objects.size());
-  bool hasAnyRoiMatch = false;
 
-  for (const ObjectInfo &obj : objects) {
-    const QRectF &nsRect = obj.rect;
-    const double scaledX = (nsRect.x() / sourceWidth) * scaledFrame.width();
-    const double scaledY = (nsRect.y() / sourceHeight) * scaledFrame.height();
-    const double scaledW = (nsRect.width() / sourceWidth) * scaledFrame.width();
-    const double scaledH = (nsRect.height() / sourceHeight) * scaledFrame.height();
-
-    const QRect uRect(static_cast<int>(scaledX), static_cast<int>(scaledY),
-                      static_cast<int>(scaledW), static_cast<int>(scaledH));
-
-    const double srcX = (nsRect.x() / sourceWidth) * frame.width();
-    const double srcY = (nsRect.y() / sourceHeight) * frame.height();
-    const double srcW = (nsRect.width() / sourceWidth) * frame.width();
-    const double srcH = (nsRect.height() / sourceHeight) * frame.height();
-
-    const QRect fullSrcRect(static_cast<int>(srcX), static_cast<int>(srcY),
-                            static_cast<int>(srcW), static_cast<int>(srcH));
-
-    const bool intersects = hasActiveRoi && roiRegion.intersects(uRect);
-    hasAnyRoiMatch = hasAnyRoiMatch || intersects;
-    candidates.push_back(RenderCandidate{obj, uRect, fullSrcRect, intersects});
-  }
-
-  if (hasActiveRoi) {
-    for (int i = 0; i < scaledRoiPolygons.size(); ++i) {
-      const QPolygon &polygon = scaledRoiPolygons[i];
+  // Draw ROIs
+  if (roiEnabled) {
+    for (int i = 0; i < roiPolygons.size(); ++i) {
+      const QPolygon &polygon = roiPolygons[i];
       if (polygon.size() < 3)
         continue;
 
-      const QRegion singleRoiRegion(polygon, Qt::WindingFill);
-      const bool occupied = occupiedRoiIndices.contains(i);
+      QPolygon mappedPoly;
+      mappedPoly.reserve(polygon.size());
+      for (const QPoint &pt : polygon) {
+        mappedPoly << mapPoint(QPointF(pt));
+      }
 
+      if (mappedPoly.boundingRect().isEmpty())
+        continue;
+
+      const bool occupied = occupiedRoiIndices.contains(i);
       if (occupied) {
         painter.setPen(QPen(QColor(255, 59, 48), 2, Qt::SolidLine));
       } else {
         painter.setPen(QPen(QColor(0, 229, 255), 2, Qt::SolidLine));
       }
-      painter.drawPolygon(polygon);
+      painter.drawPolygon(mappedPoly);
 
-      const QString baseName =
-          (i < roiLabels.size() && !roiLabels[i].trimmed().isEmpty())
-              ? roiLabels[i].trimmed()
-              : QString("Zone %1").arg(i + 1);
       const QString label =
-          occupied ? QString("%1 [Parked]").arg(baseName) : baseName;
+          (i < roiLabels.size() && !roiLabels[i].trimmed().isEmpty())
+              ? (occupied ? QString("%1 [Parked]").arg(roiLabels[i].trimmed())
+                          : roiLabels[i].trimmed())
+              : (occupied ? QString("Zone %1 [Parked]").arg(i + 1)
+                          : QString("Zone %1").arg(i + 1));
 
       QRect textRect = painter.fontMetrics().boundingRect(label);
       textRect.adjust(-6, -3, 6, 3);
-      const QPoint anchor = polygon.boundingRect().topLeft() + QPoint(2, 2);
+      const QPoint anchor = mappedPoly.boundingRect().topLeft() + QPoint(2, 2);
       textRect.moveTopLeft(anchor);
 
       if (occupied) {
@@ -274,73 +264,82 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
         painter.setPen(Qt::white);
       } else {
         painter.fillRect(textRect, QColor(0, 229, 255, 200));
-        painter.setPen(
-            QColor(27, 31, 42)); // Dark Navy text for better contrast
+        painter.setPen(QColor(27, 31, 42));
       }
       painter.drawText(textRect, Qt::AlignCenter, label);
     }
-    painter.setPen(pen);
   }
 
-  for (const RenderCandidate &candidate : candidates) {
-    const ObjectInfo &obj = candidate.obj;
-    const QRect &uRect = candidate.scaledRect;
+  // Draw Objects
+  painter.setPen(pen);
+  for (const ObjectInfo &obj : objects) {
+    const QRectF &nsRect = obj.rect;
+    // nsRect is usually based on "sourceWidth/sourceHeight" config, NOT
+    // necessarily sourceFrame size (sometimes).
+    // Let's use normalization to be safe.
+    double normX = nsRect.x() / sourceWidth;
+    double normY = nsRect.y() / sourceHeight;
+    double normW = nsRect.width() / sourceWidth;
+    double normH = nsRect.height() / sourceHeight;
+
+    // Convert to zoomed normalized coordinates
+    double zoomX = (normX - zoomWindow.x()) / zoomWindow.width();
+    double zoomY = (normY - zoomWindow.y()) / zoomWindow.height();
+    double zoomW = normW / zoomWindow.width();
+    double zoomH = normH / zoomWindow.height();
+
+    const QRect uRect(static_cast<int>(zoomX * outputSize.width()),
+                      static_cast<int>(zoomY * outputSize.height()),
+                      static_cast<int>(zoomW * outputSize.width()),
+                      static_cast<int>(zoomH * outputSize.height()));
+
+    // Skip if completely outside zoomed area
+    if (!uRect.intersects(QRect(0, 0, outputSize.width(), outputSize.height())))
+      continue;
+
     painter.drawRect(uRect);
 
-    // Conditional ID display: V-ID for vehicles, numeric ID for others
     QString lowerType = obj.type.toLower();
     bool isVehicle = (lowerType == "vehicle" || lowerType == "car" ||
                       lowerType == "vehical" || lowerType == "truck" ||
                       lowerType == "bus");
 
-    // Hide ID for non-vehicle objects (person, plate, etc.)
     QString text;
     if (isVehicle) {
       const QString displayId = obj.reidId.isEmpty() ? "V---" : obj.reidId;
       text = QString("[%1] Vehicle").arg(displayId);
     } else {
-      text = obj.type; // No ID for others
+      text = obj.type;
     }
     if (!obj.extraInfo.isEmpty() && obj.extraInfo != obj.plate) {
       text += QString(" (%1)").arg(obj.extraInfo);
     }
 
     QRect textRect = painter.fontMetrics().boundingRect(text);
-    textRect.adjust(-4, -2, 4, 2); // Add small padding for background box
-
-    // Calculate position: Above box by default
+    textRect.adjust(-4, -2, 4, 2);
     QPoint targetPos = uRect.topLeft() - QPoint(0, textRect.height());
-    
-    // Boundary check: If would clip at top, move inside the box
-    if (targetPos.y() < 0) {
-      targetPos.setY(uRect.top() + 2); // 2px margin inside
-    }
-    // Left boundary check
-    if (targetPos.x() < 0) targetPos.setX(0);
-    // Right boundary check
-    if (targetPos.x() + textRect.width() > scaledFrame.width()) {
-      targetPos.setX(scaledFrame.width() - textRect.width());
-    }
-
+    if (targetPos.y() < 0)
+      targetPos.setY(uRect.top() + 2);
+    if (targetPos.x() < 0)
+      targetPos.setX(0);
     textRect.moveTopLeft(targetPos);
 
-    painter.fillRect(textRect, QColor(0, 0, 0, 180)); // Semi-transparent black
+    painter.fillRect(textRect, QColor(0, 0, 0, 180));
     painter.setPen(Qt::white);
     painter.drawText(textRect, Qt::AlignCenter, text);
     painter.setPen(pen);
   }
 
   if (showFps) {
-    // === 우측 상단 정보 오버레이 강화 (프로파일 + 해상도 + FPS) ===
     QString shortProfileName = profileName;
     if (shortProfileName.contains('/')) {
       shortProfileName = shortProfileName.split('/').first();
     }
-    const QString overlayText = QString("%1(%2x%3) , FPS: %4")
-                                    .arg(shortProfileName)
-                                    .arg(frame.width())
-                                    .arg(frame.height())
-                                    .arg(currentFps);
+    QString overlayText = QString("%1(%2x%3) , FPS: %4")
+                              .arg(shortProfileName)
+                              .arg(sourceFrame.width())
+                              .arg(sourceFrame.height())
+                              .arg(currentFps);
 
     QFont fpsFont = painter.font();
     fpsFont.setPointSize(14);
@@ -350,20 +349,45 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
     const int margin = 10;
     const QFontMetrics metrics = painter.fontMetrics();
     QRect textRect = metrics.boundingRect(overlayText);
-
     const int paddingX = 8;
     const int paddingY = 4;
     const int boxW = textRect.width() + (paddingX * 2);
     const int boxH = textRect.height() + (paddingY * 2);
-
-    const QRect boxRect(scaledFrame.width() - boxW - margin, margin, boxW,
-                        boxH);
+    const QRect boxRect(outputSize.width() - boxW - margin, margin, boxW, boxH);
 
     painter.fillRect(boxRect, QColor(0, 0, 0, 180));
     painter.setPen(QColor(0, 255, 0));
     painter.drawText(boxRect, Qt::AlignCenter, overlayText);
   }
 
+  // 줌 배율 독립 표시
+  if (zoom > 1.001) {
+    const QString zoomText = QString("Zoom: %1x").arg(zoom, 0, 'f', 1);
+    QFont zoomFont = painter.font();
+    zoomFont.setPointSize(16);
+    zoomFont.setBold(true);
+    painter.setFont(zoomFont);
+
+    const QFontMetrics metrics = painter.fontMetrics();
+    QRect textRect = metrics.boundingRect(zoomText);
+    const int paddingX = 12;
+    const int paddingY = 6;
+    const int boxW = textRect.width() + (paddingX * 2);
+    const int boxH = textRect.height() + (paddingY * 2);
+    const int margin = 10;
+
+    // 만약 FPS 정보가 표시 중이면 그 아래에, 아니면 우측 상단에 표시
+    int boxY = margin;
+    if (showFps) {
+      boxY += 40; // 대략적인 FPS 박스 높이만큼 아래로
+    }
+    const QRect boxRect(outputSize.width() - boxW - margin, boxY, boxW, boxH);
+
+    painter.fillRect(boxRect, QColor(0, 0, 0, 180));
+    painter.setPen(QColor(0, 255, 0));
+    painter.drawText(boxRect, Qt::AlignCenter, zoomText);
+  }
+
   painter.end();
-  return scaledFrame;
+  return renderTarget;
 }

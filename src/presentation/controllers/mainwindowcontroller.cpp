@@ -352,6 +352,12 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     }
     return channel ? channel->videoWidget() : nullptr;
   };
+  recordingContext.videoWidgetAt = [this](int cardIndex) -> VideoWidget * {
+    auto *channel = m_channelRuntimeController
+                        ? m_channelRuntimeController->channelForCardIndex(cardIndex)
+                        : nullptr;
+    return channel ? channel->videoWidget() : nullptr;
+  };
   recordingContext.cameraZoomRect = [this](int cardIndex) -> QRectF {
     auto *channel = m_channelRuntimeController
                         ? m_channelRuntimeController->channelForCardIndex(cardIndex)

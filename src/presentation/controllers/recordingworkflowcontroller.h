@@ -44,6 +44,7 @@ public:
     std::function<CameraSource *(int)> sourceAt;
     std::function<int()> selectedChannelCount;
     std::function<VideoWidget *()> primarySelectedVideoWidget;
+    std::function<VideoWidget *(int)> videoWidgetAt;
     std::function<QRectF(int)> cameraZoomRect;
   };
 

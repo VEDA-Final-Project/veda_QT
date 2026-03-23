@@ -232,6 +232,9 @@ void RecordingWorkflowController::bindRecordPreviewSource(int index) {
                                 m_ui.recordVideoWidget
                                     ? m_ui.recordVideoWidget->size()
                                     : QSize());
+  if (m_ui.recordVideoWidget) {
+    m_ui.recordVideoWidget->setRecording(m_isManualRecording && m_manualRecordChannelIdx == index);
+  }
 }
 
 void RecordingWorkflowController::onCaptureManual() {
@@ -243,6 +246,13 @@ void RecordingWorkflowController::onCaptureManual() {
   }
 
   const int idx = resolveRequestedChannelIndex(sender());
+  
+  if (m_ui.cmbManualCamera && m_ui.cmbManualCamera->currentIndex() != idx) {
+    bool oldState = m_ui.cmbManualCamera->blockSignals(true);
+    m_ui.cmbManualCamera->setCurrentIndex(idx);
+    m_ui.cmbManualCamera->blockSignals(oldState);
+  }
+
   VideoBufferManager *targetBuffer = bufferByIndex(idx);
   const QString camId = QString("Ch %1").arg(idx + 1);
 
@@ -261,6 +271,17 @@ void RecordingWorkflowController::onCaptureManual() {
   if (frames.empty()) {
     appendLog(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 실행 중인지 확인하세요.").arg(camId));
     return;
+  }
+
+  VideoWidget *flashTarget = nullptr;
+  if (sender() == m_ui.btnCaptureRecordTab) {
+    flashTarget = m_ui.recordVideoWidget;
+  } else if (m_context.primarySelectedVideoWidget) {
+    flashTarget = m_context.primarySelectedVideoWidget();
+  }
+  
+  if (flashTarget) {
+    flashTarget->showCaptureFlash();
   }
 
   const QString fileName =
@@ -294,9 +315,25 @@ void RecordingWorkflowController::onRecordManualToggled(bool checked) {
   if (checked) {
     m_isManualRecording = true;
     const int idx = resolveRequestedChannelIndex(sender());
+    
+    if (m_ui.cmbManualCamera && m_ui.cmbManualCamera->currentIndex() != idx) {
+      bool oldState = m_ui.cmbManualCamera->blockSignals(true);
+      m_ui.cmbManualCamera->setCurrentIndex(idx);
+      m_ui.cmbManualCamera->blockSignals(oldState);
+    }
+    
     m_manualRecordChannelIdx = idx;
     VideoBufferManager *buffer = bufferByIndex(idx);
     m_manualRecordStartIdx = buffer ? buffer->getTotalFramesAdded() : 0;
+
+    if (m_context.videoWidgetAt) {
+      if (VideoWidget *vw = m_context.videoWidgetAt(idx)) {
+        vw->setRecording(true);
+      }
+    }
+    if (m_ui.recordVideoWidget) {
+      m_ui.recordVideoWidget->setRecording(true);
+    }
 
     appendLog(QString("[Recorder] [Ch %1] 수동 녹화 시작 (시작 인덱스: %2)")
                   .arg(idx + 1)
@@ -307,6 +344,15 @@ void RecordingWorkflowController::onRecordManualToggled(bool checked) {
   const int idx = m_manualRecordChannelIdx;
   VideoBufferManager *targetBuffer = bufferByIndex(idx);
   const QString camId = QString("Ch %1").arg(idx + 1);
+
+  if (m_context.videoWidgetAt) {
+    if (VideoWidget *vw = m_context.videoWidgetAt(idx)) {
+      vw->setRecording(false);
+    }
+  }
+  if (m_ui.recordVideoWidget) {
+    m_ui.recordVideoWidget->setRecording(false);
+  }
 
   appendLog(QString("[Recorder] [%1] 녹화 중지 요청 - 저장 중...").arg(camId));
 
@@ -518,12 +564,14 @@ int RecordingWorkflowController::resolveRequestedChannelIndex(
                 ? m_context.selectedCctvChannelIndex()
                 : 0;
   QPushButton *senderButton = qobject_cast<QPushButton *>(senderObject);
-  if (!senderButton && m_ui.cmbManualCamera) {
-    idx = selectedManualCameraIndex();
-  } else if ((senderButton && senderButton == m_ui.btnCaptureRecordTab) ||
-             (senderButton && senderButton == m_ui.btnRecordRecordTab)) {
+  
+  // 만약 REC 탭의 버튼에서 발생한 캡처/녹화 이벤트라면, 
+  // REC 탭 콤보박스의 값을 타겟 카메라 인덱스로 사용한다.
+  if ((senderButton && senderButton == m_ui.btnCaptureRecordTab) ||
+      (senderButton && senderButton == m_ui.btnRecordRecordTab)) {
     idx = selectedManualCameraIndex();
   }
+  // 그 외(팝업이나 메인 CCTV 제어 버튼)의 경우에는 현재 활성화된 CCTV 채널(idx)을 유지한다.
 
   return (idx >= 0 && idx < kChannelCount) ? idx : 0;
 }

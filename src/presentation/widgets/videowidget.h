@@ -4,6 +4,7 @@
 #include "infrastructure/metadata/metadatathread.h"
 #include "presentation/widgets/roiinteractionstate.h"
 #include "presentation/widgets/videoframerenderer.h"
+#include "infrastructure/video/sharedvideoframe.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -14,6 +15,7 @@
 #include <QSize>
 #include <QStringList>
 #include <QWidget>
+#include <opencv2/opencv.hpp>
 
 /**
  * @brief 비디오 렌더링 위젯
@@ -57,6 +59,8 @@ public slots:
   void dispatchOcrRequests(const QImage &frame);
   void setShowFps(bool show);
   void setProfileName(const QString &name) { m_profileName = name; }
+  void showCaptureFlash();
+  void setRecording(bool recording);
 
 signals:
   void ocrRequested(int objectId, const QImage &crop);
@@ -102,6 +106,9 @@ private:
   // Pan offsets (normalized 0.0-1.0)
   double m_panX = 0.5;
   double m_panY = 0.5;
+
+  double m_flashAlpha = 0.0;
+  bool m_isRecording = false;
 };
 
 #endif // VIDEOWIDGET_H

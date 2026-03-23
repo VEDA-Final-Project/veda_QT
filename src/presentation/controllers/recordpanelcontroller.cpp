@@ -212,8 +212,9 @@ void RecordPanelController::onDeleteClicked() {
                               "삭제하시겠습니까?\n파일도 함께 삭제됩니다.")
                 .arg(idsToDelete.size());
 
-  auto reply = QMessageBox::question(nullptr, QString::fromUtf8("삭제 확인"),
-                                     message, QMessageBox::Yes | QMessageBox::No);
+  auto reply =
+      QMessageBox::question(nullptr, QString::fromUtf8("삭제 확인"), message,
+                            QMessageBox::Yes | QMessageBox::No);
 
   if (reply != QMessageBox::Yes)
     return;

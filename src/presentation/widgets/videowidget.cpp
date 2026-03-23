@@ -3,6 +3,7 @@
 #include <QDebug>
 #include <QPainter>
 #include <QtGlobal>
+#include <QVariantAnimation>
 
 VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent) {
   setStyleSheet("background-color: black;");
@@ -263,6 +264,13 @@ void VideoWidget::invalidateLiveFrameCache() {
   m_cachedScaledLiveFrame = QImage();
 }
 
+void VideoWidget::setRecording(bool recording) {
+  if (m_isRecording != recording) {
+    m_isRecording = recording;
+    update();
+  }
+}
+
 void VideoWidget::paintEvent(QPaintEvent *event) {
   QWidget::paintEvent(event);
 
@@ -274,6 +282,49 @@ void VideoWidget::paintEvent(QPaintEvent *event) {
   }
 
   m_roiState.paintDrawingOverlay(this, m_lastFrameSize);
+
+  if (m_flashAlpha > 0.0) {
+    QPainter p(this);
+    p.fillRect(rect(), QColor(255, 255, 255, static_cast<int>(m_flashAlpha)));
+  }
+
+  if (m_isRecording) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    
+    const bool blink = (QDateTime::currentMSecsSinceEpoch() / 600) % 2 == 0;
+    const int px = 20;
+    const int py = 20;
+
+    QRect indicatorRect(px, py, 76, 28);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0, 180));
+    p.drawRoundedRect(indicatorRect, 14, 14);
+
+    if (blink) {
+      p.setBrush(QColor(239, 68, 68)); 
+    } else {
+      p.setBrush(QColor(239, 68, 68, 100));
+    }
+    p.drawEllipse(px + 10, py + 8, 12, 12);
+
+    p.setPen(Qt::white);
+    p.setFont(QFont("Arial", 11, QFont::Bold));
+    p.drawText(px + 28, py, 50, 28, Qt::AlignVCenter | Qt::AlignLeft, "REC");
+  }
+}
+
+void VideoWidget::showCaptureFlash() {
+  auto *anim = new QVariantAnimation(this);
+  anim->setDuration(300);
+  anim->setStartValue(180);
+  anim->setEndValue(0);
+  connect(anim, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+    m_flashAlpha = value.toDouble();
+    update();
+  });
+  connect(anim, &QVariantAnimation::finished, anim, &QObject::deleteLater);
+  anim->start();
 }
 
 void VideoWidget::mousePressEvent(QMouseEvent *event) {
