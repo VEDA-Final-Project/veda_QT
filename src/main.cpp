@@ -1,9 +1,9 @@
 #include "config/config.h"
 #include "config/logfilterconfig.h"
-#include "ui/windows/loginpage.h"
-#include "ui/windows/mainwindow.h"
-#include "ui/windows/mainwindowcontroller.h"
-#include "video/videothread.h"
+#include "presentation/pages/loginpage.h"
+#include "presentation/shell/mainwindow.h"
+#include "presentation/controllers/mainwindowcontroller.h"
+#include "infrastructure/video/videothread.h"
 #include <vector>
 
 #include <QApplication>
@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
+#include <QTimer>
 
 // ── 카테고리 기반 로그 필터 핸들러 ──
 static QtMessageHandler s_defaultHandler = nullptr;

@@ -187,7 +187,7 @@ void RecordingWorkflowController::bindRecordPreviewSource(int index) {
   m_recordPreviewSource = source;
   m_recordPreviewConnection = connect(
       source, &CameraSource::displayFrameReady, this,
-      [this](SharedVideoFrame frame, const QList<ObjectInfo> &) {
+      [this](const QImage &frame, const QList<ObjectInfo> &) {
         if (m_recordPanelController) {
           m_recordPanelController->updateLiveFrame(frame);
         }

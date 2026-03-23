@@ -65,6 +65,9 @@ public:
   int authRequestTimeoutMs() const;
   bool authTlsEnabled() const;
   QStringList authPinnedSha256() const;
+  QString rpiControlHost() const;
+  int rpiControlPort() const;
+  bool rpiControlAutoConnect() const;
 
 private:
   explicit Config(QObject *parent = nullptr);

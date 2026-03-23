@@ -1,6 +1,6 @@
 #include "vehicleinfopanelcontroller.h"
 
-#include "database/vehiclerepository.h"
+#include "infrastructure/persistence/vehiclerepository.h"
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTableWidgetItem>

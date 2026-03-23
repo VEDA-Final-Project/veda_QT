@@ -86,6 +86,12 @@ const QList<QPolygon> &VideoWidget::roiPolygons() const {
   return m_roiState.roiPolygons();
 }
 
+void VideoWidget::panZoom(double, double) {}
+
+void VideoWidget::setZoom(double zoom) { m_zoom = zoom; }
+
+double VideoWidget::zoom() const { return m_zoom; }
+
 void VideoWidget::startRoiDrawing() {
   if (m_lastFrameSize.isEmpty()) {
     m_lastFrameSize = QSize(

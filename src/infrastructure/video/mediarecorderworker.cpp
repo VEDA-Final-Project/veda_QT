@@ -1,4 +1,4 @@
-#include "video/mediarecorderworker.h"
+#include "infrastructure/video/mediarecorderworker.h"
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>

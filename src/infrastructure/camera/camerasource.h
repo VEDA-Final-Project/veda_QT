@@ -1,12 +1,12 @@
 #ifndef CAMERASOURCE_H
 #define CAMERASOURCE_H
 
-#include "camera/camerasessionservice.h"
-#include "ocr/plateocrcoordinator.h"
-#include "parking/parkingservice.h"
-#include "roi/roiservice.h"
-#include "tracking/reidextractor.h"
-#include "ui/video/videoframerenderer.h"
+#include "infrastructure/camera/camerasessionservice.h"
+#include "infrastructure/ocr/plateocrcoordinator.h"
+#include "application/parking/parkingservice.h"
+#include "application/roi/roiservice.h"
+#include "infrastructure/vision/reidextractor.h"
+#include "presentation/widgets/videoframerenderer.h"
 #include <QElapsedTimer>
 #include <QHash>
 #include <QImage>

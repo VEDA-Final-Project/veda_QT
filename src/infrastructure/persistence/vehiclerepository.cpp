@@ -1,5 +1,5 @@
-#include "database/vehiclerepository.h"
-#include "database/databasecontext.h"
+#include "infrastructure/persistence/vehiclerepository.h"
+#include "infrastructure/persistence/databasecontext.h"
 #include <QDebug>
 #include <QSqlError>
 #include <QSqlQuery>

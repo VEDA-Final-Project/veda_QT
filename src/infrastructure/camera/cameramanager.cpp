@@ -2,7 +2,7 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QElapsedTimer>
-#include "util/rtspurl.h"
+#include "infrastructure/camera/rtspurl.h"
 
 namespace {
 constexpr unsigned long kThreadStopTimeoutMs = 2000;

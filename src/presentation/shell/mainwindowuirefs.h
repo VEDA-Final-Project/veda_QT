@@ -16,8 +16,28 @@ class QTextEdit;
 class VideoWidget;
 class QFrame;
 class QGridLayout;
+class QMenu;
+class QStackedWidget;
+class QTabWidget;
+class QToolButton;
 
-struct MainWindowUiRefs {
+struct HeaderUiRefs {
+  QLabel *headerIconLabel = nullptr;
+  QLabel *headerTitleLabel = nullptr;
+  QToolButton *menuButton = nullptr;
+  QMenu *navMenu = nullptr;
+  QToolButton *settingsButton = nullptr;
+  QPushButton *btnMinimize = nullptr;
+  QPushButton *btnMaxRestore = nullptr;
+  QPushButton *btnExit = nullptr;
+};
+
+struct SplashUiRefs {
+  QLabel *titleLabel = nullptr;
+  QLabel *messageLabel = nullptr;
+};
+
+struct CctvUiRefs {
   VideoWidget *videoWidgets[4] = {nullptr, nullptr, nullptr, nullptr};
   QFrame *channelCards[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
@@ -27,13 +47,24 @@ struct MainWindowUiRefs {
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
   QComboBox *roiSelectorCombo = nullptr;
-  QTextEdit *logView = nullptr;
-  QPushButton *btnPlay = nullptr;
   QPushButton *btnApplyRoi = nullptr;
   QPushButton *btnFinishRoi = nullptr;
   QPushButton *btnDeleteRoi = nullptr;
+  QCheckBox *chkVehicle = nullptr;
+  QCheckBox *chkPerson = nullptr;
+  QCheckBox *chkFace = nullptr;
+  QCheckBox *chkPlate = nullptr;
+  QCheckBox *chkOther = nullptr;
+  QCheckBox *chkShowFps = nullptr;
+  QLabel *lblAvgFps = nullptr;
+  QPushButton *btnCaptureManual = nullptr;
+  QPushButton *btnRecordManual = nullptr;
+  QLabel *footerTimeLabel = nullptr;
+  QLabel *recordingDot = nullptr;
+  QLabel *footerRecordingLabel = nullptr;
+};
 
-  // Telegram Widgets
+struct TelegramUiRefs {
   QLabel *userCountLabel = nullptr;
   QLineEdit *entryPlateInput = nullptr;
   QPushButton *btnSendEntry = nullptr;
@@ -41,8 +72,10 @@ struct MainWindowUiRefs {
   QSpinBox *feeInput = nullptr;
   QPushButton *btnSendExit = nullptr;
   QTableWidget *userTable = nullptr;
+};
 
-  // Parking DB Panel Widgets
+struct DbUiRefs {
+  QTabWidget *dbSubTabs = nullptr;
   QTableWidget *parkingLogTable = nullptr;
   QLineEdit *plateSearchInput = nullptr;
   QPushButton *btnSearchPlate = nullptr;
@@ -53,14 +86,10 @@ struct MainWindowUiRefs {
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;
   QCheckBox *chkShowPlateLogs = nullptr;
-  QCheckBox *chkShowFps = nullptr;
-  QLabel *lblAvgFps = nullptr;
   QTableWidget *reidTable = nullptr;
   QSpinBox *staleTimeoutInput = nullptr;
   QSpinBox *pruneTimeoutInput = nullptr;
   QCheckBox *chkShowStaleObjects = nullptr;
-
-  // New DB sub-tab refs
   QTableWidget *userDbTable = nullptr;
   QPushButton *btnRefreshUsers = nullptr;
   QPushButton *btnAddUser = nullptr;
@@ -71,14 +100,9 @@ struct MainWindowUiRefs {
   QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
+};
 
-  // CCTV Event Log Panel
-  QListWidget *eventListWidget = nullptr;
-
-  QPushButton *btnCaptureManual = nullptr;
-  QPushButton *btnRecordManual = nullptr;
-
-  // Recording Search Panel
+struct RecordUiRefs {
   QTableWidget *recordLogTable = nullptr;
   QPushButton *btnRefreshRecordLogs = nullptr;
   QPushButton *btnDeleteRecordLog = nullptr;
@@ -91,19 +115,27 @@ struct MainWindowUiRefs {
   QPushButton *btnCaptureRecordTab = nullptr;
   QPushButton *btnRecordRecordTab = nullptr;
   QLabel *recordPreviewPathLabel = nullptr;
-
-  // Video player controls
   QPushButton *btnVideoPlay = nullptr;
   QPushButton *btnVideoPause = nullptr;
   QPushButton *btnVideoStop = nullptr;
   QSlider *videoSeekSlider = nullptr;
   QLabel *videoTimeLabel = nullptr;
-
-  // Continuous Recording (상시 녹화)
   QSpinBox *spinRecordRetention = nullptr;
   QLabel *lblContinuousStatus = nullptr;
   QPushButton *btnApplyContinuousSetting = nullptr;
   QPushButton *btnViewContinuous = nullptr;
+};
+
+struct MainWindowUiRefs : HeaderUiRefs,
+                          SplashUiRefs,
+                          CctvUiRefs,
+                          TelegramUiRefs,
+                          DbUiRefs,
+                          RecordUiRefs {
+  QTextEdit *logView = nullptr;
+  QListWidget *eventListWidget = nullptr;
+  QPushButton *btnPlay = nullptr;
+  QStackedWidget *stackedWidget = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

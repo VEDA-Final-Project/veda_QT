@@ -5,7 +5,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QSet>
-#include "metadata/metadatathread.h" // ObjectInfo 구조체 재사용
+#include "infrastructure/metadata/metadatathread.h" // ObjectInfo 구조체 재사용
 
 /**
  * @brief SRTP 메타데이터 파싱 클래스 (Step 5)

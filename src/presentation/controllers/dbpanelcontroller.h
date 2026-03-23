@@ -6,11 +6,13 @@
 #include <QVector>
 #include <functional>
 
-class ParkingService;
+class ParkingLogApplicationService;
 class ParkingLogPanelController;
+class UserAdminApplicationService;
 class UserDbPanelController;
 class VehicleInfoPanelController;
 class ZonePanelController;
+class ZoneQueryApplicationService;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -49,12 +51,10 @@ public:
   };
 
   struct Context {
-    std::function<ParkingService *()> parkingServiceProvider;
-    std::function<QVector<ParkingService *>()> allParkingServicesProvider;
-    std::function<ParkingService *(const QString &)> parkingServiceForCameraKeyProvider;
-    std::function<QVector<QJsonObject>()> allZoneRecordsProvider;
+    ParkingLogApplicationService *parkingLogService = nullptr;
+    UserAdminApplicationService *userAdminService = nullptr;
+    ZoneQueryApplicationService *zoneQueryService = nullptr;
     std::function<void(const QString &)> logMessage;
-    std::function<void(const QString &)> userDeleted;
   };
 
   explicit DbPanelController(const UiRefs &uiRefs, Context context,

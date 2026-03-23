@@ -1,8 +1,8 @@
-#include "camera/camerasource.h"
+#include "infrastructure/camera/camerasource.h"
 #include <QDebug>
 
 #include "config/config.h"
-#include "telegram/telegrambotapi.h"
+#include "infrastructure/telegram/telegrambotapi.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QHash>

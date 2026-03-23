@@ -1,4 +1,4 @@
-#include "ui/windows/recordpanelcontroller.h"
+#include "presentation/controllers/recordpanelcontroller.h"
 #include <QDebug>
 #include <QFile>
 #include <QHeaderView>
@@ -331,6 +331,21 @@ void RecordPanelController::updateLiveFrame(const QImage &frame) {
   if (!m_hasMediaLoaded && !m_playCap.isOpened()) {
     m_ui.recordVideoWidget->updateFrame(frame);
   }
+}
+
+void RecordPanelController::updateLiveFrame(const SharedVideoFrame &frame) {
+  if (!frame.isValid() || !frame.mat) {
+    return;
+  }
+
+  const cv::Mat &mat = *frame.mat;
+  if (mat.empty()) {
+    return;
+  }
+
+  const QImage image(mat.data, mat.cols, mat.rows, mat.step,
+                     QImage::Format_BGR888);
+  updateLiveFrame(image.copy());
 }
 
 // ──────────────────────────────────────────────────────────────

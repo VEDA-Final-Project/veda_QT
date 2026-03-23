@@ -1,7 +1,7 @@
 #ifndef VEHICLETRACKER_H
 #define VEHICLETRACKER_H
 
-#include "../metadata/metadatathread.h"
+#include "infrastructure/metadata/metadatathread.h"
 #include <QHash>
 #include <QList>
 #include <QPolygonF>

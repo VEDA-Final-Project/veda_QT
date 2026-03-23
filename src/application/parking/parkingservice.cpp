@@ -1,8 +1,8 @@
 #include "parkingservice.h"
-#include "parkingrepository.h"
-#include "database/vehiclerepository.h"
-#include "../telegram/telegrambotapi.h"
-#include "vehicletracker.h"
+#include "infrastructure/persistence/parkingrepository.h"
+#include "infrastructure/persistence/vehiclerepository.h"
+#include "infrastructure/telegram/telegrambotapi.h"
+#include "domain/parking/vehicletracker.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QRegularExpression>

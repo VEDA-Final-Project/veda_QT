@@ -21,11 +21,7 @@ DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
   parkingUiRefs.btnEditPlate = m_ui.btnEditPlate;
 
   ParkingLogPanelController::Context parkingContext;
-  parkingContext.parkingServiceProvider = m_context.parkingServiceProvider;
-  parkingContext.allParkingServicesProvider =
-      m_context.allParkingServicesProvider;
-  parkingContext.parkingServiceForCameraKeyProvider =
-      m_context.parkingServiceForCameraKeyProvider;
+  parkingContext.service = m_context.parkingLogService;
   parkingContext.logMessage = m_context.logMessage;
 
   m_parkingLogPanelController =
@@ -39,8 +35,8 @@ DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
   userUiRefs.btnDeleteUser = m_ui.btnDeleteUser;
 
   UserDbPanelController::Context userContext;
+  userContext.service = m_context.userAdminService;
   userContext.logMessage = m_context.logMessage;
-  userContext.userDeleted = m_context.userDeleted;
 
   m_userDbPanelController =
       new UserDbPanelController(userUiRefs, userContext, this);
@@ -61,7 +57,7 @@ DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
   zoneUiRefs.btnRefreshZone = m_ui.btnRefreshZone;
 
   ZonePanelController::Context zoneContext;
-  zoneContext.allZoneRecordsProvider = m_context.allZoneRecordsProvider;
+  zoneContext.service = m_context.zoneQueryService;
   zoneContext.logMessage = m_context.logMessage;
 
   m_zonePanelController = new ZonePanelController(zoneUiRefs, zoneContext, this);

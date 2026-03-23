@@ -1,4 +1,4 @@
-#include "video/videobuffermanager.h"
+#include "infrastructure/video/videobuffermanager.h"
 #include <algorithm>
 
 VideoBufferManager::VideoBufferManager(int maxFrames, QObject *parent)

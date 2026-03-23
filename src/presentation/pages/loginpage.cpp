@@ -1,7 +1,7 @@
 #include "loginpage.h"
 
 #include "config/config.h"
-#include "rpi/rpiauthclient.h"
+#include "infrastructure/rpi/rpiauthclient.h"
 
 #include <QCloseEvent>
 #include <QFrame>

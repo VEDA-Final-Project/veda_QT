@@ -1,9 +1,9 @@
 #ifndef VIDEOWIDGET_H
 #define VIDEOWIDGET_H
 
-#include "metadata/metadatathread.h"
-#include "ui/roi/roiinteractionstate.h"
-#include "ui/video/videoframerenderer.h"
+#include "infrastructure/metadata/metadatathread.h"
+#include "presentation/widgets/roiinteractionstate.h"
+#include "presentation/widgets/videoframerenderer.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -38,6 +38,9 @@ public:
   bool removeRoiAt(int index);
   int roiCount() const;
   const QList<QPolygon> &roiPolygons() const;
+  void panZoom(double x, double y);
+  void setZoom(double zoom);
+  double zoom() const;
   void startRoiDrawing();
   bool completeRoiDrawing();
 
@@ -78,6 +81,7 @@ private:
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
+  double m_zoom = 1.0;
   QString m_profileName;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;

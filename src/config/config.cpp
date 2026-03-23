@@ -424,3 +424,9 @@ QStringList Config::authPinnedSha256() const {
 
   return values;
 }
+
+QString Config::rpiControlHost() const { return authHost(); }
+
+int Config::rpiControlPort() const { return authPort(); }
+
+bool Config::rpiControlAutoConnect() const { return false; }

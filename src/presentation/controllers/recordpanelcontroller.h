@@ -1,8 +1,9 @@
 #ifndef RECORDPANELCONTROLLER_H
 #define RECORDPANELCONTROLLER_H
 
-#include "database/mediarepository.h"
-#include "ui/video/videowidget.h"
+#include "infrastructure/persistence/mediarepository.h"
+#include "infrastructure/video/sharedvideoframe.h"
+#include "presentation/widgets/videowidget.h"
 #include <QElapsedTimer>
 #include <QCheckBox>
 #include <QComboBox>
@@ -71,6 +72,7 @@ public slots:
   void onRowSelectionChanged();
   void onTriggerEventRecord();
   void updateLiveFrame(const QImage &frame);
+  void updateLiveFrame(const SharedVideoFrame &frame);
   void onViewContinuousClicked();
   void onApplyEventSettingClicked();
 

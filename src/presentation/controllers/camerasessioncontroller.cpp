@@ -39,9 +39,38 @@ void CameraSessionController::start() {
     CameraSource *source = new CameraSource(cameraKeys[i], i, this);
     source->initialize(m_context.telegramApi ? m_context.telegramApi() : nullptr);
     connect(source, &CameraSource::rawFrameReady, this,
-            &CameraSessionController::rawFrameReady);
+            [this](int cardIndex, QSharedPointer<cv::Mat> framePtr,
+                   qint64 timestampMs) {
+              emit rawFrameReady(cardIndex,
+                                 SharedVideoFrame{framePtr, timestampMs});
+            });
     connect(source, &CameraSource::thumbnailFrameReady, this,
-            &CameraSessionController::updateThumbnailForCard);
+            [this](int cardIndex, const QImage &image) {
+              if (cardIndex < 0 || cardIndex >= kCameraSlotCount ||
+                  image.isNull() || !m_ui.thumbnailLabels[cardIndex]) {
+                return;
+              }
+
+              if (m_renderTimerThumbs[cardIndex].isValid() &&
+                  m_renderTimerThumbs[cardIndex].elapsed() < 200) {
+                return;
+              }
+              m_renderTimerThumbs[cardIndex].restart();
+
+              const QSize targetSize = m_ui.thumbnailLabels[cardIndex]->size();
+              ThumbnailCache &cache = m_thumbnailCaches[cardIndex];
+              if (cache.labelSize != targetSize || cache.pixmap.isNull()) {
+                cache.frameIdentity = nullptr;
+                cache.labelSize = targetSize;
+                cache.pixmap = QPixmap::fromImage(
+                    image.scaled(targetSize, Qt::KeepAspectRatio,
+                                 Qt::FastTransformation));
+              }
+              m_ui.thumbnailLabels[cardIndex]->setText(QString());
+              QMetaObject::invokeMethod(m_ui.thumbnailLabels[cardIndex],
+                                        "setPixmap", Qt::QueuedConnection,
+                                        Q_ARG(QPixmap, cache.pixmap));
+            });
     connect(source, &CameraSource::statusChanged, this,
             [this](int cardIndex, CameraSource::Status status,
                    const QString &detail) {

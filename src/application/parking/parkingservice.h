@@ -1,9 +1,9 @@
 #ifndef PARKINGSERVICE_H
 #define PARKINGSERVICE_H
 
-#include "parkingrepository.h"
-#include "database/vehiclerepository.h"
-#include "vehicletracker.h"
+#include "infrastructure/persistence/parkingrepository.h"
+#include "infrastructure/persistence/vehiclerepository.h"
+#include "domain/parking/vehicletracker.h"
 #include <QObject>
 #include <QString>
 #include <QList>

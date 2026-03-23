@@ -1,8 +1,8 @@
 #ifndef CAMERAMANAGER_H
 #define CAMERAMANAGER_H
 
-#include "metadata/metadatathread.h"
-#include "video/videothread.h"
+#include "infrastructure/metadata/metadatathread.h"
+#include "infrastructure/video/videothread.h"
 #include "srtp/srtporchestrator.h"
 #include <QObject>
 #include <QSet>

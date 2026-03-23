@@ -1,5 +1,5 @@
-#include "parking/parkingrepository.h"
-#include "database/databasecontext.h"
+#include "infrastructure/persistence/parkingrepository.h"
+#include "infrastructure/persistence/databasecontext.h"
 #include <QDebug>
 #include <QJsonObject>
 #include <QJsonValue>
