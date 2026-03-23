@@ -283,6 +283,10 @@ QImage VideoFrameRenderer::compose(const QImage &frame, const QSize &targetSize,
   }
 
   for (const RenderCandidate &candidate : candidates) {
+    if (hasActiveRoi && !candidate.intersectsRoi) {
+      continue;
+    }
+
     const ObjectInfo &obj = candidate.obj;
     const QRect &uRect = candidate.scaledRect;
     painter.drawRect(uRect);
