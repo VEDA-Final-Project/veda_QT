@@ -30,10 +30,10 @@ component "CameraSource\n(per camera)" as Source {
   [PlateOcrCoordinator]
 }
 
-component "MainWindowController" as MWC {
-  [onRawFrameReady()]
-  [VideoBufferManager]
-  [Record Preview Binding]
+component "MainWindowController\n(coordinator)" as MWC {
+  [CameraSessionController]
+  [RecordingWorkflowController]
+  [ReidController]
 }
 
 component "CameraChannelRuntime" as ChannelRuntime
@@ -86,8 +86,8 @@ display / thumbnail / OCR는
 end note
 
 note bottom of MWC
-rawFrameReady를 받아
-상시 녹화 버퍼와 이벤트 버퍼를 관리
+상위 coordinator가 specialized controller를 조립하고
+rawFrameReady는 RecordingWorkflowController로 위임된다
 녹화 탭 프리뷰는 별도 RTSP를 열지 않음
 end note
 @enduml
@@ -114,8 +114,8 @@ end note
 
 관련 파일:
 
-- `src/camera/cameramanager.h`
-- `src/camera/cameramanager.cpp`
+- `src/infrastructure/camera/cameramanager.h`
+- `src/infrastructure/camera/cameramanager.cpp`
 
 ### 2. VideoThread
 
@@ -132,8 +132,8 @@ end note
 
 관련 파일:
 
-- `src/video/videothread.h`
-- `src/video/videothread.cpp`
+- `src/infrastructure/video/videothread.h`
+- `src/infrastructure/video/videothread.cpp`
 
 ### 3. MetadataThread
 
@@ -149,8 +149,8 @@ end note
 
 관련 파일:
 
-- `src/metadata/metadatathread.h`
-- `src/metadata/metadatathread.cpp`
+- `src/infrastructure/metadata/metadatathread.h`
+- `src/infrastructure/metadata/metadatathread.cpp`
 
 ### 4. CameraSource
 
@@ -174,8 +174,8 @@ end note
 
 관련 파일:
 
-- `src/camera/camerasource.h`
-- `src/camera/camerasource.cpp`
+- `src/infrastructure/camera/camerasource.h`
+- `src/infrastructure/camera/camerasource.cpp`
 
 ### 5. CameraChannelRuntime
 
@@ -190,27 +190,33 @@ end note
 
 관련 파일:
 
-- `src/ui/windows/camerachannelruntime.h`
-- `src/ui/windows/camerachannelruntime.cpp`
+- `src/presentation/widgets/camerachannelruntime.h`
+- `src/presentation/widgets/camerachannelruntime.cpp`
 
-### 6. MainWindowController
+### 6. MainWindowController and specialized controllers
 
 역할:
 
-- 전체 카메라 소스 생성 및 관리
-- 녹화/이벤트 저장 버퍼 운영
-- 녹화 탭 프리뷰를 기존 `CameraSource`에 연결
+- 전체 화면 orchestration
+- specialized controller 조립과 상호 연결
+- 녹화/카메라/ReID/CCTV/하드웨어 흐름 위임
 
 현재 특징:
 
-- `rawFrameReady`를 받아 상시 녹화 버퍼와 수동/이벤트 버퍼에 적재
-- 녹화 탭은 더 이상 별도 RTSP를 열지 않음
-- 카메라 시작을 채널당 순차 지연으로 실행
+- `MainWindowController`는 coordinator 역할에 가깝다
+- 카메라 실행은 `CameraSessionController`
+- 녹화/저장은 `RecordingWorkflowController`
+- ReID 테이블 갱신은 `ReidController`
+- CCTV 채널 선택/레이아웃/ROI는 `CctvController`
 
 관련 파일:
 
-- `src/ui/windows/mainwindowcontroller.h`
-- `src/ui/windows/mainwindowcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.h`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
+- `src/presentation/controllers/camerasessioncontroller.h`
+- `src/presentation/controllers/recordingworkflowcontroller.h`
+- `src/presentation/controllers/reidcontroller.h`
+- `src/presentation/controllers/cctvcontroller.h`
 
 ### 7. RecordPanelController
 
@@ -227,8 +233,8 @@ end note
 
 관련 파일:
 
-- `src/ui/windows/recordpanelcontroller.h`
-- `src/ui/windows/recordpanelcontroller.cpp`
+- `src/presentation/controllers/recordpanelcontroller.h`
+- `src/presentation/controllers/recordpanelcontroller.cpp`
 
 ### 8. MediaRecorderWorker
 
@@ -243,8 +249,8 @@ end note
 
 관련 파일:
 
-- `src/video/mediarecorderworker.h`
-- `src/video/mediarecorderworker.cpp`
+- `src/infrastructure/video/mediarecorderworker.h`
+- `src/infrastructure/video/mediarecorderworker.cpp`
 
 ## 현재 프레임 처리 흐름
 
@@ -267,7 +273,7 @@ end note
 ### 녹화 경로
 
 1. `CameraSource`가 `rawFrameReady`로 원본 `cv::Mat` 전달
-2. `MainWindowController`가 채널별 버퍼에 적재
+2. `RecordingWorkflowController`가 채널별 버퍼에 적재
 3. 상시 녹화는 throttled buffer 사용
 4. 이벤트/수동 저장은 별도 buffer 사용
 5. 저장 시 `MediaRecorderWorker`가 백그라운드에서 파일 생성

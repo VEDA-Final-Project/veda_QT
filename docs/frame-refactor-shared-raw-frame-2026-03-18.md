@@ -28,7 +28,7 @@
 
 새 내부 타입 `SharedVideoFrame`를 추가했습니다.
 
-- 파일: `src/video/sharedvideoframe.h`
+- 파일: `src/infrastructure/video/sharedvideoframe.h`
 - 구성:
   - `QSharedPointer<cv::Mat> mat`
   - `qint64 timestampMs`
@@ -57,8 +57,8 @@
 
 변경 파일:
 
-- `src/camera/camerasource.h`
-- `src/camera/camerasource.cpp`
+- `src/infrastructure/camera/camerasource.h`
+- `src/infrastructure/camera/camerasource.cpp`
 
 변경 내용:
 
@@ -113,8 +113,8 @@
 
 변경 파일:
 
-- `src/ui/windows/mainwindowcontroller.h`
-- `src/ui/windows/mainwindowcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.h`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
 
 변경 내용:
 
@@ -137,9 +137,9 @@
 
 변경 파일:
 
-- `src/ui/windows/recordpanelcontroller.h`
-- `src/ui/windows/recordpanelcontroller.cpp`
-- `src/ui/windows/mainwindowcontroller.cpp`
+- `src/presentation/controllers/recordpanelcontroller.h`
+- `src/presentation/controllers/recordpanelcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
 
 변경 내용:
 
@@ -178,22 +178,22 @@
 
 ## 영향 파일
 
-- `src/video/sharedvideoframe.h`
-- `src/video/videothread.h`
-- `src/video/videothread.cpp`
-- `src/camera/cameramanager.h`
-- `src/camera/camerasource.h`
-- `src/camera/camerasource.cpp`
-- `src/ui/video/videowidget.h`
-- `src/ui/video/videowidget.cpp`
-- `src/ui/video/videoframerenderer.h`
-- `src/ui/video/videoframerenderer.cpp`
-- `src/ui/windows/camerachannelruntime.h`
-- `src/ui/windows/camerachannelruntime.cpp`
-- `src/ui/windows/mainwindowcontroller.h`
-- `src/ui/windows/mainwindowcontroller.cpp`
-- `src/ui/windows/recordpanelcontroller.h`
-- `src/ui/windows/recordpanelcontroller.cpp`
+- `src/infrastructure/video/sharedvideoframe.h`
+- `src/infrastructure/video/videothread.h`
+- `src/infrastructure/video/videothread.cpp`
+- `src/infrastructure/camera/cameramanager.h`
+- `src/infrastructure/camera/camerasource.h`
+- `src/infrastructure/camera/camerasource.cpp`
+- `src/presentation/widgets/videowidget.h`
+- `src/presentation/widgets/videowidget.cpp`
+- `src/presentation/widgets/videoframerenderer.h`
+- `src/presentation/widgets/videoframerenderer.cpp`
+- `src/presentation/widgets/camerachannelruntime.h`
+- `src/presentation/widgets/camerachannelruntime.cpp`
+- `src/presentation/controllers/mainwindowcontroller.h`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
+- `src/presentation/controllers/recordpanelcontroller.h`
+- `src/presentation/controllers/recordpanelcontroller.cpp`
 
 ## 확인 포인트
 
