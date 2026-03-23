@@ -510,16 +510,10 @@ void SrtpOrchestrator::handleSetupResponse(const QMap<QString, QString> &headers
     }
   } else if (m_phase == HandshakePhase::AwaitingSetupMetadata) {
     applyTransportSelection(true, transport);
-    if (forceMetadataTcpInterleaved()) {
-      if (m_metadataUsesInterleaved) {
-        qWarning() << "[SRTP][Meta] Metadata transport accepted on TLS "
-                      "interleaved channel:"
-                   << transport;
-      } else {
-        qWarning() << "[SRTP][Meta] Metadata transport did not stay on TLS "
-                      "interleaved channel:"
-                   << transport;
-      }
+    if (forceMetadataTcpInterleaved() && !m_metadataUsesInterleaved) {
+      qWarning() << "[SRTP][Meta] Metadata transport did not stay on TLS "
+                    "interleaved channel:"
+                 << transport;
     }
     if (m_sessionId != responseSessionId) {
       qWarning() << "[SRTP][Step2] Metadata SETUP returned different Session id:"

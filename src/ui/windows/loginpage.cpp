@@ -212,10 +212,8 @@ void LoginPage::handleLoginStepFinished(bool ok, const QString &code,
     showProgressMessage(
         message.isEmpty() ? QStringLiteral("2FA 코드를 입력하세요.") : message);
     otpInput_->setFocus();
-
     showStatusMessage(QStringLiteral("개발 모드: OTP 생략"), true);
     emit loginSucceeded();
-
     return;
   }
 

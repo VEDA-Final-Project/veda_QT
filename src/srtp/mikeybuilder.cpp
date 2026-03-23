@@ -22,6 +22,20 @@ constexpr quint8 kKemacNullEncr = 0;
 constexpr quint8 kKemacHmacSha1 = 1;
 constexpr quint8 kKeyTypeTekWithSalt = 3;
 constexpr quint8 kKvTypeSpi = 1;
+constexpr int kTemplateLength = 102;
+constexpr int kTemplateCsbIdOffset = 4;
+constexpr int kTemplateTimestampOffset = 21;
+constexpr int kTemplatePolicyOffset = 29;
+constexpr int kTemplateKemacOffset = 58;
+constexpr int kTemplateKeyDataOffset = 62;
+constexpr int kTemplateKeyTypeOffset = 63;
+constexpr int kTemplateKeyLenOffset = 64;
+constexpr int kTemplateKeyMaterialOffset = 66;
+constexpr int kTemplateKeyMaterialLength = 30;
+constexpr int kTemplateMkiLenOffset = 96;
+constexpr int kTemplateMkiOffset = 97;
+constexpr int kTemplateMkiLength = 4;
+constexpr int kTemplateMacAlgOffset = 101;
 
 QByteArray hmacSha1(const QByteArray &key, const QByteArray &message) {
   return QMessageAuthenticationCode::hash(message, key, QCryptographicHash::Sha1);
@@ -123,36 +137,39 @@ QByteArray hanwhaMikeyTemplate() {
       "AQAFAP1td9ABAADCD1UcAAAAAAoAAdOOGc75XD0BAAAAGAABAQEBEAIBAQMBFAcBAQgBAQoBAQsBCgAAACcAIQAe30C59UrClE0e27UP5h/Wty9UL8+dfzg+2ttmmo3kBAAAAC8A");
 }
 
+bool validateHanwhaTemplate(const QByteArray &packet) {
+  if (packet.size() != kTemplateLength) {
+    return false;
+  }
+  const quint16 keyLen =
+      (static_cast<quint8>(packet[kTemplateKeyLenOffset]) << 8) |
+      static_cast<quint8>(packet[kTemplateKeyLenOffset + 1]);
+  if (keyLen != kTemplateKeyMaterialLength) {
+    return false;
+  }
+  return static_cast<quint8>(packet[kTemplateMkiLenOffset]) == kTemplateMkiLength;
+}
+
 void loadTemplateKeyMaterial(MikeyBuilder::MikeyKeys &keys) {
   const QByteArray packet = hanwhaMikeyTemplate();
-  constexpr int kKemacOffset = 58;
-  if (packet.size() < kKemacOffset + 4) {
+  if (!validateHanwhaTemplate(packet)) {
     return;
   }
 
-  const quint16 encrLen =
-      (static_cast<quint8>(packet[kKemacOffset + 2]) << 8) |
-      static_cast<quint8>(packet[kKemacOffset + 3]);
-  const QByteArray encrData = packet.mid(kKemacOffset + 4, encrLen);
-  if (encrData.size() < 39) {
-    return;
-  }
-
-  const quint16 keyDataLen =
-      (static_cast<quint8>(encrData[2]) << 8) |
-      static_cast<quint8>(encrData[3]);
-  if (keyDataLen != 30 || encrData.size() < 4 + keyDataLen + 1) {
-    return;
-  }
-
-  const QByteArray keyMaterial = encrData.mid(4, keyDataLen);
+  const QByteArray keyMaterial =
+      packet.mid(kTemplateKeyMaterialOffset, kTemplateKeyMaterialLength);
   keys.masterKey = keyMaterial.left(16);
   keys.masterSalt = keyMaterial.mid(16, 14);
+  keys.mkiId = packet.mid(kTemplateMkiOffset, kTemplateMkiLength);
+}
 
-  const quint8 spiLen = static_cast<quint8>(encrData[4 + keyDataLen]);
-  if (spiLen > 0 && encrData.size() >= 5 + keyDataLen + spiLen) {
-    keys.mkiId = encrData.mid(5 + keyDataLen, spiLen);
+QByteArray randomBytes(int size) {
+  QByteArray out(size, Qt::Uninitialized);
+  for (int i = 0; i < out.size(); ++i) {
+    out[i] =
+        static_cast<char>(QRandomGenerator::global()->generate() & 0xFF);
   }
+  return out;
 }
 
 bool useOfficialSampleUnchanged() {
@@ -161,7 +178,7 @@ bool useOfficialSampleUnchanged() {
                             .trimmed()
                             .toLower();
   if (value.isEmpty()) {
-    return true;
+    return false;
   }
   return value == QStringLiteral("1") || value == QStringLiteral("true") ||
          value == QStringLiteral("yes");
@@ -178,32 +195,19 @@ MikeyBuilder::MikeyKeys MikeyBuilder::generate(const QByteArray &preSharedSecret
     keys.base64Data = QString::fromLatin1(keys.mikeyBlob.toBase64());
     return keys;
   }
-  
-  // 1. 128-bit Master Key (16 bytes) 생성
-  keys.masterKey.resize(16);
-  for (int i = 0; i < keys.masterKey.size(); ++i) {
-    keys.masterKey[i] = static_cast<char>(QRandomGenerator::global()->generate() & 0xFF);
+  Q_UNUSED(preSharedSecret);
+
+  keys.masterKey = randomBytes(16);
+  keys.masterSalt = randomBytes(14);
+  keys.mkiId = randomBytes(kTemplateMkiLength);
+
+  keys.mikeyBlob =
+      buildMikeyPacket(keys.masterKey, keys.masterSalt, keys.mkiId, QByteArray());
+  if (keys.mikeyBlob.isEmpty()) {
+    qWarning() << "[SRTP][Step3] Failed to build template-compatible MIKEY.";
+    return keys;
   }
 
-  // 2. 112-bit Master Salt (14 bytes) 생성
-  keys.masterSalt.resize(14);
-  for (int i = 0; i < keys.masterSalt.size(); ++i) {
-    keys.masterSalt[i] = static_cast<char>(QRandomGenerator::global()->generate() & 0xFF);
-  }
-
-  keys.mkiId.resize(4);
-  for (int i = 0; i < keys.mkiId.size(); ++i) {
-    keys.mkiId[i] = static_cast<char>(QRandomGenerator::global()->generate() & 0xFF);
-  }
-
-  // 3. MIKEY 바이너리 패킷 조립 (RFC 3830 - PSK 기반 단순 프로파일 약식 구현)
-  // Hanwha sample does not advertise a RAND payload, so we keep the same
-  // T->SP->KEMAC layout and use the NTP timestamp twice as a RAND surrogate
-  // for PSK auth-key derivation.
-  keys.mikeyBlob = buildMikeyPacket(keys.masterKey, keys.masterSalt, keys.mkiId,
-                                    preSharedSecret);
-  
-  // 4. Base64 인코딩
   keys.base64Data = QString::fromLatin1(keys.mikeyBlob.toBase64());
 
   return keys;
@@ -213,62 +217,31 @@ QByteArray MikeyBuilder::buildMikeyPacket(const QByteArray &key,
                                           const QByteArray &salt,
                                           const QByteArray &mkiId,
                                           const QByteArray &preSharedSecret) {
-  if (key.size() != 16 || salt.size() != 14 || mkiId.size() != 4) {
+  Q_UNUSED(preSharedSecret);
+
+  if (key.size() != 16 || salt.size() != 14 || mkiId.size() != kTemplateMkiLength) {
     qWarning() << "[SRTP][Step3] Invalid MIKEY material size:"
                << key.size() << salt.size() << mkiId.size();
     return QByteArray();
   }
-  if (preSharedSecret.isEmpty()) {
-    qWarning() << "[SRTP][Step3] Pre-shared secret is empty. Cannot build PSK MIKEY.";
+
+  QByteArray packet = hanwhaMikeyTemplate();
+  if (!validateHanwhaTemplate(packet)) {
+    qWarning() << "[SRTP][Step3] Hanwha MIKEY template validation failed.";
     return QByteArray();
   }
 
-  const uint32_t csbId = QRandomGenerator::global()->generate();
-  QByteArray packet;
-  packet.reserve(128);
-
-  // Common header with one SRTP map entry.
-  packet.append('\x01'); // version
-  packet.append(static_cast<char>(kDataTypePreShared));
-  packet.append(static_cast<char>(kPayloadT));
-  packet.append('\x00'); // v/prf
-  appendU32(packet, csbId);
-  packet.append('\x01'); // #CS
-  packet.append('\x00'); // CS ID map type = SRTP-ID
-  packet.append('\x00'); // policy no
-  appendU32(packet, kSrtpMapSsrc);
-  appendU32(packet, 0);  // ROC
+  const quint32 csbId = QRandomGenerator::global()->generate();
+  packet[kTemplateCsbIdOffset + 0] = static_cast<char>((csbId >> 24) & 0xFF);
+  packet[kTemplateCsbIdOffset + 1] = static_cast<char>((csbId >> 16) & 0xFF);
+  packet[kTemplateCsbIdOffset + 2] = static_cast<char>((csbId >> 8) & 0xFF);
+  packet[kTemplateCsbIdOffset + 3] = static_cast<char>(csbId & 0xFF);
 
   const QByteArray timestamp = ntpTimestamp64();
-  QByteArray timestampPayload;
-  timestampPayload.append(static_cast<char>(kPayloadSp));
-  timestampPayload.append('\x00'); // NTP-UTC
-  timestampPayload += timestamp;
-  packet += timestampPayload;
+  packet.replace(kTemplateTimestampOffset, timestamp.size(), timestamp);
 
-  packet += buildSrtpPolicyPayload();
-
-  const QByteArray keyData = buildKeyDataSubPayload(key, salt, mkiId);
-  QByteArray kemac;
-  kemac.append(static_cast<char>(kNextLast));
-  kemac.append(static_cast<char>(kKemacNullEncr));
-  appendU16(kemac, static_cast<quint16>(keyData.size()));
-  kemac += keyData;
-  kemac.append(static_cast<char>(kKemacHmacSha1));
-
-  const QByteArray csbBytes = packet.mid(4, 4);
-  const QByteArray surrogateRand = timestamp + timestamp;
-  const QByteArray authKey =
-      deriveMikeyAuthKey(preSharedSecret, csbBytes, surrogateRand);
-  if (authKey.size() != 20) {
-    qWarning() << "[SRTP][Step3] Failed to derive MIKEY auth key.";
-    return QByteArray();
-  }
-
-  QByteArray macInput = packet + kemac;
-  macInput += QByteArray(20, 0);
-  const QByteArray mac = hmacSha1(authKey, macInput);
-  kemac += mac.left(20);
-  packet += kemac;
+  const QByteArray keyMaterial = key + salt;
+  packet.replace(kTemplateKeyMaterialOffset, keyMaterial.size(), keyMaterial);
+  packet.replace(kTemplateMkiOffset, mkiId.size(), mkiId);
   return packet;
 }

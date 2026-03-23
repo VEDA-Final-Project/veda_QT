@@ -2,6 +2,7 @@
 #define SRTPSESSION_H
 
 #include <QObject>
+#include <QStringList>
 #include <QSslSocket>
 #include <QSslError>
 #include <QList>
@@ -35,8 +36,12 @@ private slots:
   void onDisconnected();
 
 private:
+  bool isPinnedCertificateAllowed() const;
+  QString peerCertificateSha256() const;
+
   QSslSocket *m_sslSocket;
   QString m_targetIp;
+  QStringList m_allowedFingerprints;
 };
 
 #endif // SRTPSESSION_H

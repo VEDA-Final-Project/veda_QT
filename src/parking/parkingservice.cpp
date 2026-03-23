@@ -64,11 +64,6 @@ void ParkingService::setCameraKey(const QString &cameraKey)
   }
   
   m_tracker.setIdPrefix(prefix);
-  
-  QString debugMsg = QString("[Parking] Camera Key: '%1' -> Prefix: '%2'")
-                        .arg(m_cameraKey, prefix);
-  emit logMessage(debugMsg);
-  qDebug() << debugMsg;
 }
 
 QString ParkingService::cameraKey() const 

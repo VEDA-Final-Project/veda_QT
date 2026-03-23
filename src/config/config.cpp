@@ -156,7 +156,6 @@ bool Config::load(const QString &path) {
   m_auth = root["auth"].toObject();
   m_loadedConfigPath = loadedPath;
 
-  qDebug() << "Config loaded from:" << loadedPath;
   return true;
 }
 

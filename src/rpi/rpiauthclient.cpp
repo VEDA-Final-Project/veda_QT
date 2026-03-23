@@ -86,7 +86,6 @@ void RpiAuthClient::onConnected() {
   if (m_state != SessionState::Connecting) {
     return;
   }
-
   m_connectTimer->stop();
   m_state = SessionState::WaitingReady;
   m_requestTimer->start(m_requestTimeoutMs);

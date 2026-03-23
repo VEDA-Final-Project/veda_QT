@@ -34,10 +34,6 @@ ReIDFeatureExtractor::ReIDFeatureExtractor()
 ReIDFeatureExtractor::~ReIDFeatureExtractor() = default;
 
 bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
-  std::cout << "[ReID][OV] Attempting to load: " << modelPath.toStdString()
-            << std::endl
-            << std::flush;
-
   QFileInfo fi(modelPath);
   if (!fi.exists()) {
     std::cerr << "[ReID][OV] Model file not found: "
@@ -52,11 +48,6 @@ bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
 
     const std::vector<std::string> availableDevices =
         pimpl->core->get_available_devices();
-    std::cout << "[ReID][OV] Available devices: ";
-    for (const auto &d : availableDevices) {
-      std::cout << d << " ";
-    }
-    std::cout << std::endl << std::flush;
 
     if (availableDevices.empty()) {
       std::cerr << "[ReID][OV] NO DEVICES FOUND. OpenVINO plugins may be "
@@ -74,9 +65,6 @@ bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
       }
     }
 
-    std::cout << "[ReID][OV] Selected device: " << targetDevice << std::endl
-              << std::flush;
-
     auto model = pimpl->core->read_model(modelPath.toStdString());
 
     ov::AnyMap config;
@@ -92,10 +80,6 @@ bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
         pimpl->core->compile_model(model, targetDevice, config);
     pimpl->device = targetDevice;
     pimpl->ready = true;
-
-    std::cout << "[ReID][OV] Model loaded on " << targetDevice
-              << " successfully!" << std::endl
-              << std::flush;
     return true;
 
   } catch (const std::exception &e) {
