@@ -3,19 +3,23 @@
 
 class QCheckBox;
 class QComboBox;
-class QFrame;
-class QGridLayout;
+class QDoubleSpinBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
-class QMenu;
+class QListWidget;
 class QPushButton;
 class QSlider;
 class QSpinBox;
+class QTableWidget;
+class QTextEdit;
+class VideoWidget;
+class QFrame;
+class QGridLayout;
+class QMenu;
 class QStackedWidget;
 class QTabWidget;
-class QTableWidget;
 class QToolButton;
-class VideoWidget;
 
 struct HeaderUiRefs {
   QLabel *headerIconLabel = nullptr;
@@ -39,7 +43,6 @@ struct CctvUiRefs {
   QLabel *channelStatusDots[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *channelNameLabels[4] = {nullptr, nullptr, nullptr, nullptr};
   QLabel *thumbnailLabels[4] = {nullptr, nullptr, nullptr, nullptr};
-
   QGridLayout *videoGridLayout = nullptr;
   QComboBox *roiTargetCombo = nullptr;
   QLineEdit *roiNameEdit = nullptr;
@@ -47,22 +50,18 @@ struct CctvUiRefs {
   QPushButton *btnApplyRoi = nullptr;
   QPushButton *btnFinishRoi = nullptr;
   QPushButton *btnDeleteRoi = nullptr;
-
   QCheckBox *chkVehicle = nullptr;
   QCheckBox *chkPerson = nullptr;
   QCheckBox *chkFace = nullptr;
   QCheckBox *chkPlate = nullptr;
   QCheckBox *chkOther = nullptr;
-
   QCheckBox *chkShowFps = nullptr;
   QLabel *lblAvgFps = nullptr;
-
   QPushButton *btnCaptureManual = nullptr;
   QPushButton *btnRecordManual = nullptr;
-
   QLabel *footerTimeLabel = nullptr;
-  QLabel *footerRecordingLabel = nullptr;
   QLabel *recordingDot = nullptr;
+  QLabel *footerRecordingLabel = nullptr;
 };
 
 struct TelegramUiRefs {
@@ -77,7 +76,6 @@ struct TelegramUiRefs {
 
 struct DbUiRefs {
   QTabWidget *dbSubTabs = nullptr;
-
   QTableWidget *parkingLogTable = nullptr;
   QLineEdit *plateSearchInput = nullptr;
   QPushButton *btnSearchPlate = nullptr;
@@ -87,18 +85,19 @@ struct DbUiRefs {
   QPushButton *btnForcePlate = nullptr;
   QLineEdit *editPlateInput = nullptr;
   QPushButton *btnEditPlate = nullptr;
-
+  QCheckBox *chkShowPlateLogs = nullptr;
   QTableWidget *reidTable = nullptr;
   QSpinBox *staleTimeoutInput = nullptr;
   QSpinBox *pruneTimeoutInput = nullptr;
   QCheckBox *chkShowStaleObjects = nullptr;
-
   QTableWidget *userDbTable = nullptr;
   QPushButton *btnRefreshUsers = nullptr;
   QPushButton *btnAddUser = nullptr;
   QPushButton *btnEditUser = nullptr;
   QPushButton *btnDeleteUser = nullptr;
-
+  QTableWidget *vehicleTable = nullptr;
+  QPushButton *btnRefreshVehicles = nullptr;
+  QPushButton *btnDeleteVehicle = nullptr;
   QTableWidget *zoneTable = nullptr;
   QPushButton *btnRefreshZone = nullptr;
 };
@@ -116,13 +115,11 @@ struct RecordUiRefs {
   QPushButton *btnCaptureRecordTab = nullptr;
   QPushButton *btnRecordRecordTab = nullptr;
   QLabel *recordPreviewPathLabel = nullptr;
-
   QPushButton *btnVideoPlay = nullptr;
   QPushButton *btnVideoPause = nullptr;
   QPushButton *btnVideoStop = nullptr;
   QSlider *videoSeekSlider = nullptr;
   QLabel *videoTimeLabel = nullptr;
-
   QSpinBox *spinRecordRetention = nullptr;
   QLabel *lblContinuousStatus = nullptr;
   QPushButton *btnApplyContinuousSetting = nullptr;
@@ -135,6 +132,9 @@ struct MainWindowUiRefs : HeaderUiRefs,
                           TelegramUiRefs,
                           DbUiRefs,
                           RecordUiRefs {
+  QTextEdit *logView = nullptr;
+  QListWidget *eventListWidget = nullptr;
+  QPushButton *btnPlay = nullptr;
   QStackedWidget *stackedWidget = nullptr;
 };
 

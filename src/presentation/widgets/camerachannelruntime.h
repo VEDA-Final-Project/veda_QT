@@ -3,7 +3,6 @@
 
 #include "infrastructure/metadata/metadatathread.h"
 #include "domain/parking/vehicletracker.h"
-#include "infrastructure/video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QImage>
 #include <QList>
@@ -62,7 +61,7 @@ signals:
   void zoneStateChanged();
 
 private slots:
-  void onSourceDisplayFrameReady(SharedVideoFrame frame,
+  void onSourceDisplayFrameReady(const QImage &image,
                                  const QList<ObjectInfo> &objects);
   void onSourceRoiDataChanged();
   void onSourceVideoReady();
@@ -85,6 +84,7 @@ private:
   bool m_reidPanelActive = false;
   QElapsedTimer m_renderTimer;
   QElapsedTimer m_reidTimer;
+  QElapsedTimer m_displayFrameTraceTimer;
 };
 
 #endif // CAMERACHANNELRUNTIME_H

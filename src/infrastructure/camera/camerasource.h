@@ -1,13 +1,12 @@
 #ifndef CAMERASOURCE_H
 #define CAMERASOURCE_H
 
-#include "application/parking/parkingservice.h"
-#include "application/roi/roiservice.h"
 #include "infrastructure/camera/camerasessionservice.h"
 #include "infrastructure/ocr/plateocrcoordinator.h"
+#include "application/parking/parkingservice.h"
+#include "application/roi/roiservice.h"
 #include "infrastructure/vision/reidextractor.h"
 #include "presentation/widgets/videoframerenderer.h"
-#include "infrastructure/video/sharedvideoframe.h"
 #include <QElapsedTimer>
 #include <QHash>
 #include <QImage>
@@ -58,10 +57,10 @@ public:
   QStringList roiLabels() const;
 
 signals:
-  void thumbnailFrameReady(int cardIndex, SharedVideoFrame frame);
-  void displayFrameReady(SharedVideoFrame frame,
-                         const QList<ObjectInfo> &objects);
-  void rawFrameReady(int cardIndex, SharedVideoFrame frame);
+  void thumbnailFrameReady(int cardIndex, const QImage &image);
+  void displayFrameReady(const QImage &image, const QList<ObjectInfo> &objects);
+  void rawFrameReady(int cardIndex, QSharedPointer<cv::Mat> framePtr,
+                     qint64 timestampMs);
   void roiDataChanged();
   void videoReady();
   void zoneStateChanged();
@@ -71,7 +70,7 @@ signals:
 
 private slots:
   void onMetadataReceived(const QList<ObjectInfo> &objects);
-  void onFrameCaptured(SharedVideoFrame frame);
+  void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void onOcrResult(int objectId, const OcrFullResult &result);
   void onDisplayRenderTick();
   void onThumbnailRenderTick();
@@ -126,6 +125,8 @@ private:
   int m_reconnectAttempt = 0;
   QElapsedTimer m_roiSyncTimer;
   QElapsedTimer m_zoneStatusTimer;
+  QElapsedTimer m_frameCapturedTraceTimer;
+  QElapsedTimer m_displayRenderTraceTimer;
   QTimer *m_healthTimer = nullptr;
   QTimer *m_reconnectTimer = nullptr;
   QTimer *m_displayRenderTimer = nullptr;

@@ -1,20 +1,23 @@
 #ifndef DBPANELCONTROLLER_H
 #define DBPANELCONTROLLER_H
 
+#include <QJsonObject>
 #include <QObject>
-#include <QString>
+#include <QVector>
 #include <functional>
 
 class ParkingLogApplicationService;
 class ParkingLogPanelController;
 class UserAdminApplicationService;
 class UserDbPanelController;
-class ZoneQueryApplicationService;
+class VehicleInfoPanelController;
 class ZonePanelController;
+class ZoneQueryApplicationService;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
+class QTextEdit;
 
 class DbPanelController : public QObject {
   Q_OBJECT
@@ -37,8 +40,14 @@ public:
     QPushButton *btnEditUser = nullptr;
     QPushButton *btnDeleteUser = nullptr;
 
+    QTableWidget *vehicleTable = nullptr;
+    QPushButton *btnRefreshVehicles = nullptr;
+    QPushButton *btnDeleteVehicle = nullptr;
+
     QTableWidget *zoneTable = nullptr;
     QPushButton *btnRefreshZone = nullptr;
+
+    QTextEdit *logView = nullptr;
   };
 
   struct Context {
@@ -65,11 +74,15 @@ public slots:
   void addUser();
   void editUser();
   void deleteUser();
+  void refreshVehicleTable();
+  void deleteVehicle();
+
 private:
   UiRefs m_ui;
   Context m_context;
   ParkingLogPanelController *m_parkingLogPanelController = nullptr;
   UserDbPanelController *m_userDbPanelController = nullptr;
+  VehicleInfoPanelController *m_vehicleInfoPanelController = nullptr;
   ZonePanelController *m_zonePanelController = nullptr;
   bool m_signalsConnected = false;
 };

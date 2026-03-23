@@ -86,6 +86,12 @@ const QList<QPolygon> &VideoWidget::roiPolygons() const {
   return m_roiState.roiPolygons();
 }
 
+void VideoWidget::panZoom(double, double) {}
+
+void VideoWidget::setZoom(double zoom) { m_zoom = zoom; }
+
+double VideoWidget::zoom() const { return m_zoom; }
+
 void VideoWidget::startRoiDrawing() {
   if (m_lastFrameSize.isEmpty()) {
     m_lastFrameSize = QSize(
@@ -148,76 +154,11 @@ void VideoWidget::dispatchOcrRequests(const QImage &frame) {
   }
 }
 
-void VideoWidget::updateFrame(const QImage &frame) {
-  invalidateLiveFrameCache();
-  if (frame.isNull()) {
-    return;
-  }
+void VideoWidget::updateFrame(const QImage &frame) { renderFrame(frame); }
 
-  const QSize scaledSize = frame.size().scaled(size(), Qt::KeepAspectRatio);
-  const QImage scaledBaseFrame =
-      scaledSize.isEmpty()
-          ? frame
-          : frame.scaled(scaledSize, Qt::IgnoreAspectRatio,
-                         Qt::FastTransformation);
-  renderFrame(frame, scaledBaseFrame);
-}
-
-void VideoWidget::updateLiveFrame(const SharedVideoFrame &frame) {
-  if (!frame.isValid()) {
-    return;
-  }
-
-  m_liveFrame = frame;
-  const QSize targetSize = size();
-  const cv::Mat *frameIdentity = frame.mat.data();
-  const bool frameChanged = (m_cachedLiveFrameIdentity != frameIdentity);
-  const bool targetSizeChanged = (m_cachedLiveTargetSize != targetSize);
-
-  // QImage를 한 번만 생성하여 스케일링 캐시와 렌더링에 모두 재사용 (CPU 절감)
-  QImage sourceView(frame.mat->data, frame.mat->cols, frame.mat->rows,
-                    frame.mat->step, QImage::Format_BGR888);
-
-  if (frameChanged || targetSizeChanged || m_cachedScaledLiveFrame.isNull()) {
-    const QSize scaledSize =
-        sourceView.size().scaled(targetSize, Qt::KeepAspectRatio);
-    m_cachedScaledLiveFrame =
-        scaledSize.isEmpty()
-            ? sourceView.copy()
-            : sourceView.scaled(scaledSize, Qt::IgnoreAspectRatio,
-                                Qt::FastTransformation);
-    m_cachedLiveFrameIdentity = frameIdentity;
-    m_cachedLiveTargetSize = targetSize;
-  }
-
-  renderFrame(sourceView, m_cachedScaledLiveFrame);
-}
-
-void VideoWidget::renderFrame(const QImage &sourceFrame,
-                              const QImage &scaledBaseFrame) {
-  syncRoiStateToFrameSize(sourceFrame.size());
-
-  const int roiCount = m_roiState.roiCount();
-  if (m_roiLabels.size() != roiCount) {
-    m_roiLabels.resize(roiCount);
-  }
-
-  updateFrameRateStats();
-
-  const QImage composed = m_frameRenderer.compose(
-      sourceFrame, scaledBaseFrame, m_currentObjects, m_roiState.roiPolygons(),
-      m_roiLabels, m_occupiedRoiIndices, m_roiState.roiEnabled(), m_showFps,
-      static_cast<int>(m_currentFps), m_profileName, m_zoomFactor,
-      m_zoomCenterX, m_zoomCenterY);
-
-  // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
-  m_currentFrame = composed;
-  update(); // paintEvent 트리거
-}
-
-void VideoWidget::syncRoiStateToFrameSize(const QSize &frameSize) {
-  const bool sizeChanged = (m_lastFrameSize != frameSize);
-  m_lastFrameSize = frameSize;
+void VideoWidget::renderFrame(const QImage &frame) {
+  const bool sizeChanged = (m_lastFrameSize != frame.size());
+  m_lastFrameSize = frame.size();
 
   if (sizeChanged || m_roiState.roiCount() != m_normalizedRoiPolygons.size()) {
     while (m_roiState.roiCount() > 0) {
@@ -241,9 +182,12 @@ void VideoWidget::syncRoiStateToFrameSize(const QSize &frameSize) {
       }
     }
   }
-}
 
-void VideoWidget::updateFrameRateStats() {
+  const int roiCount = m_roiState.roiCount();
+  if (m_roiLabels.size() != roiCount) {
+    m_roiLabels.resize(roiCount);
+  }
+
   // --- FPS Calculation ---
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
   m_fpsHistory1s.enqueue(nowMs);
@@ -266,13 +210,15 @@ void VideoWidget::updateFrameRateStats() {
   }
   emit avgFpsUpdated(avgFps);
   // -----------------------
-}
 
-void VideoWidget::invalidateLiveFrameCache() {
-  m_liveFrame = SharedVideoFrame{};
-  m_cachedLiveFrameIdentity = nullptr;
-  m_cachedLiveTargetSize = QSize();
-  m_cachedScaledLiveFrame = QImage();
+  const QImage composed = m_frameRenderer.compose(
+      frame, size(), m_currentObjects, m_roiState.roiPolygons(), m_roiLabels,
+      m_occupiedRoiIndices, m_roiState.roiEnabled(), m_showFps,
+      static_cast<int>(m_currentFps), m_profileName, nullptr);
+
+  // === QPixmap 변환 없이 QImage를 직접 저장하여 paintEvent에서 그립니다 ===
+  m_currentFrame = composed;
+  update(); // paintEvent 트리거
 }
 
 void VideoWidget::paintEvent(QPaintEvent *event) {
@@ -315,25 +261,6 @@ void VideoWidget::mouseReleaseEvent(QMouseEvent *event) {
 
 void VideoWidget::mouseDoubleClickEvent(QMouseEvent *event) {
   QWidget::mouseDoubleClickEvent(event);
-}
-
-void VideoWidget::setZoom(double zoom) {
-  m_zoomFactor = qBound(1.0, zoom, 5.0);
-  if (m_zoomFactor <= 1.001) {
-    m_zoomCenterX = 0.5;
-    m_zoomCenterY = 0.5;
-  }
-}
-
-double VideoWidget::zoom() const { return m_zoomFactor; }
-
-void VideoWidget::panZoom(double dx, double dy) {
-  if (m_zoomFactor <= 1.001) {
-    return;
-  }
-  const double sensitivity = 0.05 / m_zoomFactor;
-  m_zoomCenterX = qBound(0.0, m_zoomCenterX + dx * sensitivity, 1.0);
-  m_zoomCenterY = qBound(0.0, m_zoomCenterY + dy * sensitivity, 1.0);
 }
 
 void VideoWidget::leaveEvent(QEvent *event) {

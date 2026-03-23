@@ -4,26 +4,30 @@
     "subProfile": "profile7/media.smp"
   },
   "reid": {
-    "modelPath": "model/sbs_R50-ibn.onnx",
+    "modelPath": "C:/Users/1-07/Downloads/sbs_R50-ibn.onnx",
     "inputWidth": 256,
     "inputHeight": 256
   },
   "camera": {
+    "srtpEnabled": true,
     "ip": "192.168.0.23",
     "username": "admin",
     "password": "1team@@@"
   },
   "camera2": {
+    "srtpEnabled": true,
     "ip": "192.168.0.34",
     "username": "admin",
     "password": "1team@@@"
   },
   "camera3": {
+    "srtpEnabled": true,
     "ip": "192.168.0.76",
     "username": "admin",
     "password": "1team@@@"
   },
   "camera4": {
+    "srtpEnabled": true,
     "ip": "192.168.0.78",
     "username": "admin",
     "password": "1team@@@"
@@ -42,6 +46,8 @@
       "model": "gemini-3.1-flash-lite-preview",
       "prompt": "이 이미지는 자동차 번호판의 크롭 본이야. 번호판 숫자와 글자만 정확히 추출해줘. 다른 설명은 필요 없어. 예: 123가4567"
     },
+    "modelPath": "models/korean/rec.onnx",
+    "dictPath": "models/korean/dict.txt",
     "inputWidth": 320,
     "inputHeight": 48
   },
@@ -51,12 +57,11 @@
   "auth": {
     "host": "192.168.0.67",
     "port": 9000,
+    "tlsEnabled": true,
+    "pinnedSha256": [
+      "2dd8db661dad205a291ce0dd545a9db2329e01a479250f19338d96f06b0e29ea"
+    ],
     "connectTimeoutMs": 3000,
     "requestTimeoutMs": 5000
-  },
-  "rpiControl": {
-    "host": "192.168.0.44",
-    "port": 12345,
-    "autoConnect": true
   }
 }

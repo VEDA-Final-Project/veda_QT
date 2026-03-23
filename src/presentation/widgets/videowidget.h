@@ -4,7 +4,6 @@
 #include "infrastructure/metadata/metadatathread.h"
 #include "presentation/widgets/roiinteractionstate.h"
 #include "presentation/widgets/videoframerenderer.h"
-#include "infrastructure/video/sharedvideoframe.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -39,15 +38,14 @@ public:
   bool removeRoiAt(int index);
   int roiCount() const;
   const QList<QPolygon> &roiPolygons() const;
-  void startRoiDrawing();
-  bool completeRoiDrawing();
+  void panZoom(double x, double y);
   void setZoom(double zoom);
   double zoom() const;
-  void panZoom(double dx, double dy);
+  void startRoiDrawing();
+  bool completeRoiDrawing();
 
 public slots:
   void updateFrame(const QImage &frame);
-  void updateLiveFrame(const SharedVideoFrame &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
   void setOccupiedRoiIndices(const QSet<int> &occupiedRoiIndices);
   void dispatchOcrRequests(const QImage &frame);
@@ -69,10 +67,7 @@ private:
   void mouseMoveEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
   void mouseDoubleClickEvent(QMouseEvent *event) override;
-  void renderFrame(const QImage &sourceFrame, const QImage &scaledBaseFrame);
-  void syncRoiStateToFrameSize(const QSize &frameSize);
-  void updateFrameRateStats();
-  void invalidateLiveFrameCache();
+  void renderFrame(const QImage &frame);
 
   QList<ObjectInfo> m_currentObjects;
   QSize m_lastFrameSize;
@@ -83,19 +78,13 @@ private:
   QStringList m_roiLabels;
   QSet<int> m_occupiedRoiIndices;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
-  SharedVideoFrame m_liveFrame;
-  const cv::Mat *m_cachedLiveFrameIdentity = nullptr;
-  QSize m_cachedLiveTargetSize;
-  QImage m_cachedScaledLiveFrame;
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
+  double m_zoom = 1.0;
   QString m_profileName;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;
-  double m_zoomFactor = 1.0;
-  double m_zoomCenterX = 0.5;
-  double m_zoomCenterY = 0.5;
 };
 
 #endif // VIDEOWIDGET_H

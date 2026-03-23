@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QStringList>
@@ -154,10 +155,8 @@ bool Config::load(const QString &path) {
   m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
-  m_rpiControl = root["rpiControl"].toObject();
   m_loadedConfigPath = loadedPath;
 
-  qDebug() << "Config loaded from:" << loadedPath;
   return true;
 }
 
@@ -194,6 +193,15 @@ QString Config::cameraUsername(const QString &cameraKey) const {
 QString Config::cameraPassword(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
   return (cameraObj.isEmpty() ? m_camera : cameraObj)["password"].toString("");
+}
+
+/**
+ * @brief SRTP 보안 스트리밍 활성화 여부
+ */
+bool Config::cameraSrtpEnabled(const QString &cameraKey) const {
+  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+  const QJsonValue val = (cameraObj.isEmpty() ? m_camera : cameraObj)["srtpEnabled"];
+  return val.toBool(false);
 }
 
 QString Config::defaultCameraProfile() const {
@@ -331,6 +339,7 @@ QString Config::resolveConfigRelativePath(const QString &path) const {
   return configRelativePath;
 }
 
+
 /* =========================
  * Gemini 관련 설정
  * ========================= */
@@ -339,12 +348,16 @@ QString Config::geminiApiKey() const {
   // 환경변수 우선 참조
   QString key = qEnvironmentVariable("GEMINI_API_KEY");
   if (!key.isEmpty()) {
-    // qInfo() << "[Config] Gemini API Key loaded from Environment (Masked: " << key.left(5) << "...)";
+    qInfo() << "[Config] Gemini API Key loaded from ENV"
+            << "(len=" << key.size() << ")";
     return key;
   }
   QString jsonKey = m_ocr["gemini"].toObject()["apiKey"].toString();
   if (jsonKey.isEmpty()) {
-    // qWarning() << "[Config] Gemini API Key is missing!";
+    qWarning() << "[Config] Gemini API Key is missing! (ENV+JSON empty)";
+  } else {
+    qInfo() << "[Config] Gemini API Key loaded from JSON"
+            << "(len=" << jsonKey.size() << ")";
   }
   return jsonKey;
 }
@@ -386,14 +399,34 @@ int Config::authRequestTimeoutMs() const {
   return m_auth["requestTimeoutMs"].toInt(5000);
 }
 
-QString Config::rpiControlHost() const {
-  return m_rpiControl["host"].toString(QStringLiteral("192.168.0.44"));
+bool Config::authTlsEnabled() const {
+  return m_auth["tlsEnabled"].toBool(false);
 }
 
-int Config::rpiControlPort() const {
-  return m_rpiControl["port"].toInt(12345);
+QStringList Config::authPinnedSha256() const {
+  QStringList values;
+
+  const QJsonValue rawPins = m_auth.value(QStringLiteral("pinnedSha256"));
+  if (rawPins.isArray()) {
+    const QJsonArray array = rawPins.toArray();
+    for (const QJsonValue &entry : array) {
+      const QString value = entry.toString().trimmed();
+      if (!value.isEmpty()) {
+        values.append(value);
+      }
+    }
+  } else {
+    const QString single = rawPins.toString().trimmed();
+    if (!single.isEmpty()) {
+      values.append(single);
+    }
+  }
+
+  return values;
 }
 
-bool Config::rpiControlAutoConnect() const {
-  return m_rpiControl["autoConnect"].toBool(true);
-}
+QString Config::rpiControlHost() const { return authHost(); }
+
+int Config::rpiControlPort() const { return authPort(); }
+
+bool Config::rpiControlAutoConnect() const { return false; }

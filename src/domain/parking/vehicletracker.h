@@ -2,20 +2,25 @@
 #define VEHICLETRACKER_H
 
 #include "infrastructure/metadata/metadatathread.h"
-#include <QDateTime>
 #include <QHash>
 #include <QList>
 #include <QPolygonF>
 #include <QRectF>
 #include <QString>
+#include <QDateTime>
 #include <mutex>
 #include <vector>
 
+/**
+ * @brief 차량 타입 여부를 판별하는 공용 유틸리티
+ * 여러 모듈에서 동일한 판별이 필요하므로 헤더에 인라인으로 정의합니다.
+ */
 inline bool isVehicleType(const QString &type) {
   const QString lower = type.toLower();
   return lower == QStringLiteral("vehicle") ||
          lower == QStringLiteral("vehical") ||
-         lower == QStringLiteral("car") || lower == QStringLiteral("truck") ||
+         lower == QStringLiteral("car") ||
+         lower == QStringLiteral("truck") ||
          lower == QStringLiteral("bus") ||
          lower == QStringLiteral("motorcycle");
 }
@@ -37,8 +42,8 @@ struct VehicleState {
   qint64 lastSeenMs = 0;       // 마지막 감지 시각 (ms)
   qint64 roiEntryMs = 0; // 주차 구역에 진입하여 'Parked' 상태가 된 시점 (ms)
   QList<int> roiHistory; // 최근 N프레임 동안의 점유 상태 (히스테리시스 필터용)
-  std::vector<float> reidFeatures;
-  QString reidId;
+  std::vector<float> reidFeatures; // ReID Feature Vector
+  QString reidId;                  // Persistent ID from ReID matching
 };
 
 /**
@@ -53,7 +58,6 @@ public:
    * @brief ROI 폴리곤 목록을 설정합니다 (주차 구역 정보).
    */
   void setRoiPolygons(const QList<QPolygonF> &polygons);
-  void setIdPrefix(const QString &prefix);
 
   /**
    * @brief 새로운 메타데이터 프레임을 처리하여 차량 상태를 업데이트합니다.
@@ -66,10 +70,11 @@ public:
    */
   QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
                              int effectiveWidth, int sourceHeight,
-                             qint64 nowMs,
-                             QList<VehicleState> *departedVehicles = nullptr);
+                             qint64 nowMs, qint64 pruneTimeoutMs);
 
   void updateReidFeatures(const QList<ObjectInfo> &objects, qint64 nowMs);
+
+  void setIdPrefix(const QString &prefix);
 
   /**
    * @brief 특정 차량의 OCR 결과를 반영합니다.
@@ -102,15 +107,16 @@ public:
   QList<VehicleState> pruneStale(qint64 nowMs, qint64 timeoutMs = 5000);
 
 private:
-  struct GalleryEntry {
-    std::vector<float> features;
-    QString persistentId;
-    qint64 lastSeenMs = 0;
-  };
-
   double computeOccupancyRatio(const QRectF &vehicleRect,
                                const QPolygonF &roiPolygon,
                                double *dynamicThreshold = nullptr) const;
+
+  struct GalleryEntry {
+    std::vector<float> features;
+    QString persistentId;
+    qint64 lastSeenMs;
+  };
+
   QString findMatchInGallery(const std::vector<float> &features,
                              float threshold = 0.83f);
   void updateGallery(const std::vector<float> &features, const QString &id,
@@ -118,10 +124,13 @@ private:
 
   QHash<int, VehicleState> m_vehicles;
   QList<QPolygonF> m_roiPolygons;
-  QString m_idPrefix = QStringLiteral("C1");
+  QString m_idPrefix;
+
+  // Instance members for channel-wise independent ReID
   QList<GalleryEntry> m_reidGallery;
   int m_nextPersistentId = 1001;
   mutable std::mutex m_galleryMutex;
+
   QHash<QString, QString> m_plateByReid;
 };
 
