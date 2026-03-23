@@ -339,32 +339,6 @@ QHeaderView::section {
     font-size: 9pt;
 }
 
-/* === ListWidget (Event Log Panel) === */
-QListWidget {
-    background-color: #0F172A;
-    color: #E2E8F0;
-    border: none;
-    outline: none;
-    font-size: 9pt;
-}
-
-QListWidget::item {
-    background-color: rgba(30, 41, 59, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
-    padding: 8px;
-    margin: 2px 4px;
-}
-
-QListWidget::item:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-QListWidget::item:selected {
-    background-color: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
-}
-
 /* === ScrollBar === */
 QScrollBar:vertical {
     background-color: #1E293B;
@@ -417,23 +391,6 @@ QToolTip {
     padding: 4px 8px;
 }
 
-/* === Event Log Toggle Button === */
-QPushButton#btnToggleEvent {
-    background-color: #1E293B;
-    color: #94A3B8;
-    border: none;
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0px;
-    font-size: 10pt;
-    padding: 0;
-}
-
-QPushButton#btnToggleEvent:hover {
-    background-color: rgba(16, 185, 129, 0.15);
-    color: #10B981;
-}
-
 /* === Splitter Handle === */
 QSplitter::handle {
     background-color: rgba(255, 255, 255, 0.06);
@@ -459,12 +416,6 @@ QFrame#footerFrame {
 QFrame#channelPanel {
     background-color: #1E293B;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0px;
-}
-
-QFrame#eventPanel {
-    background-color: #1E293B;
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0px;
 }
 
