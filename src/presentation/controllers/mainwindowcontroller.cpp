@@ -20,7 +20,7 @@
 #include "presentation/widgets/controllerdialog.h"
 #include "presentation/widgets/videowidget.h"
 #include "infrastructure/telegram/telegrambotapi.h"
-#include "ui/windows/camerachannelruntime.h"
+#include "presentation/widgets/camerachannelruntime.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>

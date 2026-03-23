@@ -1,7 +1,7 @@
 #include "presentation/controllers/channelruntimecontroller.h"
 
 #include "presentation/widgets/videowidget.h"
-#include "ui/windows/camerachannelruntime.h"
+#include "presentation/widgets/camerachannelruntime.h"
 #include <QCheckBox>
 #include <QEvent>
 #include <QFrame>

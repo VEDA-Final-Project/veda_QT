@@ -4,7 +4,7 @@
 #include "infrastructure/camera/camerasource.h"
 #include "config/config.h"
 #include "presentation/widgets/videowidget.h"
-#include "ui/windows/camerachannelruntime.h"
+#include "presentation/widgets/camerachannelruntime.h"
 #include <QComboBox>
 #include <QFrame>
 #include <QGridLayout>

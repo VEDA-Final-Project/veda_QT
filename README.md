@@ -67,7 +67,7 @@ veda_QT/
 - `src/domain/*`: `ParkingFeePolicy`, `VehicleTracker`
 - `src/infrastructure/*`: `CameraSource`, `VideoThread`, `MetadataThread`, OCR, Telegram, RPi, DB repository
 
-> **참고**: `src/ui/windows/camerachannelruntime.*`와 `src/ui/icon/*`는 아직 남아 있는 과도기 UI 영역입니다.
+> **참고**: `CameraChannelRuntime`는 `src/presentation/widgets/`로 통합되었고, `src/ui/`에는 현재 아이콘 자산이 남아 있습니다.
 
 > **참고**: ONNX 모델 파일은 `settings.json`의 `ocr.modelPath`에 지정합니다. 비워두면 `Downloads` 경로에서 자동 탐색을 시도합니다.
 

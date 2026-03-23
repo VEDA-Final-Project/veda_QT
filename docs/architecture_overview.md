@@ -190,8 +190,8 @@ end note
 
 관련 파일:
 
-- `src/ui/windows/camerachannelruntime.h`
-- `src/ui/windows/camerachannelruntime.cpp`
+- `src/presentation/widgets/camerachannelruntime.h`
+- `src/presentation/widgets/camerachannelruntime.cpp`
 
 ### 6. MainWindowController and specialized controllers
 

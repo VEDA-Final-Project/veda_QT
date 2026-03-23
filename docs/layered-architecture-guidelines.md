@@ -111,7 +111,7 @@ app -> domain
 
 - `src/presentation/shell`, `src/presentation/pages`, `src/presentation/widgets`, `src/presentation/controllers`
 - `MainWindow`는 page/view 조립과 상위 orchestration 위주로 유지
-- `src/ui/windows/camerachannelruntime.*`는 아직 남아 있는 과도기 UI 런타임 코드
+- `CameraChannelRuntime`는 `src/presentation/widgets/`로 통합되었고, `src/ui/`는 아이콘 자산 중심으로 유지
 
 2. 유스케이스/오케스트레이션
 
@@ -157,10 +157,10 @@ app -> domain
 - 폴더 이동 이후 남은 include 누락, forward declaration 문제, CMake 소스 누락을 계속 정리
 - 현재 확인된 빌드 차단 원인은 프로젝트 경로보다 MSVC 표준 라이브러리 include path 환경 문제다
 
-2. `presentation` 과도기 정리
+2. `presentation` 정리 지속
 
-- `src/ui/windows/camerachannelruntime.*` 같은 잔여 UI 런타임 코드를 `presentation/` 하위로 통합할지 검토
 - controller 조립 책임이 과도하게 커지지 않도록 composition root 분리 여부 검토
+- widget/runtime binder와 controller 경계가 더 단순해질 수 있는지 점검
 
 3. CMake 타깃 분리
 
