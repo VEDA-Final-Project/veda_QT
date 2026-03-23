@@ -4,7 +4,7 @@
     "subProfile": "profile7/media.smp"
   },
   "reid": {
-    "modelPath": "C:/Users/1-07/Downloads/sbs_R50-ibn.onnx",
+    "modelPath": "model/sbs_R50-ibn.onnx",
     "inputWidth": 256,
     "inputHeight": 256
   },

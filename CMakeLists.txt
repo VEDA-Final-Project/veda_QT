@@ -182,6 +182,9 @@ add_custom_command(TARGET rtsp_test POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/config
             $<TARGET_FILE_DIR:rtsp_test>/config
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/model
+            $<TARGET_FILE_DIR:rtsp_test>/model
 )
 
 # Qt 라이브러리 링크
@@ -235,69 +238,7 @@ find_package(OpenCV REQUIRED)
 target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
 
-# ONNX Runtime 패키지 찾기 (vcpkg 또는 ONNXRUNTIME_ROOT 환경 변수)
-find_package(ONNXRUNTIME CONFIG QUIET)
-
-if(TARGET onnxruntime::onnxruntime)
-    target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime::onnxruntime)
-elseif(TARGET onnxruntime)
-    target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime)
-else()
-    set(_onnxruntime_hints)
-
-    if(DEFINED ONNXRUNTIME_ROOT AND ONNXRUNTIME_ROOT)
-        list(APPEND _onnxruntime_hints "${ONNXRUNTIME_ROOT}")
-    endif()
-    if(DEFINED ENV{ONNXRUNTIME_ROOT} AND NOT "$ENV{ONNXRUNTIME_ROOT}" STREQUAL "")
-        list(APPEND _onnxruntime_hints "$ENV{ONNXRUNTIME_ROOT}")
-    endif()
-    if(DEFINED ENV{ONNXRUNTIME_DIR} AND NOT "$ENV{ONNXRUNTIME_DIR}" STREQUAL "")
-        list(APPEND _onnxruntime_hints "$ENV{ONNXRUNTIME_DIR}")
-    endif()
-    if(WIN32)
-        list(APPEND _onnxruntime_hints
-            "$ENV{USERPROFILE}/Downloads/onnxruntime-win-x64-1.24.2/onnxruntime-win-x64-1.24.2"
-            "$ENV{USERPROFILE}/Downloads/onnxruntime-win-x64-1.23.2/onnxruntime-win-x64-1.23.2"
-        )
-    endif()
-
-    list(REMOVE_DUPLICATES _onnxruntime_hints)
-
-    find_path(ONNXRUNTIME_INCLUDE_DIR
-        NAMES onnxruntime_cxx_api.h
-        HINTS ${_onnxruntime_hints}
-        PATH_SUFFIXES include
-    )
-
-    find_library(ONNXRUNTIME_LIBRARY
-        NAMES onnxruntime
-        HINTS ${_onnxruntime_hints}
-        PATH_SUFFIXES lib lib64
-    )
-
-    find_file(ONNXRUNTIME_DLL
-        NAMES onnxruntime.dll
-        HINTS ${_onnxruntime_hints}
-        PATH_SUFFIXES bin lib lib64
-    )
-
-    if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIBRARY)
-        target_include_directories(rtsp_test PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_LIBRARY})
-
-        if(ONNXRUNTIME_DLL)
-            add_custom_command(TARGET rtsp_test POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        ${ONNXRUNTIME_DLL}
-                        $<TARGET_FILE_DIR:rtsp_test>
-            )
-        endif()
-else()
-    message(FATAL_ERROR
-            "ONNX Runtime package not found. Set ONNXRUNTIME_ROOT to the extracted folder "
-            "(it must contain include/onnxruntime_cxx_api.h and lib/onnxruntime.lib).")
-    endif()
-endif()
+# ONNX Runtime은 더 이상 사용하지 않으며 OpenVINO를 주력으로 사용합니다.
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/CMakeLists_OpenVINO_Fragment.txt")
     include("${CMAKE_SOURCE_DIR}/CMakeLists_OpenVINO_Fragment.txt")
