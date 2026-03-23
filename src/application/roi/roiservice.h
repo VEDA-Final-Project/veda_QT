@@ -35,6 +35,7 @@ private:
   static QList<QPolygonF>
   toNormalizedPolygons(const QVector<QJsonObject> &records);
   int nextAvailableSequence() const;
+  void upsertLocalRecord(const QJsonObject &record);
 
   RoiRepository m_repository;
   QString m_cameraKey = QStringLiteral("camera");

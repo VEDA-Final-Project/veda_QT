@@ -150,7 +150,7 @@ Result<QJsonObject> RoiService::createFromPolygon(const QPolygon &polygon,
     return result;
   }
 
-  m_records.append(roiData);
+  upsertLocalRecord(roiData);
   result.data = roiData;
   return result;
 }
@@ -165,6 +165,8 @@ Result<QJsonObject> RoiService::setZoneEnabled(const QString &zoneId,
     return result;
   }
 
+  bool updatedAny = false;
+  QJsonObject lastUpdated;
   for (int i = 0; i < m_records.size(); ++i)
   {
     const QString currentZoneId = m_records[i]["zone_id"].toString();
@@ -182,7 +184,13 @@ Result<QJsonObject> RoiService::setZoneEnabled(const QString &zoneId,
     }
 
     m_records[i] = updated;
-    result.data = updated;
+    lastUpdated = updated;
+    updatedAny = true;
+  }
+
+  if (updatedAny)
+  {
+    result.data = lastUpdated;
     return result;
   }
 
@@ -247,7 +255,7 @@ RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records)
 int RoiService::nextAvailableSequence() const
 {
   const QRegularExpression zoneIdPattern(
-      QStringLiteral("^zone-%1-(\\d+)$")
+      QStringLiteral("^%1-(\\d+)$")
           .arg(QRegularExpression::escape(m_cameraKey)));
   QSet<int> usedSequences;
 
@@ -274,4 +282,19 @@ int RoiService::nextAvailableSequence() const
     ++next;
   }
   return next;
+}
+
+void RoiService::upsertLocalRecord(const QJsonObject &record)
+{
+  const QString zoneId = record["zone_id"].toString();
+  for (int i = 0; i < m_records.size(); ++i)
+  {
+    if (m_records[i]["zone_id"].toString() == zoneId)
+    {
+      m_records[i] = record;
+      return;
+    }
+  }
+
+  m_records.append(record);
 }
