@@ -63,6 +63,8 @@ public:
   int authPort() const;
   int authConnectTimeoutMs() const;
   int authRequestTimeoutMs() const;
+  bool authTlsEnabled() const;
+  QStringList authPinnedSha256() const;
 
 private:
   explicit Config(QObject *parent = nullptr);

@@ -57,6 +57,10 @@
   "auth": {
     "host": "192.168.0.67",
     "port": 9000,
+    "tlsEnabled": true,
+    "pinnedSha256": [
+      "2dd8db661dad205a291ce0dd545a9db2329e01a479250f19338d96f06b0e29ea"
+    ],
     "connectTimeoutMs": 3000,
     "requestTimeoutMs": 5000
   }

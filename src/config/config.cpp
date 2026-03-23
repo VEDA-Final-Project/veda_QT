@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QStringList>
@@ -396,4 +397,30 @@ int Config::authConnectTimeoutMs() const {
 
 int Config::authRequestTimeoutMs() const {
   return m_auth["requestTimeoutMs"].toInt(5000);
+}
+
+bool Config::authTlsEnabled() const {
+  return m_auth["tlsEnabled"].toBool(false);
+}
+
+QStringList Config::authPinnedSha256() const {
+  QStringList values;
+
+  const QJsonValue rawPins = m_auth.value(QStringLiteral("pinnedSha256"));
+  if (rawPins.isArray()) {
+    const QJsonArray array = rawPins.toArray();
+    for (const QJsonValue &entry : array) {
+      const QString value = entry.toString().trimmed();
+      if (!value.isEmpty()) {
+        values.append(value);
+      }
+    }
+  } else {
+    const QString single = rawPins.toString().trimmed();
+    if (!single.isEmpty()) {
+      values.append(single);
+    }
+  }
+
+  return values;
 }
