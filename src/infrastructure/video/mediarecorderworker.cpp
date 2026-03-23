@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QStringList>
+#include <QSharedPointer>
 
 namespace {
 
@@ -102,6 +103,7 @@ void MediaRecorderWorker::saveVideo(
   QDir().mkpath(fileInfo.absolutePath());
 
   cv::Mat firstFrame = *frames[0];
+
   if (firstFrame.empty()) {
     emit error("Empty first frame");
     emit finished(false, filePath, type, description, cameraId);
@@ -135,7 +137,8 @@ void MediaRecorderWorker::saveVideo(
       continue;
     }
 
-    const cv::Mat normalized = normalizeFrameForWriter(*framePtr, frameSize);
+    cv::Mat toWrite = *framePtr;
+    const cv::Mat normalized = normalizeFrameForWriter(toWrite, frameSize);
     if (normalized.empty()) {
       ++skippedFrames;
       continue;
@@ -188,7 +191,9 @@ void MediaRecorderWorker::saveImage(QSharedPointer<cv::Mat> frame,
   QFileInfo fileInfo(filePath);
   QDir().mkpath(fileInfo.absolutePath());
 
-  if (cv::imwrite(filePath.toStdString(), *frame)) {
+  cv::Mat toSave = *frame;
+
+  if (cv::imwrite(filePath.toStdString(), toSave)) {
     // DB 저장은 주 스레드에서: finished 수신 후 처리
     emit finished(true, filePath, type, description, cameraId);
     qDebug() << "[Recorder] Image saved to:" << filePath;

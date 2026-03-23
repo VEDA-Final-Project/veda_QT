@@ -44,6 +44,7 @@ public:
   void setZoom(double zoom);
   double zoom() const;
   void panZoom(double dx, double dy);
+  QRectF currentZoomRect() const;
 
 public slots:
   void updateFrame(const QImage &frame);

@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QMetaObject>
 #include <QObject>
+#include <QRectF>
 #include <QString>
 #include <array>
 #include <cstdint>
@@ -41,6 +42,9 @@ public:
     std::function<void(const QString &)> logMessage;
     std::function<int()> selectedCctvChannelIndex;
     std::function<CameraSource *(int)> sourceAt;
+    std::function<int()> selectedChannelCount;
+    std::function<VideoWidget *()> primarySelectedVideoWidget;
+    std::function<QRectF(int)> cameraZoomRect;
   };
 
   explicit RecordingWorkflowController(const UiRefs &uiRefs, Context context,

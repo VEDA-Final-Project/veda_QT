@@ -336,6 +336,21 @@ void VideoWidget::panZoom(double dx, double dy) {
   m_zoomCenterY = qBound(0.0, m_zoomCenterY + dy * sensitivity, 1.0);
 }
 
+QRectF VideoWidget::currentZoomRect() const {
+  if (m_zoomFactor <= 1.001) {
+    return QRectF();
+  }
+  double w = 1.0 / m_zoomFactor;
+  double h = 1.0 / m_zoomFactor;
+  double x = m_zoomCenterX - w / 2.0;
+  double y = m_zoomCenterY - h / 2.0;
+
+  x = qBound(0.0, x, 1.0 - w);
+  y = qBound(0.0, y, 1.0 - h);
+
+  return QRectF(x, y, w, h);
+}
+
 void VideoWidget::leaveEvent(QEvent *event) {
   m_roiState.clearHoverPoint();
   update();

@@ -336,6 +336,31 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   recordingContext.sourceAt = [this](int cardIndex) {
     return sourceAt(cardIndex);
   };
+  recordingContext.selectedChannelCount = [this]() {
+    return m_cctvController ? m_cctvController->selectedChannelCount() : 0;
+  };
+  recordingContext.primarySelectedVideoWidget = [this]() -> VideoWidget * {
+    const int cardIndex =
+        m_cctvController ? m_cctvController->primarySelectedChannelIndex() : 0;
+    auto *channel = m_channelRuntimeController
+                        ? m_channelRuntimeController->channelForCardIndex(cardIndex)
+                        : nullptr;
+    if (!channel) {
+      channel = m_channelRuntimeController
+                    ? m_channelRuntimeController->channelAt(0)
+                    : nullptr;
+    }
+    return channel ? channel->videoWidget() : nullptr;
+  };
+  recordingContext.cameraZoomRect = [this](int cardIndex) -> QRectF {
+    auto *channel = m_channelRuntimeController
+                        ? m_channelRuntimeController->channelForCardIndex(cardIndex)
+                        : nullptr;
+    if (channel && channel->videoWidget()) {
+      return channel->videoWidget()->currentZoomRect();
+    }
+    return QRectF();
+  };
   m_recordingWorkflowController = new RecordingWorkflowController(
       recordingUiRefs, recordingContext, m_mediaRepo, m_recordPanelController,
       this);
