@@ -43,6 +43,7 @@ void CameraManager::startDisplayPipeline() {
       connect(m_srtpOrchestrator, &SrtpOrchestrator::metadataReceived, this, &CameraManager::metadataReceived);
       connect(m_srtpOrchestrator, &SrtpOrchestrator::logMessage, this, &CameraManager::logMessage);
     }
+    m_srtpOrchestrator->setDisabledObjectTypes(m_disabledTypes);
     m_srtpOrchestrator->setConnectionInfo(m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password, m_connectionInfo.profile);
     m_srtpOrchestrator->start();
     return;
@@ -84,7 +85,15 @@ bool CameraManager::isAnalyticsRunning() const {
 }
 void CameraManager::stopAnalytics() { if (m_metadataThread) { m_metadataThread->stop(); m_metadataThread->deleteLater(); m_metadataThread = nullptr; } }
 void CameraManager::setTargetFps(int fps) { if (m_videoThread) m_videoThread->setTargetFps(fps); }
-void CameraManager::setDisabledObjectTypes(const QSet<QString> &types) { m_disabledTypes = types; if (m_metadataThread) m_metadataThread->setDisabledTypes(m_disabledTypes); }
+void CameraManager::setDisabledObjectTypes(const QSet<QString> &types) {
+  m_disabledTypes = types;
+  if (m_metadataThread) {
+    m_metadataThread->setDisabledTypes(m_disabledTypes);
+  }
+  if (m_srtpOrchestrator) {
+    m_srtpOrchestrator->setDisabledObjectTypes(m_disabledTypes);
+  }
+}
 void CameraManager::restart() { stop(); start(); }
 void CameraManager::restartDisplayPipeline() { stop(); startDisplayPipeline(); }
 void CameraManager::stopThread(QThread *thread, const QString &name, bool warn) { if (thread && thread->isRunning()) { thread->quit(); thread->wait(kThreadStopTimeoutMs); } }

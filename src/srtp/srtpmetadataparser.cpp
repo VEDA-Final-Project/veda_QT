@@ -6,6 +6,10 @@
 
 SrtpMetadataParser::SrtpMetadataParser(QObject *parent) : QObject(parent) {}
 
+void SrtpMetadataParser::setDisabledTypes(const QSet<QString> &types) {
+  m_disabledTypes = types;
+}
+
 void SrtpMetadataParser::parse(const QByteArray &xmlData) {
   if (xmlData.isEmpty()) {
     return;
