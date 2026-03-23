@@ -1,5 +1,6 @@
 #include "videoframerenderer.h"
 #include "config/config.h"
+#include <QDateTime>
 #include <QPainter>
 #include <QRegion>
 #include <QVector>
@@ -223,6 +224,12 @@ QImage VideoFrameRenderer::compose(
                   static_cast<int>(zoomY * outputSize.height()));
   };
 
+  const QList<QPolygon> scaledRoiPolygons =
+      scaleRoiPolygons(roiPolygons, sourceFrame.size(), renderTarget.size());
+  const QRegion roiRegion =
+      roiRegionOnFrame(renderTarget.rect(), scaledRoiPolygons);
+  const bool hasActiveRoi = roiEnabled && !roiRegion.isEmpty();
+
   // Draw ROIs
   if (roiEnabled) {
     for (int i = 0; i < roiPolygons.size(); ++i) {
@@ -249,10 +256,10 @@ QImage VideoFrameRenderer::compose(
 
       const QString label =
           (i < roiLabels.size() && !roiLabels[i].trimmed().isEmpty())
-              ? (occupied ? QString("%1 [Parked]").arg(roiLabels[i].trimmed())
-                          : roiLabels[i].trimmed())
-              : (occupied ? QString("Zone %1 [Parked]").arg(i + 1)
-                          : QString("Zone %1").arg(i + 1));
+               ? (occupied ? QString("%1 [Parked]").arg(roiLabels[i].trimmed())
+                           : roiLabels[i].trimmed())
+               : (occupied ? QString("Zone %1 [Parked]").arg(i + 1)
+                           : QString("Zone %1").arg(i + 1));
 
       QRect textRect = painter.fontMetrics().boundingRect(label);
       textRect.adjust(-6, -3, 6, 3);
@@ -274,15 +281,11 @@ QImage VideoFrameRenderer::compose(
   painter.setPen(pen);
   for (const ObjectInfo &obj : objects) {
     const QRectF &nsRect = obj.rect;
-    // nsRect is usually based on "sourceWidth/sourceHeight" config, NOT
-    // necessarily sourceFrame size (sometimes).
-    // Let's use normalization to be safe.
     double normX = nsRect.x() / sourceWidth;
     double normY = nsRect.y() / sourceHeight;
     double normW = nsRect.width() / sourceWidth;
     double normH = nsRect.height() / sourceHeight;
 
-    // Convert to zoomed normalized coordinates
     double zoomX = (normX - zoomWindow.x()) / zoomWindow.width();
     double zoomY = (normY - zoomWindow.y()) / zoomWindow.height();
     double zoomW = normW / zoomWindow.width();
@@ -293,9 +296,13 @@ QImage VideoFrameRenderer::compose(
                       static_cast<int>(zoomW * outputSize.width()),
                       static_cast<int>(zoomH * outputSize.height()));
 
-    // Skip if completely outside zoomed area
     if (!uRect.intersects(QRect(0, 0, outputSize.width(), outputSize.height())))
       continue;
+    
+    // SRTP 필터링 로직 적용
+    if (hasActiveRoi && !roiRegion.intersects(uRect)) {
+      continue;
+    }
 
     painter.drawRect(uRect);
 
@@ -360,7 +367,6 @@ QImage VideoFrameRenderer::compose(
     painter.drawText(boxRect, Qt::AlignCenter, overlayText);
   }
 
-  // 줌 배율 독립 표시
   if (zoom > 1.001) {
     const QString zoomText = QString("Zoom: %1x").arg(zoom, 0, 'f', 1);
     QFont zoomFont = painter.font();
@@ -376,10 +382,9 @@ QImage VideoFrameRenderer::compose(
     const int boxH = textRect.height() + (paddingY * 2);
     const int margin = 10;
 
-    // 만약 FPS 정보가 표시 중이면 그 아래에, 아니면 우측 상단에 표시
     int boxY = margin;
     if (showFps) {
-      boxY += 40; // 대략적인 FPS 박스 높이만큼 아래로
+      boxY += 40; 
     }
     const QRect boxRect(outputSize.width() - boxW - margin, boxY, boxW, boxH);
 

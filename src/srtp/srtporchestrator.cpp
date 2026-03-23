@@ -111,6 +111,13 @@ void SrtpOrchestrator::setConnectionInfo(const QString &ip, const QString &user,
   m_ip = ip; m_user = user; m_password = password; m_profile = profile;
 }
 
+void SrtpOrchestrator::setDisabledObjectTypes(const QSet<QString> &types) {
+  m_disabledTypes = types;
+  if (m_metaParser) {
+    m_metaParser->setDisabledTypes(m_disabledTypes);
+  }
+}
+
 QString SrtpOrchestrator::baseUrl() const {
   return QString("rtsps://%1:322/%2").arg(m_ip, m_profile);
 }

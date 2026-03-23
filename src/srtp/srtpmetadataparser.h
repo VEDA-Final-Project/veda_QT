@@ -16,6 +16,7 @@ class SrtpMetadataParser : public QObject {
   Q_OBJECT
 public:
   explicit SrtpMetadataParser(QObject *parent = nullptr);
+  void setDisabledTypes(const QSet<QString> &types);
 
   /**
    * @brief XML 프레임 파싱
