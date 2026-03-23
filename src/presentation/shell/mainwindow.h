@@ -18,7 +18,9 @@ class QCloseEvent;
 class QEvent;
 class QMenu;
 class QMouseEvent;
+class QResizeEvent;
 class QTimer;
+class ToastOverlayWidget;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -37,6 +39,7 @@ protected:
   void mousePressEvent(QMouseEvent *event) override;
   void mouseMoveEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
+  void resizeEvent(QResizeEvent *event) override;
   bool eventFilter(QObject *watched, QEvent *event) override;
 #ifdef Q_OS_WIN
   bool nativeEvent(const QByteArray &eventType, void *message,
@@ -53,6 +56,7 @@ private:
 
   void setupUi();
   void openLogFilterSettings();
+  void repositionToastOverlay();
 
   HeaderBarView *m_headerView = nullptr;
   CctvSplashPageView *m_splashView = nullptr;
@@ -60,6 +64,7 @@ private:
   TelegramPageView *m_telegramView = nullptr;
   DbPageView *m_dbView = nullptr;
   RecordPageView *m_recordView = nullptr;
+  ToastOverlayWidget *m_toastOverlay = nullptr;
 
   QTimer *m_clockTimer = nullptr;
   QStackedWidget *m_stackedWidget = nullptr;

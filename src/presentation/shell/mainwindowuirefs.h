@@ -15,6 +15,7 @@ class QStackedWidget;
 class QTabWidget;
 class QTableWidget;
 class QToolButton;
+class ToastOverlayWidget;
 class VideoWidget;
 
 struct HeaderUiRefs {
@@ -136,6 +137,7 @@ struct MainWindowUiRefs : HeaderUiRefs,
                           DbUiRefs,
                           RecordUiRefs {
   QStackedWidget *stackedWidget = nullptr;
+  ToastOverlayWidget *toastOverlay = nullptr;
 };
 
 #endif // MAINWINDOWUIREFS_H

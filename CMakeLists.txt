@@ -121,6 +121,8 @@ set(PRESENTATION_SOURCES
     src/presentation/widgets/controllerdialog.h
     src/presentation/widgets/camerachannelruntime.cpp
     src/presentation/widgets/camerachannelruntime.h
+    src/presentation/widgets/toastoverlaywidget.cpp
+    src/presentation/widgets/toastoverlaywidget.h
     src/presentation/widgets/videowidget.cpp
     src/presentation/widgets/videowidget.h
     src/presentation/widgets/roiinteractionstate.cpp
@@ -151,6 +153,8 @@ set(PRESENTATION_SOURCES
     src/presentation/controllers/telegrampanelcontroller.h
     src/presentation/controllers/hardwarecontroller.cpp
     src/presentation/controllers/hardwarecontroller.h
+    src/presentation/controllers/notificationcontroller.cpp
+    src/presentation/controllers/notificationcontroller.h
     src/presentation/controllers/cctvcontroller.cpp
     src/presentation/controllers/cctvcontroller.h
     src/presentation/controllers/reidcontroller.cpp

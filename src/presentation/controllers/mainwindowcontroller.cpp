@@ -12,6 +12,7 @@
 #include "presentation/controllers/cctvcontroller.h"
 #include "presentation/controllers/dbpanelcontroller.h"
 #include "presentation/controllers/hardwarecontroller.h"
+#include "presentation/controllers/notificationcontroller.h"
 #include "presentation/controllers/reidcontroller.h"
 #include "presentation/controllers/recordpanelcontroller.h"
 #include "presentation/controllers/recordingworkflowcontroller.h"
@@ -145,6 +146,25 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   };
   m_cctvController = new CctvController(cctvUiRefs, cctvContext, this);
   m_cctvController->initializeViewState();
+
+  NotificationController::UiRefs notificationUiRefs;
+  notificationUiRefs.toastOverlay = m_ui.toastOverlay;
+  m_notificationController =
+      new NotificationController(notificationUiRefs, this);
+  connect(m_cctvController, &CctvController::roiCreated, this,
+          [this](int cardIndex, const QString &zoneId, const QString &zoneName) {
+            Q_UNUSED(zoneId);
+            if (m_notificationController) {
+              m_notificationController->showRoiCreated(cardIndex, zoneName);
+            }
+          });
+  connect(m_cctvController, &CctvController::roiDeleted, this,
+          [this](int cardIndex, const QString &zoneId, const QString &zoneName) {
+            Q_UNUSED(zoneId);
+            if (m_notificationController) {
+              m_notificationController->showRoiDeleted(cardIndex, zoneName);
+            }
+          });
 
   ChannelRuntimeController::UiRefs channelRuntimeUiRefs;
   for (int i = 0; i < 4; ++i) {
@@ -283,6 +303,20 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &DbPanelController::onRefreshParkingLogs);
     connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
             &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleEntered, this,
+            [this, i](int roiIndex, const QString &) {
+              if (m_notificationController) {
+                m_notificationController->showVehicleEntered(
+                    i, zoneNameForNotification(i, roiIndex));
+              }
+            });
+    connect(service, &ParkingService::vehicleDeparted, this,
+            [this, i](int roiIndex, const QString &) {
+              if (m_notificationController) {
+                m_notificationController->showVehicleDeparted(
+                    i, zoneNameForNotification(i, roiIndex));
+              }
+            });
   }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();
@@ -582,4 +616,19 @@ MainWindowController::parkingServiceForCardIndex(int cardIndex) const {
   return m_cameraSessionController
              ? m_cameraSessionController->parkingServiceForCardIndex(cardIndex)
              : nullptr;
+}
+
+QString MainWindowController::zoneNameForNotification(int cardIndex,
+                                                      int roiIndex) const {
+  CameraSource *source = sourceAt(cardIndex);
+  if (!source) {
+    return QString();
+  }
+
+  const QVector<QJsonObject> &records = source->roiRecords();
+  if (roiIndex < 0 || roiIndex >= records.size()) {
+    return QString();
+  }
+
+  return records[roiIndex]["zone_name"].toString().trimmed();
 }

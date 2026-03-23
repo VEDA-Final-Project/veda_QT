@@ -23,6 +23,7 @@ class RecordingWorkflowController;
 class TelegramPanelController;
 class ControllerDialog;
 class MediaRepository;
+class NotificationController;
 class ParkingService;
 
 class MainWindowController : public QObject {
@@ -53,6 +54,7 @@ private:
   void refreshZoneTableAllChannels();
   CameraSource *sourceAt(int cardIndex) const;
   ParkingService *parkingServiceForCardIndex(int cardIndex) const;
+  QString zoneNameForNotification(int cardIndex, int roiIndex) const;
 
   MainWindowUiRefs m_ui;
   ChannelRuntimeController *m_channelRuntimeController = nullptr;
@@ -64,6 +66,7 @@ private:
   ReidController *m_reidController = nullptr;
   RecordPanelController *m_recordPanelController = nullptr;
   RecordingWorkflowController *m_recordingWorkflowController = nullptr;
+  NotificationController *m_notificationController = nullptr;
   MediaRepository *m_mediaRepo = nullptr;
   LogDeduplicator m_logDeduplicator;
 };

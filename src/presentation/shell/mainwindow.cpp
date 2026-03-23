@@ -8,6 +8,7 @@
 #include "presentation/controllers/mainwindowcontroller.h"
 #include "presentation/shell/headerbarview.h"
 #include "presentation/widgets/controllerdialog.h"
+#include "presentation/widgets/toastoverlaywidget.h"
 #include <QAction>
 #include <QAbstractSpinBox>
 #include <QCheckBox>
@@ -34,6 +35,7 @@
 #include <QMap>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QStackedWidget>
 #include <QStringList>
 #include <QVBoxLayout>
@@ -85,6 +87,7 @@ MainWindowUiRefs MainWindow::controllerUiRefs() const {
   static_cast<RecordUiRefs &>(uiRefs) =
       m_recordView ? m_recordView->uiRefs() : RecordUiRefs{};
   uiRefs.stackedWidget = m_stackedWidget;
+  uiRefs.toastOverlay = m_toastOverlay;
   return uiRefs;
 }
 
@@ -176,6 +179,11 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event) {
 void MainWindow::mouseReleaseEvent(QMouseEvent *event) {
   m_dragPosition = QPoint();
   QMainWindow::mouseReleaseEvent(event);
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+  QMainWindow::resizeEvent(event);
+  repositionToastOverlay();
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
@@ -382,6 +390,9 @@ void MainWindow::setupUi() {
 
   layout->addWidget(stackedWidget, 1);
 
+  m_toastOverlay = new ToastOverlayWidget(centralWidget);
+  repositionToastOverlay();
+
   showCctvSplash();
 }
 
@@ -490,4 +501,12 @@ void MainWindow::openLogFilterSettings() {
       config.setEnabled(it.key(), it.value()->isChecked());
     }
   }
+}
+
+void MainWindow::repositionToastOverlay() {
+  if (!m_toastOverlay) {
+    return;
+  }
+  m_toastOverlay->repositionInParent();
+  m_toastOverlay->raise();
 }

@@ -68,6 +68,10 @@ public:
   int primarySelectedChannelIndex() const;
   void selectSingleChannel(int index);
 
+signals:
+  void roiCreated(int cardIndex, const QString &zoneId, const QString &zoneName);
+  void roiDeleted(int cardIndex, const QString &zoneId, const QString &zoneName);
+
 private slots:
   void onStartRoiDraw();
   void onCompleteRoiDraw();

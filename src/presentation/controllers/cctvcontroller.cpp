@@ -191,6 +191,9 @@ void CctvController::onDeleteSelectedRoi() {
     appendLog("[ROI] 삭제 실패: ROI를 선택해주세요.");
     return;
   }
+  const QJsonObject removedRecord = targetService->records().at(recordIndex);
+  const QString removedZoneId = removedRecord["zone_id"].toString();
+  const QString removedZoneName = removedRecord["zone_name"].toString().trimmed();
 
   const Result<QString> deleteResult = targetService->removeAt(recordIndex);
   if (!deleteResult.isOk()) {
@@ -217,6 +220,7 @@ void CctvController::onDeleteSelectedRoi() {
                              : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
   appendLog(QString("[ROI] 삭제 완료: %1").arg(deleteResult.data));
+  emit roiDeleted(m_roiTargetIndex, removedZoneId, removedZoneName);
 }
 
 void CctvController::onRoiChanged(const QRect &roi) {
@@ -291,6 +295,8 @@ void CctvController::onRoiPolygonChanged(const QPolygon &polygon,
   if (m_context.appendRoiStructuredLog) {
     m_context.appendRoiStructuredLog(createResult.data);
   }
+  emit roiCreated(targetIndex, createResult.data["zone_id"].toString(),
+                  createResult.data["zone_name"].toString().trimmed());
 }
 
 void CctvController::onRoiTargetChanged(int index) {
