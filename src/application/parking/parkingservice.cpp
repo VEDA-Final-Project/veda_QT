@@ -104,6 +104,11 @@ void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
     }
   }
 
+  const QList<VehicleState> roiDepartures = m_tracker.takePendingDepartures();
+  for (const VehicleState &vs : roiDepartures) {
+    handleDeparture(vs);
+  }
+
   // 보정 로직: ROI 안에 있으나 통지가 아직 안 된 차량 재검색
   const auto &activeVehicles = m_tracker.vehicles();
   for (auto it = activeVehicles.cbegin(); it != activeVehicles.cend(); ++it) {
@@ -156,7 +161,8 @@ void ParkingService::updateReidFeatures(const QList<ObjectInfo> &objects) {
 void ParkingService::processOcrResult(int objectId,
                                       const QString &plateNumber)
 {
-  m_tracker.setPlateNumber(objectId, plateNumber);
+  const QString normalizedPlate = plateNumber.trimmed();
+  m_tracker.setPlateNumber(objectId, normalizedPlate);
 
   const auto &vehicles = m_tracker.vehicles();
   QString reidId;
@@ -174,28 +180,37 @@ void ParkingService::processOcrResult(int objectId,
   }
 
   if (!reidId.isEmpty()) {
-    m_tracker.setPlateNumberForReid(reidId, plateNumber);
+    m_tracker.setPlateNumberForReid(reidId, normalizedPlate);
   }
 
   m_ocrObjectReidSnapshot.remove(objectId);
 
-  if (hasVehicle && vs.occupiedRoiIndex >= 0 && !plateNumber.isEmpty()) {
+  if (hasVehicle && vs.occupiedRoiIndex >= 0 && !normalizedPlate.isEmpty()) {
     QString error;
+    const QJsonObject activeBefore =
+        m_repository.findActiveByObjectId(m_cameraKey, objectId, &error);
+    const bool shouldSendEntryTelegram =
+        !activeBefore.isEmpty() &&
+        activeBefore["plate_number"].toString().trimmed().isEmpty();
     bool updated = false;
     if (!reidId.isEmpty()) {
       updated = m_repository.updateActivePlateByReidId(m_cameraKey, reidId,
-                                                       plateNumber, &error);
+                                                       normalizedPlate, &error);
     }
     if (!updated) {
       if (!m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
-                                                    plateNumber, &error)) {
+                                                    normalizedPlate, &error)) {
         handleNewEntry(vs);
+      } else if (shouldSendEntryTelegram) {
+        sendTelegramEntryNotice(normalizedPlate);
       }
+    } else if (shouldSendEntryTelegram) {
+      sendTelegramEntryNotice(normalizedPlate);
     }
   }
 
-  if (hasVehicle && (!plateNumber.isEmpty() || !reidId.isEmpty())) {
-    m_vehicleRepo.upsertVehicle(plateNumber, vs.type, "", false, reidId);
+  if (hasVehicle && (!normalizedPlate.isEmpty() || !reidId.isEmpty())) {
+    m_vehicleRepo.upsertVehicle(normalizedPlate, vs.type, "", false, reidId);
   }
 }
 
@@ -297,6 +312,7 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
                         .arg(recordId));
     emit vehicleEntered(vs.occupiedRoiIndex, vehicleLabel);
     m_tracker.markNotified(vs.objectId);
+    sendTelegramEntryNotice(vs.plateNumber);
 
     // Update Vehicle Master DB
     if (!vs.plateNumber.isEmpty() || !vs.reidId.isEmpty()) {
@@ -308,8 +324,9 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
 void ParkingService::handleDeparture(const VehicleState &vs)
 {
   const QDateTime now = QDateTime::currentDateTime();
+  const QString plateNumber = vs.plateNumber.trimmed();
   const QString vehicleLabel =
-      !vs.plateNumber.isEmpty() ? vs.plateNumber
+      !plateNumber.isEmpty() ? plateNumber
                                 : QStringLiteral("OBJ#%1").arg(vs.objectId);
 
   // DB에서 활성 레코드 찾아 출차 시각 업데이트
@@ -318,14 +335,56 @@ void ParkingService::handleDeparture(const VehicleState &vs)
   if (!active.isEmpty()) 
   {
     int recordId = active["id"].toInt();
-    m_repository.updateExit(recordId, now);
+    int resolvedTotalAmount = 0;
+    if (!m_repository.updateExit(recordId, now, &resolvedTotalAmount)) {
+      emit logMessage(QString("[Parking] Exit update failed: %1")
+                          .arg(vehicleLabel));
+      return;
+    }
 
     emit logMessage(QString("[Parking] Exit recorded: %1 from %2")
                         .arg(vehicleLabel, zoneNameForIndex(vs.occupiedRoiIndex)));
     emit vehicleDeparted(vs.occupiedRoiIndex, vehicleLabel);
 
-    // TODO: 텔레그램 출차 알림 + 요금 정보 전송
+    if (plateNumber.isEmpty()) {
+      emit logMessage(QString("[Telegram] 출차 알림 생략: 번호판 미인식 (%1)")
+                          .arg(vehicleLabel));
+      return;
+    }
+    if (!m_telegram) {
+      emit logMessage(QString("[Telegram] 출차 알림 생략: Telegram API 미연결 (%1)")
+                          .arg(plateNumber));
+      return;
+    }
+    if (!m_telegram->isTokenValid()) {
+      emit logMessage(QString("[Telegram] 출차 알림 생략: 봇 토큰이 유효하지 않습니다. (%1)")
+                          .arg(plateNumber));
+      return;
+    }
+
+    m_telegram->sendExitNotice(plateNumber, resolvedTotalAmount);
   }
+}
+
+void ParkingService::sendTelegramEntryNotice(const QString &plateNumber)
+{
+  const QString normalizedPlate = plateNumber.trimmed();
+  if (normalizedPlate.isEmpty()) {
+    emit logMessage("[Telegram] 입차 알림 생략: 번호판 미인식");
+    return;
+  }
+  if (!m_telegram) {
+    emit logMessage(QString("[Telegram] 입차 알림 생략: Telegram API 미연결 (%1)")
+                        .arg(normalizedPlate));
+    return;
+  }
+  if (!m_telegram->isTokenValid()) {
+    emit logMessage(QString("[Telegram] 입차 알림 생략: 봇 토큰이 유효하지 않습니다. (%1)")
+                        .arg(normalizedPlate));
+    return;
+  }
+
+  m_telegram->sendEntryNotice(normalizedPlate);
 }
 
 QString ParkingService::zoneNameForIndex(int roiIndex) const

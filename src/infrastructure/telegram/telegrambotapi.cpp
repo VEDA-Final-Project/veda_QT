@@ -92,13 +92,7 @@ void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee) {
     return;
   }
 
-  int resolvedFee = fee;
-  const QJsonObject pendingLog =
-      m_parkingRepository.findActiveByPlate("camera",
-                                                          plateNumber);
-  if (!pendingLog.isEmpty()) {
-    resolvedFee = pendingLog["total_amount"].toInt();
-  }
+  const int resolvedFee = fee < 0 ? 0 : fee;
 
   emit logMessage(
       QString(
@@ -996,21 +990,47 @@ void TelegramBotAPI::handleUsageHistory(const QString &chatId) {
   }
 
   QList<QJsonObject> logs = m_parkingRepository.searchByPlate("camera", plate);
-  if (logs.isEmpty()) {
-    sendMessage(chatId, "이용 내역이 없습니다.");
-  } else {
-    QString text = "🕒 *최근 이용 내역 (최대 3건)*\n\n";
-    int count = 0;
-    for (const QJsonObject &log : logs) {
-      if (count >= 3) break;
-      text += QString("%1. %2 (%3) - %4원\n")
-                  .arg(count + 1)
-                  .arg(log["entry_time"].toString().left(10))
-                  .arg(log["zone_name"].toString())
-                  .arg(log["total_amount"].toInt());
-      count++;
+  auto formatTime = [](const QString &isoText) {
+    const QDateTime parsed = QDateTime::fromString(isoText, Qt::ISODate);
+    if (parsed.isValid()) {
+      return parsed.toString("yyyy-MM-dd HH:mm");
     }
-    sendMessage(chatId, text);
+    return isoText.left(16).replace('T', ' ');
+  };
+
+  QString text = "🕒 *최근 이용 내역 (최대 3건)*\n\n";
+  int count = 0;
+  for (const QJsonObject &log : logs) {
+    const QString entryTime = log["entry_time"].toString().trimmed();
+    const QString exitTime = log["exit_time"].toString().trimmed();
+    if (entryTime.isEmpty() || exitTime.isEmpty()) {
+      continue;
+    }
+
+    const QString zoneName = log["zone_name"].toString().trimmed().isEmpty()
+                                 ? QStringLiteral("-")
+                                 : log["zone_name"].toString().trimmed();
+    text += QString("%1. %2\n"
+                    "구역: %3\n"
+                    "입차: %4\n"
+                    "출차: %5\n"
+                    "요금: %6원\n\n")
+                .arg(count + 1)
+                .arg(formatTime(entryTime).left(10))
+                .arg(zoneName)
+                .arg(formatTime(entryTime))
+                .arg(formatTime(exitTime))
+                .arg(log["total_amount"].toInt());
+    count++;
+    if (count >= 3) {
+      break;
+    }
+  }
+
+  if (count == 0) {
+    sendMessage(chatId, "완료된 이용 내역이 없습니다.");
+  } else {
+    sendMessage(chatId, text.trimmed());
   }
 }
 

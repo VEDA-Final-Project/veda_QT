@@ -166,6 +166,7 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
 }
 
 bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
+                                   int *resolvedTotalAmount,
                                    QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
@@ -191,6 +192,9 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
         QDateTime::fromString(selectQuery.value(0).toString(), Qt::ISODate);
   }
   const int totalAmount = calculateParkingFee(entryTime, exitTime);
+  if (resolvedTotalAmount) {
+    *resolvedTotalAmount = totalAmount;
+  }
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral("UPDATE parking_logs SET exit_time = :exit, "

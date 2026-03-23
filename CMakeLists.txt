@@ -33,6 +33,8 @@ qt_add_executable(rtsp_test
     src/presentation/widgets/camerachannelruntime.h
     src/presentation/widgets/controllerdialog.cpp
     src/presentation/widgets/controllerdialog.h
+    src/presentation/widgets/toastoverlay.cpp
+    src/presentation/widgets/toastoverlay.h
     src/presentation/controllers/mainwindowcontroller.cpp
     src/presentation/controllers/mainwindowcontroller.h
     src/presentation/controllers/camerasessioncontroller.cpp
@@ -45,6 +47,8 @@ qt_add_executable(rtsp_test
     src/presentation/controllers/dbpanelcontroller.h
     src/presentation/controllers/hardwarecontroller.cpp
     src/presentation/controllers/hardwarecontroller.h
+    src/presentation/controllers/notificationcontroller.cpp
+    src/presentation/controllers/notificationcontroller.h
     src/presentation/controllers/parkinglogpanelcontroller.cpp
     src/presentation/controllers/parkinglogpanelcontroller.h
     src/presentation/controllers/recordingworkflowcontroller.cpp

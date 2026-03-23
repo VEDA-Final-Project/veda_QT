@@ -34,6 +34,7 @@ public:
    * @brief 출차 기록 업데이트
    */
   bool updateExit(int recordId, const QDateTime &exitTime,
+                  int *resolvedTotalAmount = nullptr,
                   QString *errorMessage = nullptr);
 
   /**
