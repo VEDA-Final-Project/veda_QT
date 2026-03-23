@@ -82,11 +82,11 @@
 
 ## 관련 파일
 
-- `src/ui/windows/mainwindow.cpp`
-- `src/ui/windows/mainwindow.h`
-- `src/ui/windows/mainwindowuirefs.h`
-- `src/ui/windows/mainwindowcontroller.cpp`
-- `src/ui/windows/mainwindowcontroller.h`
+- `src/presentation/shell/mainwindow.cpp`
+- `src/presentation/shell/mainwindow.h`
+- `src/presentation/shell/mainwindowuirefs.h`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.h`
 
 ## 확인 방법
 

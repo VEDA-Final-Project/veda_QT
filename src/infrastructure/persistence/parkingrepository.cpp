@@ -1,6 +1,6 @@
 #include "domain/parking/parkingfeepolicy.h"
-#include "infrastructure/persistence/parkingrepository.h"
 #include "infrastructure/persistence/databasecontext.h"
+#include "infrastructure/persistence/parkingrepository.h"
 #include <QDebug>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -8,7 +8,6 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <algorithm>
-
 
 namespace {
 const QString kDefaultCameraKey = QStringLiteral("camera");
@@ -388,12 +387,13 @@ bool ParkingRepository::updateActiveReidByObjectId(const QString &cameraKey,
   }
 
   QSqlQuery query(db);
-  // [수정] 네임드 파라미터(:reid_id)에서 포지셔널 파라미터(?)로 변경하여 바인딩
-  // 오류 방지
   query.prepare(QStringLiteral(
       "UPDATE parking_logs SET reid_id = ? "
-      "WHERE camera_key = ? AND object_id = ? AND exit_time IS NULL"));
-
+      "WHERE id = ("
+      "  SELECT id FROM parking_logs WHERE camera_key = ? "
+      "  AND object_id = ? AND exit_time IS NULL "
+      "  ORDER BY entry_time DESC LIMIT 1"
+      ")"));
   query.addBindValue(trimmedReid);
   query.addBindValue(normalizedCameraKey(cameraKey));
   query.addBindValue(objectId);
@@ -553,14 +553,22 @@ QList<QJsonObject> ParkingRepository::recentLogs(const QString &cameraKey,
   if (!db.isOpen())
     return results;
 
-  const QString normalizedKey = normalizedCameraKey(cameraKey);
   QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
-      "reid_id, entry_time, exit_time, pay_status, total_amount "
-      "FROM parking_logs WHERE camera_key = :camera_key "
-      "ORDER BY entry_time DESC LIMIT :limit"));
-  query.bindValue(":camera_key", normalizedKey);
+  if (isAllCameraKey(cameraKey)) {
+    query.prepare(QStringLiteral(
+        "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
+        "reid_id, entry_time, exit_time, pay_status, total_amount "
+        "FROM parking_logs "
+        "ORDER BY entry_time DESC LIMIT :limit"));
+  } else {
+    const QString normalizedKey = normalizedCameraKey(cameraKey);
+    query.prepare(QStringLiteral(
+        "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
+        "reid_id, entry_time, exit_time, pay_status, total_amount "
+        "FROM parking_logs WHERE camera_key = :camera_key "
+        "ORDER BY entry_time DESC LIMIT :limit"));
+    query.bindValue(":camera_key", normalizedKey);
+  }
   query.bindValue(":limit", limit);
 
   if (!query.exec()) {
@@ -736,14 +744,23 @@ QList<QJsonObject> ParkingRepository::getAllLogs(const QString &cameraKey,
     return results;
   }
 
-  const QString normalizedKey = normalizedCameraKey(cameraKey);
   QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
-      "reid_id, entry_time, exit_time, pay_status, total_amount "
-      "FROM parking_logs WHERE camera_key = :camera_key "
-      "ORDER BY entry_time DESC"));
-  query.bindValue(":camera_key", normalizedKey);
+  if (isAllCameraKey(cameraKey)) {
+    query.prepare(QStringLiteral(
+        "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
+        "reid_id, entry_time, exit_time, pay_status, total_amount "
+        "FROM parking_logs "
+        "ORDER BY entry_time DESC"));
+  } else {
+    const QString normalizedKey = normalizedCameraKey(cameraKey);
+    query.prepare(QStringLiteral(
+        "SELECT id, camera_key, object_id, plate_number, zone_name, roi_index, "
+        "reid_id, entry_time, exit_time, pay_status, total_amount "
+        "FROM parking_logs WHERE camera_key = :camera_key "
+        "ORDER BY entry_time DESC"));
+    query.bindValue(":camera_key", normalizedKey);
+  }
+
   if (!query.exec()) {
     if (errorMessage)
       *errorMessage = query.lastError().text();

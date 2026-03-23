@@ -28,8 +28,8 @@
 
 대상 파일:
 
-- `src/ui/windows/recordpanelcontroller.cpp`
-- `src/ui/windows/mainwindowcontroller.cpp`
+- `src/presentation/controllers/recordpanelcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
 
 변경 내용:
 
@@ -47,10 +47,10 @@
 
 대상 파일:
 
-- `src/camera/cameramanager.cpp`
-- `src/camera/cameramanager.h`
-- `src/camera/camerasource.cpp`
-- `src/ui/windows/camerachannelruntime.cpp`
+- `src/infrastructure/camera/cameramanager.cpp`
+- `src/infrastructure/camera/cameramanager.h`
+- `src/infrastructure/camera/camerasource.cpp`
+- `src/presentation/widgets/camerachannelruntime.cpp`
 
 변경 내용:
 
@@ -73,8 +73,8 @@
 - `config/settings.json`
 - `src/config/config.cpp`
 - `src/config/config.h`
-- `src/camera/camerasource.cpp`
-- `src/metadata/metadatathread.cpp`
+- `src/infrastructure/camera/camerasource.cpp`
+- `src/infrastructure/metadata/metadatathread.cpp`
 
 변경 내용:
 
@@ -91,8 +91,8 @@
 
 대상 파일:
 
-- `src/camera/camerasource.cpp`
-- `src/camera/camerasource.h`
+- `src/infrastructure/camera/camerasource.cpp`
+- `src/infrastructure/camera/camerasource.h`
 
 변경 내용:
 
@@ -110,9 +110,9 @@
 
 대상 파일:
 
-- `src/video/videothread.cpp`
-- `src/camera/camerasource.cpp`
-- `src/video/mediarecorderworker.cpp`
+- `src/infrastructure/video/videothread.cpp`
+- `src/infrastructure/camera/camerasource.cpp`
+- `src/infrastructure/video/mediarecorderworker.cpp`
 
 변경 내용:
 
@@ -130,7 +130,7 @@
 
 대상 파일:
 
-- `src/ui/windows/mainwindowcontroller.cpp`
+- `src/presentation/controllers/mainwindowcontroller.cpp`
 
 변경 내용:
 

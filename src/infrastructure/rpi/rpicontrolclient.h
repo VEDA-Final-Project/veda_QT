@@ -33,6 +33,8 @@ public:
     void disconnectFromServer();
     bool isConnected() const;
 
+    void sendDbData(const QString &jsonData);
+
     QString host() const;
     quint16 port() const;
 

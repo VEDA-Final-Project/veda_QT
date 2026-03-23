@@ -33,7 +33,7 @@
 
 ### 4. 빌드 대상에 인증 클라이언트 등록
 
-- `CMakeLists.txt`에 `src/rpi/rpiauthclient.cpp`, `src/rpi/rpiauthclient.h` 추가
+- `CMakeLists.txt`에 `src/infrastructure/rpi/rpiauthclient.cpp`, `src/infrastructure/rpi/rpiauthclient.h` 추가
 
 ## 기대 효과
 

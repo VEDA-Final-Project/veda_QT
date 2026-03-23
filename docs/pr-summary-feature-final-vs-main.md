@@ -52,13 +52,13 @@
 
 ## 추가된 주요 파일
 
-- `src/ocr/recognition/llmocrrunner.*`
-- `src/ocr/recognition/telegramllmrunner.*`
-- `src/tracking/reidextractor.*`
-- `src/parking/parkingfeepolicy.*`
-- `src/ui/windows/userdbpanelcontroller.*`
-- `src/ui/windows/zonepanelcontroller.*`
-- `src/video/sharedvideoframe.h`
+- `src/infrastructure/ocr/recognition/llmocrrunner.*`
+- `src/infrastructure/ocr/recognition/telegramllmrunner.*`
+- `src/infrastructure/vision/reidextractor.*`
+- `src/domain/parking/parkingfeepolicy.*`
+- `src/presentation/controllers/userdbpanelcontroller.*`
+- `src/presentation/controllers/zonepanelcontroller.*`
+- `src/infrastructure/video/sharedvideoframe.h`
 - `model/sbs_R50-ibn.onnx`
 - `docs/frame-refactor-shared-raw-frame-2026-03-18.md`
 
