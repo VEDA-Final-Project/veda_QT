@@ -9,6 +9,7 @@
 #include <QString>
 #include <array>
 #include <functional>
+#include <memory>
 #include <opencv2/core.hpp>
 
 #include "infrastructure/video/sharedvideoframe.h"
@@ -16,6 +17,7 @@
 class CameraSource;
 class QLabel;
 class ParkingService;
+class SharedReidRuntime;
 class TelegramBotAPI;
 
 class CameraSessionController : public QObject {
@@ -52,6 +54,8 @@ private:
   Context m_context;
   std::array<CameraSource *, 4> m_cameraSources{
       {nullptr, nullptr, nullptr, nullptr}};
+  std::shared_ptr<SharedReidRuntime> m_sharedReidRuntime;
+  bool m_reidRuntimeLogEmitted = false;
   QElapsedTimer m_renderTimerThumbs[4];
   struct ThumbnailCache {
     const cv::Mat *frameIdentity = nullptr;

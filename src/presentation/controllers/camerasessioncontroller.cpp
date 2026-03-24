@@ -4,6 +4,7 @@
 #include "infrastructure/camera/camerasource.h"
 #include "config/config.h"
 #include "infrastructure/telegram/telegrambotapi.h"
+#include "infrastructure/vision/reidextractor.h"
 #include <QImage>
 #include <QLabel>
 #include <QMetaObject>
@@ -28,6 +29,27 @@ void CameraSessionController::start() {
     cameraKeys << QStringLiteral("camera");
   }
 
+  if (!m_sharedReidRuntime) {
+    m_sharedReidRuntime = std::make_shared<SharedReidRuntime>();
+  }
+  if (!m_reidRuntimeLogEmitted) {
+    const QString reidModelPath = Config::instance().reidModelPath().trimmed();
+    if (!reidModelPath.isEmpty()) {
+      if (m_sharedReidRuntime->loadOnce(reidModelPath)) {
+        const QString device = m_sharedReidRuntime->deviceName().trimmed();
+        emit logMessage(QString("[ReID] Shared model ready: %1%2")
+                            .arg(reidModelPath)
+                            .arg(device.isEmpty()
+                                     ? QString()
+                                     : QString(" (Device: %1)").arg(device)));
+      } else {
+        emit logMessage(QString("[ReID] Shared model load failed: %1 (%2)")
+                            .arg(reidModelPath, m_sharedReidRuntime->lastError()));
+      }
+    }
+    m_reidRuntimeLogEmitted = true;
+  }
+
   for (int i = 0; i < static_cast<int>(m_cameraSources.size()); ++i) {
     if (i >= cameraKeys.size()) {
       continue;
@@ -37,7 +59,9 @@ void CameraSessionController::start() {
     }
 
     CameraSource *source = new CameraSource(cameraKeys[i], i, this);
-    source->initialize(m_context.telegramApi ? m_context.telegramApi() : nullptr);
+    source->initialize(
+        m_context.telegramApi ? m_context.telegramApi() : nullptr,
+        m_sharedReidRuntime ? m_sharedReidRuntime->createSession() : nullptr);
     connect(source, &CameraSource::rawFrameReady, this,
             [this](int cardIndex, QSharedPointer<cv::Mat> framePtr,
                    qint64 timestampMs) {

@@ -995,52 +995,11 @@ void TelegramBotAPI::handleFeeInquiry(const QString &chatId) {
     return;
   }
 
-  const QJsonObject pendingLog =
-      m_parkingRepository.findLatestUnpaidExitedByPlateAnyCamera(plate);
-  if (!pendingLog.isEmpty()) {
-    const int recordId = pendingLog["id"].toInt();
-    const int fee = pendingLog["total_amount"].toInt();
-    const QString exitTime = pendingLog["exit_time"].toString();
-    const QString cameraKey = pendingLog["camera_key"].toString().trimmed();
-    const QString zoneName = pendingLog["zone_name"].toString().trimmed().isEmpty()
-                                 ? QStringLiteral("-")
-                                 : pendingLog["zone_name"].toString().trimmed();
-    QString text = QString("💳 *미납 정산 안내*\n\n"
-                           "현재 주차 중인 내역은 없습니다.\n\n"
-                           "차량번호: `%1`\n"
-                           "채널: %2\n"
-                           "구역: %3\n"
-                           "출차 시간: %4\n"
-                           "미납 금액: *%5원*")
-                       .arg(plate)
-                       .arg(cameraKey.isEmpty() ? QStringLiteral("-") : cameraKey)
-                       .arg(zoneName)
-                       .arg(formatTime(exitTime))
-                       .arg(fee);
-
-    if (fee > 0) {
-      QJsonObject btnPay;
-      btnPay["text"] = QString::fromUtf8("💰 납부하기");
-      btnPay["callback_data"] = QString("PAYREC_%1").arg(recordId);
-      QJsonArray row;
-      row.append(btnPay);
-      QJsonArray keyboard;
-      keyboard.append(row);
-      QJsonObject markup;
-      markup["inline_keyboard"] = keyboard;
-      const QString replyMarkup =
-          QJsonDocument(markup).toJson(QJsonDocument::Compact);
-      sendMessage(chatId, text, replyMarkup);
-    } else {
-      sendMessage(chatId, text);
-    }
-  } else {
-    QString text = QString("💳 *요금 조회*\n\n"
-                           "차량번호: `%1`\n"
-                           "현재 주차 중인 내역이 없습니다.")
-                       .arg(plate);
-    sendMessage(chatId, text);
-  }
+  QString text = QString("💳 *요금 조회*\n\n"
+                         "차량번호: `%1`\n"
+                         "현재 주차 중인 내역이 없습니다.")
+                     .arg(plate);
+  sendMessage(chatId, text);
 }
 
 void TelegramBotAPI::handleUsageHistory(const QString &chatId) {

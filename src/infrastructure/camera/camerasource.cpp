@@ -117,7 +117,8 @@ CameraSource::CameraSource(const QString &cameraKey, int cardIndex,
 
 }
 
-bool CameraSource::initialize(TelegramBotAPI *telegramApi) {
+bool CameraSource::initialize(TelegramBotAPI *telegramApi,
+                              std::shared_ptr<ReidSession> reidSession) {
   if (m_initialized) {
     return true;
   }
@@ -137,18 +138,7 @@ bool CameraSource::initialize(TelegramBotAPI *telegramApi) {
     m_parkingService->setTelegramApi(telegramApi);
   }
   m_parkingService->setCameraKey(m_cameraKey);
-
-  // ReID 모델 로드
-  QString reidModelPath = Config::instance().reidModelPath();
-  if (!reidModelPath.isEmpty()) {
-    if (m_reidExtractor.loadModel(reidModelPath)) {
-      emit logMessage(
-          QString("[ReID] Model Load Success: %1").arg(reidModelPath));
-    } else {
-      emit logMessage(
-          QString("[ReID] Model Load Failed: %1").arg(reidModelPath));
-    }
-  }
+  m_reidSession = std::move(reidSession);
 
   m_initialized = true;
   return reloadRoi(false);
@@ -516,12 +506,17 @@ void CameraSource::onReidDispatchTick() {
     return;
   }
 
+  const std::shared_ptr<ReidSession> reidSession = m_reidSession;
+  if (!reidSession || !reidSession->isReady()) {
+    return;
+  }
+
   m_reidProcessing = true;
   QList<ObjectInfo> objects = m_latestFrameObjects;
   QSharedPointer<cv::Mat> framePtr = m_latestFramePtr;
 
   QPointer<CameraSource> self(this);
-  (void)QtConcurrent::run([self, objects, framePtr]() {
+  (void)QtConcurrent::run([self, objects, framePtr, reidSession]() {
     if (!self || !self->m_shouldRun) {
       if (self) {
         QMetaObject::invokeMethod(
@@ -573,7 +568,7 @@ void CameraSource::onReidDispatchTick() {
 
       // Partial Clone: Only clone the small vehicle area, not the whole 4K frame!
       cv::Mat vehicleCrop = frame(roi).clone(); 
-      obj.reidFeatures = self->m_reidExtractor.extract(vehicleCrop);
+      obj.reidFeatures = reidSession->extract(vehicleCrop);
 
       if (!obj.reidFeatures.empty()) {
         extractedAny = true;
