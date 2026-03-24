@@ -176,6 +176,11 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   connect(m_channelRuntimeController, &ChannelRuntimeController::primaryVideoReady,
           this, &MainWindowController::primaryVideoReady);
 
+  if (m_channelRuntimeController) {
+    m_channelRuntimeController->setReidPanelActiveForAll(false);
+  }
+
+  // 로그인 화면 단계에서 미리 카메라 소스 및 모델 비동기 로딩 시작
   if (m_cameraSessionController) {
     m_cameraSessionController->start();
   }
@@ -443,14 +448,19 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     m_channelRuntimeController->setReidPanelActiveForAll(false);
   }
 
-  initRoiDbForChannels();
-  if (m_cctvController) {
-    m_cctvController->refreshRoiSelectorForTarget();
-    m_cctvController->updateChannelCardSelection();
-  }
-  if (m_reidController) {
-    m_reidController->refresh(true);
-  }
+  // ROI DB 로드 및 대규모 UI 갱신 작업을 백그라운드로 이동 (void 캐스팅으로 경고 해결)
+  (void)QtConcurrent::run([this]() {
+    initRoiDbForChannels();
+    QMetaObject::invokeMethod(this, [this]() {
+      if (m_cctvController) {
+        m_cctvController->refreshRoiSelectorForTarget();
+        m_cctvController->updateChannelCardSelection();
+      }
+      if (m_reidController) {
+        m_reidController->refresh(true);
+      }
+    });
+  });
   connectSignals();
   if (m_hardwareController) {
     m_hardwareController->connectSignals();
