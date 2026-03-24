@@ -1,11 +1,14 @@
 #include "recordingworkflowcontroller.h"
 
+#include "application/db/parking/parkinglogapplicationservice.h"
+#include "application/db/user/useradminapplicationservice.h"
+#include "application/db/zone/zonequeryapplicationservice.h"
 #include "infrastructure/camera/camerasource.h"
 #include "infrastructure/persistence/mediarepository.h"
-#include "presentation/controllers/recordpanelcontroller.h"
-#include "presentation/widgets/videowidget.h"
 #include "infrastructure/video/mediarecorderworker.h"
 #include "infrastructure/video/videobuffermanager.h"
+#include "presentation/controllers/recordpanelcontroller.h"
+#include "presentation/widgets/videowidget.h"
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -151,16 +154,49 @@ void RecordingWorkflowController::ingestRawFrame(int cardIndex,
     return;
   }
 
+  QSharedPointer<cv::Mat> matForContinuous = frame.mat;
+  QSharedPointer<cv::Mat> matForCapture = frame.mat;
+
+  // Apply dynamic zoom crop if available.
+  QRectF cropRect;
+  if (cardIndex == selectedManualCameraIndex() && m_ui.recordVideoWidget) {
+    QRectF recCrop = m_ui.recordVideoWidget->currentZoomRect();
+    if (!recCrop.isNull()) {
+        cropRect = recCrop;
+    }
+  }
+  if (cropRect.isNull() && m_context.cameraZoomRect) {
+    cropRect = m_context.cameraZoomRect(cardIndex);
+  }
+
+  if (!cropRect.isNull()) {
+    int rx = static_cast<int>(cropRect.x() * frame.mat->cols);
+    int ry = static_cast<int>(cropRect.y() * frame.mat->rows);
+    int rw = static_cast<int>(cropRect.width() * frame.mat->cols);
+    int rh = static_cast<int>(cropRect.height() * frame.mat->rows);
+    rx = std::max(0, rx);
+    ry = std::max(0, ry);
+    rw = std::min(frame.mat->cols - rx, rw);
+    rh = std::min(frame.mat->rows - ry, rh);
+
+    if (rw > 0 && rh > 0 && (rw < frame.mat->cols || rh < frame.mat->rows)) {
+      cv::Mat cropped = (*frame.mat)(cv::Rect(rx, ry, rw, rh));
+      cv::Mat resized;
+      cv::resize(cropped, resized, frame.mat->size(), 0, 0, cv::INTER_LINEAR);
+      matForCapture = QSharedPointer<cv::Mat>::create(resized);
+    }
+  }
+
   if (m_continuousBuffers[cardIndex]) {
     if (!m_continuousThrottleTimers[cardIndex].isValid() ||
         m_continuousThrottleTimers[cardIndex].elapsed() >= 200) {
-      m_continuousBuffers[cardIndex]->addFrame(frame.mat);
+      m_continuousBuffers[cardIndex]->addFrame(matForContinuous);
       m_continuousThrottleTimers[cardIndex].restart();
     }
   }
 
   if (VideoBufferManager *targetBuffer = bufferByIndex(cardIndex)) {
-    targetBuffer->addFrame(frame.mat);
+    targetBuffer->addFrame(matForCapture);
   }
 }
 
@@ -196,14 +232,31 @@ void RecordingWorkflowController::bindRecordPreviewSource(int index) {
                                 m_ui.recordVideoWidget
                                     ? m_ui.recordVideoWidget->size()
                                     : QSize());
+  if (m_ui.recordVideoWidget) {
+    m_ui.recordVideoWidget->setRecording(m_isManualRecording && m_manualRecordChannelIdx == index);
+  }
 }
 
 void RecordingWorkflowController::onCaptureManual() {
+  if (sender() == m_ui.btnCaptureManual) { // Only enforce on main UI
+    if (m_context.selectedChannelCount && m_context.selectedChannelCount() > 1) {
+      appendLog(QString("[Recorder] 다중 채널이 선택되어 캡처할 수 없습니다. 1개의 채널만 선택해주세요."));
+      return;
+    }
+  }
+
   const int idx = resolveRequestedChannelIndex(sender());
+  
+  if (m_ui.cmbManualCamera && m_ui.cmbManualCamera->currentIndex() != idx) {
+    bool oldState = m_ui.cmbManualCamera->blockSignals(true);
+    m_ui.cmbManualCamera->setCurrentIndex(idx);
+    m_ui.cmbManualCamera->blockSignals(oldState);
+  }
+
   VideoBufferManager *targetBuffer = bufferByIndex(idx);
   const QString camId = QString("Ch %1").arg(idx + 1);
 
-  appendLog(QString("[Recorder] [%1] 수동 캐캐 요청...").arg(camId));
+  appendLog(QString("[Recorder] [%1] 수동 캡처 요청...").arg(camId));
 
   if (!targetBuffer) {
     appendLog(QString("[Recorder] [%1] 버퍼 객체가 없습니다.").arg(camId));
@@ -216,10 +269,19 @@ void RecordingWorkflowController::onCaptureManual() {
                 .arg(frames.size()));
 
   if (frames.empty()) {
-    appendLog(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 "
-                      "실행 중인지 확인하세요.")
-                  .arg(camId));
+    appendLog(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 실행 중인지 확인하세요.").arg(camId));
     return;
+  }
+
+  VideoWidget *flashTarget = nullptr;
+  if (sender() == m_ui.btnCaptureRecordTab) {
+    flashTarget = m_ui.recordVideoWidget;
+  } else if (m_context.primarySelectedVideoWidget) {
+    flashTarget = m_context.primarySelectedVideoWidget();
+  }
+  
+  if (flashTarget) {
+    flashTarget->showCaptureFlash();
   }
 
   const QString fileName =
@@ -235,19 +297,43 @@ void RecordingWorkflowController::onCaptureManual() {
                             Q_ARG(QString, "Manual Capture"),
                             Q_ARG(QString, camId));
 
-  appendLog(QString("[Recorder] [%1] 캐캐 저장 코: %2").arg(camId, fileName));
+  appendLog(QString("[Recorder] [%1] 캡처 저장 완료: %2").arg(camId, fileName));
 }
 
 void RecordingWorkflowController::onRecordManualToggled(bool checked) {
+  if (sender() == m_ui.btnRecordManual && checked) {
+    if (m_context.selectedChannelCount && m_context.selectedChannelCount() > 1) {
+      appendLog(QString("[Recorder] 다중 채널이 선택되어 녹화할 수 없습니다. 1개의 채널만 선택해주세요."));
+      QSignalBlocker b(sender());
+      m_ui.btnRecordManual->setChecked(false);
+      return;
+    }
+  }
+
   syncManualRecordButtons(checked);
 
   if (checked) {
     m_isManualRecording = true;
-
     const int idx = resolveRequestedChannelIndex(sender());
+    
+    if (m_ui.cmbManualCamera && m_ui.cmbManualCamera->currentIndex() != idx) {
+      bool oldState = m_ui.cmbManualCamera->blockSignals(true);
+      m_ui.cmbManualCamera->setCurrentIndex(idx);
+      m_ui.cmbManualCamera->blockSignals(oldState);
+    }
+    
     m_manualRecordChannelIdx = idx;
     VideoBufferManager *buffer = bufferByIndex(idx);
     m_manualRecordStartIdx = buffer ? buffer->getTotalFramesAdded() : 0;
+
+    if (m_context.videoWidgetAt) {
+      if (VideoWidget *vw = m_context.videoWidgetAt(idx)) {
+        vw->setRecording(true);
+      }
+    }
+    if (m_ui.recordVideoWidget) {
+      m_ui.recordVideoWidget->setRecording(true);
+    }
 
     appendLog(QString("[Recorder] [Ch %1] 수동 녹화 시작 (시작 인덱스: %2)")
                   .arg(idx + 1)
@@ -259,6 +345,15 @@ void RecordingWorkflowController::onRecordManualToggled(bool checked) {
   VideoBufferManager *targetBuffer = bufferByIndex(idx);
   const QString camId = QString("Ch %1").arg(idx + 1);
 
+  if (m_context.videoWidgetAt) {
+    if (VideoWidget *vw = m_context.videoWidgetAt(idx)) {
+      vw->setRecording(false);
+    }
+  }
+  if (m_ui.recordVideoWidget) {
+    m_ui.recordVideoWidget->setRecording(false);
+  }
+
   appendLog(QString("[Recorder] [%1] 녹화 중지 요청 - 저장 중...").arg(camId));
 
   if (!targetBuffer) {
@@ -269,14 +364,10 @@ void RecordingWorkflowController::onRecordManualToggled(bool checked) {
 
   m_isManualRecording = false;
   auto frames = targetBuffer->getFramesSince(m_manualRecordStartIdx);
-  appendLog(QString("[Recorder] [%1] 버퍼 프레임 수: %2")
-                .arg(camId)
-                .arg(frames.size()));
+  appendLog(QString("[Recorder] [%1] 버퍼 프레임 수: %2").arg(camId).arg(frames.size()));
 
   if (frames.empty()) {
-    appendLog(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 "
-                      "실행 중인지 확인하세요.")
-                  .arg(camId));
+    appendLog(QString("[Recorder] [%1] 버퍼가 비어있습니다. 해당 카메라가 실행 중인지 확인하세요.").arg(camId));
     return;
   }
 
@@ -293,80 +384,54 @@ void RecordingWorkflowController::onRecordManualToggled(bool checked) {
       Q_ARG(QString, filePath), Q_ARG(int, 15), Q_ARG(QString, "VIDEO"),
       Q_ARG(QString, "Manual Record"), Q_ARG(QString, camId));
 
-  appendLog(QString("[Recorder] [%1] 녹화 파일 저장 실행: %2")
-                .arg(camId, fileName));
+  appendLog(QString("[Recorder] [%1] 녹화 파일 저장 실행: %2").arg(camId, fileName));
 }
 
-void RecordingWorkflowController::onEventRecordRequested(
-    const QString &description, int preSec, int postSec) {
+void RecordingWorkflowController::onEventRecordRequested(const QString &description, int preSec, int postSec) {
   const int idx = selectedManualCameraIndex();
   VideoBufferManager *targetBuffer = bufferByIndex(idx);
-  if (!targetBuffer) {
-    return;
-  }
+  if (!targetBuffer) return;
 
   const uint64_t clickIdx = targetBuffer->getTotalFramesAdded();
-  appendLog(QString("[Recorder] 이벤트 감지 (I:%1): %2초 후 저장을 시작합니다...")
-                .arg(clickIdx)
-                .arg(postSec));
+  appendLog(QString("[Recorder] 이벤트 감지 (I:%1): %2초 후 저장을 시작합니다...").arg(clickIdx).arg(postSec));
 
   const QString camId = QString("Ch %1").arg(idx + 1);
-  QTimer::singleShot(postSec * 1000, this,
-                     [this, description, preSec, postSec, idx, camId,
-                      targetBuffer, clickIdx]() {
-                       double actualFps =
-                           m_recordPanelController
-                               ? m_recordPanelController->getLiveFps()
-                               : 15.0;
-                       if (actualFps <= 0) {
-                         actualFps = 15.0;
-                       }
+  QTimer::singleShot(postSec * 1000, this, [this, description, preSec, postSec, idx, camId, targetBuffer, clickIdx]() {
+    double actualFps = m_recordPanelController ? m_recordPanelController->getLiveFps() : 15.0;
+    if (actualFps <= 0) actualFps = 15.0;
 
-                       const uint64_t startIdx =
-                           (clickIdx >
-                            static_cast<uint64_t>(preSec * actualFps))
-                               ? (clickIdx -
-                                  static_cast<uint64_t>(preSec * actualFps))
-                               : 0;
+    const uint64_t startIdx = (clickIdx > static_cast<uint64_t>(preSec * actualFps))
+                                ? (clickIdx - static_cast<uint64_t>(preSec * actualFps))
+                                : 0;
 
-                       auto frames = targetBuffer->getFramesSince(startIdx);
-                       const size_t requestedFrames = static_cast<size_t>(
-                           (preSec + postSec) * actualFps);
-                       if (frames.size() > requestedFrames) {
-                         frames.resize(requestedFrames);
-                       }
+    auto framesToSave = targetBuffer->getFramesSince(startIdx);
+    const size_t requestedFrames = static_cast<size_t>((preSec + postSec) * actualFps);
+    if (framesToSave.size() > requestedFrames) {
+        framesToSave.resize(requestedFrames);
+    }
 
-                       if (frames.empty()) {
-                         appendLog(QString::fromUtf8(
-                             "[Recorder] 버퍼에 저장된 프레임이 없습니다."));
-                         return;
-                       }
+    if (framesToSave.empty()) {
+        appendLog(QString("[Recorder] 버퍼에 저장된 프레임이 없습니다."));
+        return;
+    }
 
-                       const QString fileName =
-                           QString("event_Ch%1_%2.mp4")
-                               .arg(idx + 1)
-                               .arg(QDateTime::currentDateTime().toString(
-                                   "yyyyMMdd_HHmmss"));
-                       const QString filePath =
-                           QDir(QCoreApplication::applicationDirPath())
-                               .filePath("records/videos/" + fileName);
+    const QString fileName = QString("event_Ch%1_%2.mp4")
+                              .arg(idx + 1)
+                              .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+    const QString filePath = QDir(QCoreApplication::applicationDirPath())
+                                 .filePath("records/events/" + fileName);
 
-                       QMetaObject::invokeMethod(
-                           m_recorderWorker, "saveVideo",
-                           Q_ARG(std::vector<QSharedPointer<cv::Mat>>, frames),
-                           Q_ARG(QString, filePath),
-                           Q_ARG(int, static_cast<int>(actualFps)),
-                           Q_ARG(QString, "VIDEO"),
-                           Q_ARG(QString, description), Q_ARG(QString, camId));
+    QMetaObject::invokeMethod(m_recorderWorker, "saveVideo",
+                              Q_ARG(std::vector<QSharedPointer<cv::Mat>>, framesToSave),
+                              Q_ARG(QString, filePath),
+                              Q_ARG(int, static_cast<int>(actualFps)),
+                              Q_ARG(QString, "EVENT"),
+                              Q_ARG(QString, description),
+                              Q_ARG(QString, camId));
 
-                       appendLog(QString("[Recorder] 이벤트 구간 저장 완료: %1 "
-                                         "(%2초 전 ~ %3초 후, FPS: %4, 프레임수: %5)")
-                                     .arg(fileName)
-                                     .arg(preSec)
-                                     .arg(postSec)
-                                     .arg(actualFps)
-                                     .arg(frames.size()));
-                     });
+    appendLog(QString("[Recorder] 이벤트 구간 저장 완료: %1 (%2초 전 ~ %3초 후, FPS: %4, 프레임수: %5)")
+                  .arg(fileName).arg(preSec).arg(postSec).arg(actualFps).arg(framesToSave.size()));
+  });
 }
 
 void RecordingWorkflowController::onMediaSaveFinished(
@@ -478,9 +543,7 @@ void RecordingWorkflowController::onCleanupTimeout() {
   }
 
   if (failCount > 0) {
-    appendLog(QString("[Recorder] 상시녹화 파일 %1개를 삭제하지 못했습니다. "
-                      "(사용 중)")
-                  .arg(failCount));
+    appendLog(QString("[Recorder] 상시녹화 파일 %1개를 삭제하지 못했습니다. (사용 중)").arg(failCount));
   }
 }
 
@@ -501,12 +564,14 @@ int RecordingWorkflowController::resolveRequestedChannelIndex(
                 ? m_context.selectedCctvChannelIndex()
                 : 0;
   QPushButton *senderButton = qobject_cast<QPushButton *>(senderObject);
-  if (!senderButton && m_ui.cmbManualCamera) {
-    idx = selectedManualCameraIndex();
-  } else if ((senderButton && senderButton == m_ui.btnCaptureRecordTab) ||
-             (senderButton && senderButton == m_ui.btnRecordRecordTab)) {
+  
+  // 만약 REC 탭의 버튼에서 발생한 캡처/녹화 이벤트라면, 
+  // REC 탭 콤보박스의 값을 타겟 카메라 인덱스로 사용한다.
+  if ((senderButton && senderButton == m_ui.btnCaptureRecordTab) ||
+      (senderButton && senderButton == m_ui.btnRecordRecordTab)) {
     idx = selectedManualCameraIndex();
   }
+  // 그 외(팝업이나 메인 CCTV 제어 버튼)의 경우에는 현재 활성화된 CCTV 채널(idx)을 유지한다.
 
   return (idx >= 0 && idx < kChannelCount) ? idx : 0;
 }
@@ -523,12 +588,10 @@ void RecordingWorkflowController::syncManualRecordButtons(bool checked) {
     QSignalBlocker blocker(m_ui.btnRecordManual);
     m_ui.btnRecordManual->setChecked(checked);
   }
-  if (m_ui.btnRecordRecordTab &&
-      m_ui.btnRecordRecordTab->isChecked() != checked) {
+  if (m_ui.btnRecordRecordTab && m_ui.btnRecordRecordTab->isChecked() != checked) {
     QSignalBlocker blocker(m_ui.btnRecordRecordTab);
     m_ui.btnRecordRecordTab->setChecked(checked);
   }
-
   updateManualRecordButtonStyle(m_ui.btnRecordManual, checked);
   updateManualRecordButtonStyle(m_ui.btnRecordRecordTab, checked);
 }
@@ -538,15 +601,12 @@ void RecordingWorkflowController::updateManualRecordButtonStyle(
   if (!button) {
     return;
   }
-
   if (isRecording) {
-    button->setText("녹화 중지");
-    button->setStyleSheet(
-        "background-color: #ff4d4d; color: white; "
-        "font-weight: bold; border-radius: 4px; padding: 5px;");
-    return;
+    button->setStyleSheet("background-color: #f44336; color: white; "
+                          "font-weight: bold; border-radius: 4px; padding: 4px;");
+    button->setText("REC");
+  } else {
+    button->setStyleSheet("");
+    button->setText("녹화");
   }
-
-  button->setText("수동 녹화");
-  button->setStyleSheet("");
 }
