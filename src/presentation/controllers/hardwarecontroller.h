@@ -12,6 +12,7 @@ class QString;
 class VideoWidget;
 class RpiControlClient;
 class QTimer;
+class QTableWidget;
 
 class HardwareController : public QObject {
   Q_OBJECT
@@ -21,6 +22,10 @@ public:
     QPushButton *btnRecordManual = nullptr;
     QStackedWidget *stackedWidget = nullptr;
     QTabWidget *dbSubTabs = nullptr;
+    QTableWidget *parkingLogTable = nullptr;
+    QTableWidget *userDbTable = nullptr;
+    QTableWidget *reidTable = nullptr;
+    QTableWidget *zoneTable = nullptr;
   };
 
   struct Context {
@@ -41,6 +46,9 @@ public:
   void connectSignals();
   void connectControllerDialog(ControllerDialog *dialog);
   void shutdown();
+
+public slots:
+  void syncDbDataToRpi(int tableIdx);
 
 private slots:
   void processJoystickMovement();

@@ -425,8 +425,12 @@ QStringList Config::authPinnedSha256() const {
   return values;
 }
 
-QString Config::rpiControlHost() const { return authHost(); }
+QString Config::rpiControlHost() const {
+  return m_auth["rpiHost"].toString(QStringLiteral("192.168.0.44"));
+}
 
-int Config::rpiControlPort() const { return authPort(); }
+int Config::rpiControlPort() const {
+  return m_auth["rpiPort"].toInt(12345);
+}
 
-bool Config::rpiControlAutoConnect() const { return false; }
+bool Config::rpiControlAutoConnect() const { return true; }

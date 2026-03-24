@@ -407,6 +407,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   hardwareUiRefs.btnRecordManual = m_ui.btnRecordManual;
   hardwareUiRefs.stackedWidget = m_ui.stackedWidget;
   hardwareUiRefs.dbSubTabs = m_ui.dbSubTabs;
+  hardwareUiRefs.parkingLogTable = m_ui.parkingLogTable;
+  hardwareUiRefs.userDbTable = m_ui.userDbTable;
+  hardwareUiRefs.reidTable = m_ui.reidTable;
+  hardwareUiRefs.zoneTable = m_ui.zoneTable;
 
   HardwareController::Context hardwareContext;
   hardwareContext.logMessage = [this](const QString &message) {
