@@ -16,6 +16,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <atomic>
+#include <memory>
 
 class TelegramBotAPI;
 
@@ -29,7 +30,8 @@ public:
   explicit CameraSource(const QString &cameraKey, int cardIndex,
                         QObject *parent = nullptr);
 
-  bool initialize(TelegramBotAPI *telegramApi = nullptr);
+  bool initialize(TelegramBotAPI *telegramApi = nullptr,
+                  std::shared_ptr<ReidSession> reidSession = nullptr);
   void start();
   void stop();
 
@@ -101,7 +103,7 @@ private:
   ParkingService *m_parkingService = nullptr;
   CameraSessionService m_cameraSession;
   RoiService m_roiService;
-  ReIDFeatureExtractor m_reidExtractor;
+  std::shared_ptr<ReidSession> m_reidSession;
   VideoFrameRenderer m_frameRenderer;
   QString m_cameraKey;
   int m_cardIndex = -1;
