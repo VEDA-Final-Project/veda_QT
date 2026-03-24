@@ -4,6 +4,7 @@
 #include "infrastructure/metadata/metadatathread.h"
 #include "presentation/widgets/roiinteractionstate.h"
 #include "presentation/widgets/videoframerenderer.h"
+#include "infrastructure/video/sharedvideoframe.h"
 #include <QImage>
 #include <QLabel>
 #include <QMouseEvent>
@@ -14,6 +15,7 @@
 #include <QSize>
 #include <QStringList>
 #include <QWidget>
+#include <opencv2/opencv.hpp>
 
 /**
  * @brief 비디오 렌더링 위젯
@@ -38,19 +40,27 @@ public:
   bool removeRoiAt(int index);
   int roiCount() const;
   const QList<QPolygon> &roiPolygons() const;
-  void panZoom(double x, double y);
+
+  // Zoom / Pan
+  void panZoom(double dx, double dy);
   void setZoom(double zoom);
   double zoom() const;
+  QRectF currentZoomRect() const;
+
+  // ROI UI control
   void startRoiDrawing();
   bool completeRoiDrawing();
 
 public slots:
   void updateFrame(const QImage &frame);
+  void updateLiveFrame(const SharedVideoFrame &frame);
   void updateMetadata(const QList<ObjectInfo> &objects);
   void setOccupiedRoiIndices(const QSet<int> &occupiedRoiIndices);
   void dispatchOcrRequests(const QImage &frame);
   void setShowFps(bool show);
   void setProfileName(const QString &name) { m_profileName = name; }
+  void showCaptureFlash();
+  void setRecording(bool recording);
 
 signals:
   void ocrRequested(int objectId, const QImage &crop);
@@ -67,7 +77,10 @@ private:
   void mouseMoveEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
   void mouseDoubleClickEvent(QMouseEvent *event) override;
-  void renderFrame(const QImage &frame);
+  void renderFrame(const QImage &sourceFrame, const QImage &scaledBaseFrame);
+  void syncRoiStateToFrameSize(const QSize &frameSize);
+  void updateFrameRateStats();
+  void invalidateLiveFrameCache();
 
   QList<ObjectInfo> m_currentObjects;
   QSize m_lastFrameSize;
@@ -78,6 +91,10 @@ private:
   QStringList m_roiLabels;
   QSet<int> m_occupiedRoiIndices;
   QImage m_currentFrame; // QPixmap 변환 없이 직접 그리기 위한 QImage 저장
+  SharedVideoFrame m_liveFrame;
+  const cv::Mat *m_cachedLiveFrameIdentity = nullptr;
+  QSize m_cachedLiveTargetSize;
+  QImage m_cachedScaledLiveFrame;
 
   bool m_showFps = false;
   double m_currentFps = 0.0;
@@ -85,6 +102,13 @@ private:
   QString m_profileName;
   QQueue<qint64> m_fpsHistory1s;
   QQueue<qint64> m_fpsHistory;
+
+  // Pan offsets (normalized 0.0-1.0)
+  double m_panX = 0.5;
+  double m_panY = 0.5;
+
+  double m_flashAlpha = 0.0;
+  bool m_isRecording = false;
 };
 
 #endif // VIDEOWIDGET_H
