@@ -1,5 +1,8 @@
 #include "vehicletracker.h"
+#include "config/config.h"
+#include "domain/tracking/homographytransform.h"
 #include <QDateTime>
+#include <QLineF>
 #include <QMap>
 #include <QPainterPath>
 #include <QPolygonF>
@@ -29,6 +32,18 @@ double computeIoU(const QRectF &a, const QRectF &b) {
 }
 
 constexpr double kIoUMatchThreshold = 0.45;
+
+QRectF normalizedRectForObject(const QRectF &rect, int cropOffsetX,
+                               int effectiveWidth, int sourceHeight) {
+  return QRectF((rect.x() - cropOffsetX) / static_cast<double>(effectiveWidth),
+                rect.y() / static_cast<double>(sourceHeight),
+                rect.width() / static_cast<double>(effectiveWidth),
+                rect.height() / static_cast<double>(sourceHeight));
+}
+
+QPointF footPointForRect(const QRectF &normalizedRect) {
+  return QPointF(normalizedRect.center().x(), normalizedRect.bottom());
+}
 } // namespace
 
 // ===== update() =====
@@ -41,6 +56,21 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
 
   QList<VehicleState> newEntries;
   m_pendingDepartures.clear();
+  const tracking::HomographyTransform homography =
+      tracking::HomographyTransform::fromConfig(Config::instance());
+  const double worldDistanceGate = Config::instance().trackerWorldDistanceGate();
+  const double worldDistanceTightGate =
+      Config::instance().trackerWorldDistanceTightGate();
+
+  QHash<int, QRectF> predictedBoxes;
+  for (auto it = m_motionTrackers.begin(); it != m_motionTrackers.end(); ++it) {
+    if (it.value() && it.value()->isInitialized()) {
+      const QRectF predicted = it.value()->predict();
+      if (!predicted.isEmpty()) {
+        predictedBoxes.insert(it.key(), predicted);
+      }
+    }
+  }
 
   // Stage 1: IoU 기반 공간 매칭
   QHash<int, int> objectToTrackMap;
@@ -49,15 +79,47 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
   for (const ObjectInfo &obj : objects) {
     if (obj.type == "Unknown" || obj.rect.width() <= 0 || obj.rect.height() <= 0) continue;
 
-    double maxIoU = 0.0;
+    const QRectF normalizedRect =
+        normalizedRectForObject(obj.rect, cropOffsetX, effectiveWidth, sourceHeight);
+    const QPointF objectFootPoint = footPointForRect(normalizedRect);
+    bool objectHasWorldPoint = false;
+    const QPointF objectWorldPoint =
+        homography.mapToGround(objectFootPoint, &objectHasWorldPoint);
+
+    double bestScore = -1.0;
     int bestTrackKey = -1;
 
     for (auto it = m_vehicles.begin(); it != m_vehicles.end(); ++it) {
       if (matchedTrackKeys.contains(it.key())) continue;
 
-      double iou = computeIoU(it.value().boundingBox, obj.rect);
-      if (iou > kIoUMatchThreshold && iou > maxIoU) {
-        maxIoU = iou;
+      const QRectF referenceBox =
+          predictedBoxes.value(it.key(), it.value().boundingBox);
+      const double iou = computeIoU(referenceBox, obj.rect);
+
+      if (!(iou > kIoUMatchThreshold) &&
+          !(it.value().hasWorldPoint && objectHasWorldPoint)) {
+        continue;
+      }
+
+      double combinedScore = iou;
+      if (it.value().hasWorldPoint && objectHasWorldPoint) {
+        const double worldDistance =
+            computeWorldDistance(it.value().worldPoint, objectWorldPoint);
+        if (worldDistance > worldDistanceGate) {
+          continue;
+        }
+
+        const double worldScore =
+            1.0 - std::min(worldDistance / worldDistanceGate, 1.0);
+        if (iou < kIoUMatchThreshold && worldDistance > worldDistanceTightGate) {
+          continue;
+        }
+
+        combinedScore = (iou * 0.55) + (worldScore * 0.45);
+      }
+
+      if (combinedScore > bestScore) {
+        bestScore = combinedScore;
         bestTrackKey = it.key();
       }
     }
@@ -81,13 +143,17 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
 
   // Stage 3: 상태 업데이트 수행
   QHash<int, VehicleState> nextVehicles;
+  QHash<int, std::shared_ptr<tracking::KalmanBoxTracker>> nextMotionTrackers;
   for (const ObjectInfo &obj : objects) {
     if (obj.type == "Unknown" || obj.rect.width() <= 0 || obj.rect.height() <= 0) continue;
-    
+
     VehicleState vs;
+    std::shared_ptr<tracking::KalmanBoxTracker> motionTracker;
     if (objectToTrackMap.contains(obj.id)) {
-      vs = m_vehicles.take(objectToTrackMap[obj.id]);
+      const int previousTrackKey = objectToTrackMap[obj.id];
+      vs = m_vehicles.take(previousTrackKey);
       vs.objectId = obj.id;
+      motionTracker = m_motionTrackers.take(previousTrackKey);
     } else {
       vs.objectId = obj.id;
       vs.firstSeenMs = nowMs;
@@ -105,9 +171,23 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     vs.score = obj.score;
     vs.boundingBox = obj.rect;
     vs.lastSeenMs = nowMs;
+    const QRectF normalizedRect =
+        normalizedRectForObject(obj.rect, cropOffsetX, effectiveWidth, sourceHeight);
+    vs.footPoint = footPointForRect(normalizedRect);
+    vs.worldPoint = homography.mapToGround(vs.footPoint, &vs.hasWorldPoint);
 
     // ReID 특징이 이미 있으면 보존 (실제 매칭은 updateReidFeatures()에서 수행)
     if (!obj.reidFeatures.empty()) vs.reidFeatures = obj.reidFeatures;
+
+    if (!motionTracker) {
+      motionTracker = std::make_shared<tracking::KalmanBoxTracker>();
+    }
+    if (!motionTracker->isInitialized()) {
+      motionTracker->init(obj.rect);
+    } else {
+      motionTracker->correct(obj.rect);
+    }
+    vs.predictedBoundingBox = motionTracker->lastPrediction();
 
     // 번호판 캐시 조회 (ReID ID가 이미 할당된 경우만)
     if (!vs.reidId.isEmpty() && vs.reidId != "V---") {
@@ -207,6 +287,7 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     }
     
     nextVehicles.insert(obj.id, vs);
+    nextMotionTrackers.insert(obj.id, motionTracker);
   }
 
   // Stage 4: 미매칭 차량 보존
@@ -214,11 +295,17 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
       if (!matchedTrackKeys.contains(it.key())) {
           if (!nextVehicles.contains(it.key())) {
               nextVehicles.insert(it.key(), it.value());
+              if (m_motionTrackers.contains(it.key()) &&
+                  !nextMotionTrackers.contains(it.key())) {
+                nextMotionTrackers.insert(it.key(),
+                                          m_motionTrackers.value(it.key()));
+              }
           }
       }
   }
 
   m_vehicles = nextVehicles;
+  m_motionTrackers = nextMotionTrackers;
   return newEntries;
 }
 
@@ -268,6 +355,18 @@ void VehicleTracker::forceTrackState(int objectId, const ObjectInfo &info) {
   vs.boundingBox = info.rect;
   vs.manualOverride = true;
   vs.lastSeenMs = QDateTime::currentMSecsSinceEpoch();
+
+  auto motionTracker = m_motionTrackers.value(objectId);
+  if (!motionTracker) {
+    motionTracker = std::make_shared<tracking::KalmanBoxTracker>();
+    m_motionTrackers.insert(objectId, motionTracker);
+  }
+  if (!motionTracker->isInitialized()) {
+    motionTracker->init(info.rect);
+  } else {
+    motionTracker->correct(info.rect);
+  }
+  vs.predictedBoundingBox = motionTracker->lastPrediction();
 }
 
 void VehicleTracker::markNotified(int objectId) {
@@ -302,12 +401,17 @@ QList<VehicleState> VehicleTracker::pruneStale(qint64 nowMs, qint64 timeoutMs)
       }
 
       departed.append(vs);
+      m_motionTrackers.remove(it.key());
       it = m_vehicles.erase(it);
     } else {
       ++it;
     }
   }
   return departed;
+}
+
+double VehicleTracker::computeWorldDistance(const QPointF &a, const QPointF &b) {
+  return QLineF(a, b).length();
 }
 
 // ===== ROI 점유 비율 계산 =====

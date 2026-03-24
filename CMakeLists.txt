@@ -130,6 +130,10 @@ qt_add_executable(rtsp_test
     src/domain/parking/vehicletracker.h
     src/domain/parking/parkingfeepolicy.cpp
     src/domain/parking/parkingfeepolicy.h
+    src/domain/tracking/kalmanboxtracker.cpp
+    src/domain/tracking/kalmanboxtracker.h
+    src/domain/tracking/homographytransform.cpp
+    src/domain/tracking/homographytransform.h
     src/application/parking/parkingservice.cpp
     src/application/parking/parkingservice.h
     src/infrastructure/persistence/parkingrepository.cpp

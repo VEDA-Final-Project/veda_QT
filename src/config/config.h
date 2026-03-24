@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QTransform>
 
 /**
  * @brief 설정 관리 클래스
@@ -48,6 +49,10 @@ public:
   QString reidModelPath() const;
   int reidInputWidth() const;
   int reidInputHeight() const;
+  bool homographyEnabled() const;
+  QTransform homographyTransform() const;
+  double trackerWorldDistanceGate() const;
+  double trackerWorldDistanceTightGate() const;
 
 
   // Gemini
@@ -81,6 +86,7 @@ private:
   QJsonObject m_video;
   QJsonObject m_ocr;
   QJsonObject m_reid;
+  QJsonObject m_tracking;
   QJsonObject m_sync;
   QJsonObject m_auth;
   QString m_loadedConfigPath;

@@ -8,6 +8,12 @@
     "inputWidth": 256,
     "inputHeight": 256
   },
+  "tracking": {
+    "homographyEnabled": false,
+    "homographyMatrix": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    "worldDistanceGate": 0.12,
+    "worldDistanceTightGate": 0.05
+  },
   "camera": {
     "srtpEnabled": true,
     "ip": "192.168.0.23",

@@ -66,6 +66,19 @@ QStringList cameraKeysFromRoot(const QJsonObject &root) {
   keys.append(others);
   return keys;
 }
+
+QTransform transformFromJson(const QJsonValue &value) {
+  const QJsonArray matrix = value.toArray();
+  if (matrix.size() != 9) {
+    return QTransform();
+  }
+
+  return QTransform(matrix.at(0).toDouble(1.0), matrix.at(1).toDouble(0.0),
+                    matrix.at(2).toDouble(0.0), matrix.at(3).toDouble(0.0),
+                    matrix.at(4).toDouble(1.0), matrix.at(5).toDouble(0.0),
+                    matrix.at(6).toDouble(0.0), matrix.at(7).toDouble(0.0),
+                    matrix.at(8).toDouble(1.0));
+}
 } // namespace
 
 /**
@@ -153,6 +166,7 @@ bool Config::load(const QString &path) {
   m_video = root["video"].toObject();
   m_ocr = root["ocr"].toObject();
   m_reid = root["reid"].toObject();
+  m_tracking = root["tracking"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
   m_loadedConfigPath = loadedPath;
@@ -309,6 +323,22 @@ int Config::reidInputWidth() const {
 
 int Config::reidInputHeight() const {
   return std::max(32, m_reid["inputHeight"].toInt(256));
+}
+
+bool Config::homographyEnabled() const {
+  return m_tracking["homographyEnabled"].toBool(false);
+}
+
+QTransform Config::homographyTransform() const {
+  return transformFromJson(m_tracking["homographyMatrix"]);
+}
+
+double Config::trackerWorldDistanceGate() const {
+  return m_tracking["worldDistanceGate"].toDouble(0.12);
+}
+
+double Config::trackerWorldDistanceTightGate() const {
+  return m_tracking["worldDistanceTightGate"].toDouble(0.05);
 }
 
 QString Config::resolveConfigRelativePath(const QString &path) const {

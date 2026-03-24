@@ -2,12 +2,15 @@
 #define VEHICLETRACKER_H
 
 #include "infrastructure/metadata/metadatathread.h"
+#include "domain/tracking/kalmanboxtracker.h"
 #include <QHash>
 #include <QList>
+#include <QPointF>
 #include <QPolygonF>
 #include <QRectF>
 #include <QString>
 #include <QDateTime>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -34,6 +37,10 @@ struct VehicleState {
   QString type;                // 객체 타입 (Vehicle, Person...)
   float score = 0.0f;          // 신뢰도 점수
   QRectF boundingBox;          // 현재 바운딩 박스 (원본 좌표)
+  QRectF predictedBoundingBox; // 칼만 예측 박스
+  QPointF footPoint;           // 정규화된 풋포인트
+  QPointF worldPoint;          // 호모그래피 변환된 지면 좌표
+  bool hasWorldPoint = false;
   int occupiedRoiIndex = -1;   // 점유 중인 ROI 인덱스 (-1이면 미점유)
   bool ocrRequested = false;   // OCR 요청을 이미 보냈는지 여부
   bool notified = false;       // 텔레그램 알림을 이미 보냈는지 여부
@@ -123,8 +130,10 @@ private:
                              float threshold = 0.83f);
   void updateGallery(const std::vector<float> &features, const QString &id,
                      qint64 nowMs);
+  static double computeWorldDistance(const QPointF &a, const QPointF &b);
 
   QHash<int, VehicleState> m_vehicles;
+  QHash<int, std::shared_ptr<tracking::KalmanBoxTracker>> m_motionTrackers;
   QList<QPolygonF> m_roiPolygons;
   QString m_idPrefix;
   QList<VehicleState> m_pendingDepartures;
