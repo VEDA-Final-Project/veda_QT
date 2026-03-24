@@ -4,6 +4,10 @@
 #include "presentation/widgets/controllerdialog.h"
 #include "presentation/widgets/videowidget.h"
 #include "infrastructure/rpi/rpicontrolclient.h"
+#include <QTableWidget>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QTabWidget>
@@ -53,6 +57,11 @@ void HardwareController::connectSignals() {
 
   if (Config::instance().rpiControlAutoConnect()) {
     m_rpiControlClient->connectToServer();
+  }
+
+  if (m_ui.dbSubTabs) {
+    connect(m_ui.dbSubTabs, &QTabWidget::currentChanged, this,
+            &HardwareController::syncDbDataToRpi);
   }
 }
 
@@ -138,6 +147,7 @@ void HardwareController::navigateHardwareToDbTab(int tabIndex) {
 
   const int boundedIndex = qBound(0, tabIndex, m_ui.dbSubTabs->count() - 1);
   m_ui.dbSubTabs->setCurrentIndex(boundedIndex);
+  syncDbDataToRpi(boundedIndex);
 }
 
 void HardwareController::onHardwareChannelSelectRequested() {
@@ -158,6 +168,10 @@ void HardwareController::onHardwareButtonPressed(int btnCode) {
   if (btnCode == 292) {
     if (m_ui.stackedWidget) {
       m_ui.stackedWidget->setCurrentIndex(m_context.dbPageIndex);
+    }
+    if (m_ui.dbSubTabs) {
+      m_ui.dbSubTabs->setCurrentIndex(0);
+      syncDbDataToRpi(0);
     }
     return;
   }
@@ -267,4 +281,34 @@ void HardwareController::appendLog(const QString &message) const {
   if (m_context.logMessage) {
     m_context.logMessage(message);
   }
+}
+
+void HardwareController::syncDbDataToRpi(int tableIdx) {
+  if (!m_rpiControlClient || !m_rpiControlClient->isConnected()) return;
+
+  QTableWidget *targetTable = nullptr;
+  if (tableIdx == 0) targetTable = m_ui.parkingLogTable;
+  else if (tableIdx == 1) targetTable = m_ui.userDbTable;
+  else if (tableIdx == 2) targetTable = m_ui.reidTable;
+  else if (tableIdx == 3) targetTable = m_ui.zoneTable;
+
+  if (!targetTable) return;
+
+  QJsonArray dataArr;
+  for (int r = 0; r < targetTable->rowCount(); ++r) {
+    QJsonObject rowObj;
+    for (int c = 0; c < targetTable->columnCount(); ++c) {
+      QTableWidgetItem *item = targetTable->item(r, c);
+      QString text = item ? item->text() : "";
+      rowObj[QString("col%1").arg(c + 1)] = text;
+    }
+    dataArr.append(rowObj);
+  }
+
+  QJsonObject finalObj;
+  finalObj["table_idx"] = tableIdx;
+  finalObj["data"] = dataArr;
+
+  QJsonDocument doc(finalObj);
+  m_rpiControlClient->sendDbData(QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
 }
