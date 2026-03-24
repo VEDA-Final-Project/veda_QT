@@ -217,6 +217,9 @@ void CctvController::onDeleteSelectedRoi() {
                              : -1;
   m_ui.roiSelectorCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
   appendLog(QString("[ROI] 삭제 완료: %1").arg(deleteResult.data));
+  if (m_context.notifyRoiDeleted) {
+    m_context.notifyRoiDeleted(deleteResult.data);
+  }
 }
 
 void CctvController::onRoiChanged(const QRect &roi) {
@@ -290,6 +293,10 @@ void CctvController::onRoiPolygonChanged(const QPolygon &polygon,
       recordIndex, createResult.data["zone_name"].toString().trimmed());
   if (m_context.appendRoiStructuredLog) {
     m_context.appendRoiStructuredLog(createResult.data);
+  }
+  if (m_context.notifyRoiCreated) {
+    m_context.notifyRoiCreated(
+        createResult.data["zone_name"].toString().trimmed());
   }
 }
 

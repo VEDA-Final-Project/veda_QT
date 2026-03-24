@@ -42,6 +42,7 @@ public:
   void setTelegramApi(TelegramBotAPI *api);
   void setCameraKey(const QString &cameraKey);
   QString cameraKey() const;
+  QString zoneNameForIndex(int roiIndex) const;
 
   /**
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
@@ -123,7 +124,10 @@ signals:
 private:
   void handleNewEntry(const VehicleState &vs);
   void handleDeparture(const VehicleState &vs);
-  QString zoneNameForIndex(int roiIndex) const;
+  void sendTelegramEntryNotice(const QString &plateNumber);
+  void syncActiveIdentity(const VehicleState &vs);
+  QJsonObject findActiveLog(const VehicleState &vs,
+                            QString *errorMessage = nullptr) const;
 
   VehicleTracker m_tracker;
   ParkingRepository m_repository;

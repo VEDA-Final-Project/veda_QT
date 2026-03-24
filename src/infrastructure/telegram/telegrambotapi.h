@@ -32,7 +32,8 @@ public:
   void sendEntryNotice(const QString &plateNumber);
 
   /// 해당 차량번호로 등록된 사용자에게 출차 + 요금 알림 전송
-  void sendExitNotice(const QString &plateNumber, int fee);
+  void sendExitNotice(const QString &plateNumber, int fee,
+                      int paymentRecordId = -1);
 
   /// 메인 메뉴 키보드 전송 (선택적으로 커스텀 메시지 문구 함께 전송)
   void sendMainMenu(const QString &chatId,
@@ -52,7 +53,7 @@ signals:
   void usersUpdated(int count);
 
   /// [Mock] 결제 확인 시그널 (버튼 클릭 시 발생)
-  void paymentConfirmed(const QString &plateNumber, int amount);
+  void paymentConfirmed(int recordId, const QString &plateNumber, int amount);
 
   /// 관리자 호출 시그널
   void adminSummoned(const QString &chatId, const QString &name);

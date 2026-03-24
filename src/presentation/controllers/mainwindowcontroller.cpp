@@ -12,6 +12,7 @@
 #include "presentation/controllers/cctvcontroller.h"
 #include "presentation/controllers/dbpanelcontroller.h"
 #include "presentation/controllers/hardwarecontroller.h"
+#include "presentation/controllers/notificationcontroller.h"
 #include "presentation/controllers/reidcontroller.h"
 #include "presentation/controllers/recordpanelcontroller.h"
 #include "presentation/controllers/recordingworkflowcontroller.h"
@@ -48,24 +49,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       m_dbPanelController->refreshUserTable();
     }
   };
-  telegramContext.updatePayment = [this](const QString &plate, int amount) {
-    bool updated = false;
-    const int sourceCount =
-        m_cameraSessionController ? m_cameraSessionController->sourceCount() : 0;
-    for (int i = 0; i < sourceCount; ++i) {
-      ParkingService *service = parkingServiceForCardIndex(i);
-      if (!service) {
-        continue;
-      }
-
-      QString error;
-      if (service->updatePayment(plate, amount, QStringLiteral("결제완료"),
-                                 &error)) {
-        updated = true;
-      }
-    }
-    return updated;
-  };
   telegramContext.refreshParkingLogs = [this]() {
     if (m_dbPanelController) {
       m_dbPanelController->onRefreshParkingLogs();
@@ -94,6 +77,9 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
           });
   connect(m_cameraSessionController, &CameraSessionController::logMessage, this,
           &MainWindowController::onLogMessage);
+
+  m_notificationController =
+      new NotificationController(m_ui.stackedWidget, this);
 
   const QString dbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
@@ -127,6 +113,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   };
   cctvContext.appendRoiStructuredLog = [this](const QJsonObject &roiData) {
     appendRoiStructuredLog(roiData);
+  };
+  cctvContext.notifyRoiCreated = [this](const QString &name) {
+    if (m_notificationController) {
+      m_notificationController->showRoiCreated(name);
+    }
+  };
+  cctvContext.notifyRoiDeleted = [this](const QString &name) {
+    if (m_notificationController) {
+      m_notificationController->showRoiDeleted(name);
+    }
   };
   cctvContext.channelAt = [this](int index) {
     return m_channelRuntimeController ? m_channelRuntimeController->channelAt(index)
@@ -288,6 +284,20 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &DbPanelController::onRefreshParkingLogs);
     connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
             &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleEntered, this,
+            [this, service](int roiIndex, const QString &) {
+              if (m_notificationController) {
+                m_notificationController->showVehicleEntered(
+                    service->zoneNameForIndex(roiIndex));
+              }
+            });
+    connect(service, &ParkingService::vehicleDeparted, this,
+            [this, service](int roiIndex, const QString &) {
+              if (m_notificationController) {
+                m_notificationController->showVehicleDeparted(
+                    service->zoneNameForIndex(roiIndex));
+              }
+            });
   }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();

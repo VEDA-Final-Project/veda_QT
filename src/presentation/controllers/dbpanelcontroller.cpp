@@ -23,6 +23,7 @@ DbPanelController::DbPanelController(const UiRefs &uiRefs, Context context,
   ParkingLogPanelController::Context parkingContext;
   parkingContext.service = m_context.parkingLogService;
   parkingContext.logMessage = m_context.logMessage;
+  parkingContext.refreshVehicleTable = [this]() { refreshVehicleTable(); };
 
   m_parkingLogPanelController =
       new ParkingLogPanelController(parkingUiRefs, parkingContext, this);

@@ -586,3 +586,29 @@ QProgressBar#cctvSplashProgress::chunk {
     background-color: #10B981;
     border-radius: 4px;
 }
+
+/* === Toast Overlay === */
+QWidget#toastOverlay {
+    background: transparent;
+}
+
+QFrame#toastCard {
+    background-color: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+}
+
+QFrame#toastCard[toastLevel="success"] {
+    border-left: 4px solid #10B981;
+}
+
+QFrame#toastCard[toastLevel="warning"] {
+    border-left: 4px solid #F59E0B;
+}
+
+QLabel#toastMessage {
+    background: transparent;
+    color: #F8FAFC;
+    font-size: 10pt;
+    font-weight: 600;
+}
