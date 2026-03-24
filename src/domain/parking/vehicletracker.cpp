@@ -35,7 +35,7 @@ constexpr double kIoUMatchThreshold = 0.45;
 QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
                                            int cropOffsetX, int effectiveWidth,
                                            int sourceHeight, qint64 nowMs,
-                                           qint64 pruneTimeoutMs) {
+                                           qint64 /*pruneTimeoutMs*/) {
   if (effectiveWidth <= 0) effectiveWidth = 1;
   if (sourceHeight <= 0) sourceHeight = 1;
 
@@ -173,36 +173,23 @@ QList<VehicleState> VehicleTracker::update(const QList<ObjectInfo> &objects,
     vs.occupiedRoiIndex = stableRoi;
 
     if (isVehicle) {
-      if (vs.occupiedRoiIndex >= 0) {
-        vs.roiExitCandidateMs = 0;
-      } else if (prevRoi >= 0) {
-        if (vs.roiExitCandidateMs <= 0) {
-          vs.roiExitCandidateMs = nowMs;
-        }
-
-        if (vs.notified &&
-            (nowMs - vs.roiExitCandidateMs) >= pruneTimeoutMs) {
+      if (prevRoi >= 0 && vs.occupiedRoiIndex < 0) {
+        if (vs.notified) {
           VehicleState departedState = vs;
           departedState.occupiedRoiIndex = prevRoi;
           m_pendingDepartures.append(departedState);
-
-          vs.occupiedRoiIndex = -1;
-          vs.roiEntryMs = 0;
-          vs.roiExitCandidateMs = 0;
-          vs.notified = false;
-          vs.roiHistory.clear();
-          vs.roiHistory.append(-1);
-        } else {
-          // ROI를 잠깐 벗어난 동안은 아직 주차 상태를 유지합니다.
-          vs.occupiedRoiIndex = prevRoi;
         }
+
+        vs.roiEntryMs = 0;
+        vs.notified = false;
+        vs.roiHistory.clear();
+        vs.roiHistory.append(-1);
       }
     }
     
     // 신규 진입 감지
     if (isVehicle && prevRoi < 0 && vs.occupiedRoiIndex >= 0) {
       vs.roiEntryMs = nowMs;
-      vs.roiExitCandidateMs = 0;
       newEntries.append(vs);
     }
     
