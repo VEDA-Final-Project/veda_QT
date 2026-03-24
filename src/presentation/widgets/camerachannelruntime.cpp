@@ -141,7 +141,17 @@ void CameraChannelRuntime::onSourceDisplayFrameReady(
   }
   m_renderTimer.restart();
 
+  QSet<int> occupiedRoiIndices;
+  if (m_source->parkingService()) {
+    for (const VehicleState &state : m_source->activeVehicles()) {
+      if (state.occupiedRoiIndex >= 0) {
+        occupiedRoiIndices.insert(state.occupiedRoiIndex);
+      }
+    }
+  }
+
   m_videoWidget->updateMetadata(objects);
+  m_videoWidget->setOccupiedRoiIndices(occupiedRoiIndices);
   m_videoWidget->updateFrame(image);
   m_videoWidget->setProfileName(m_source->displayProfile());
 

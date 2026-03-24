@@ -29,7 +29,6 @@ public:
   struct Context {
     std::function<void(const QString &)> logMessage;
     std::function<void()> refreshUserTable;
-    std::function<bool(const QString &, int)> updatePayment;
     std::function<void()> refreshParkingLogs;
   };
 
@@ -44,7 +43,7 @@ private slots:
   void onSendExit();
   void onTelegramLog(const QString &msg);
   void onUsersUpdated(int count);
-  void onPaymentConfirmed(const QString &plate, int amount);
+  void onPaymentConfirmed(int recordId, const QString &plate, int amount);
   void onAdminSummoned(const QString &chatId, const QString &name);
 
 private:

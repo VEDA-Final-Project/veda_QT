@@ -133,7 +133,7 @@ OperationResult ParkingLogApplicationService::forcePlate(const QString &cameraKe
   const QRectF bbox = currentState.boundingBox;
 
   service->forceObjectData(objectId, type, plate.trimmed(), score, bbox);
-  return {true, QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId), false};
+  return {true, QString("[DB] 강제 업데이트 요청: ID=%1").arg(objectId), true};
 }
 
 OperationResult ParkingLogApplicationService::updateLogPlate(

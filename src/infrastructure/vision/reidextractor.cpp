@@ -10,14 +10,9 @@
 #include <string>
 #include <vector>
 
-#ifdef HAVE_OPENVINO
 #include <openvino/openvino.hpp>
-#endif
-
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
-
-#ifdef HAVE_OPENVINO
 
 struct ReIDFeatureExtractor::Impl {
   std::unique_ptr<ov::Core> core;
@@ -153,28 +148,3 @@ std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) {
 
   return {};
 }
-
-#else
-
-struct ReIDFeatureExtractor::Impl {
-  bool ready = false;
-};
-
-ReIDFeatureExtractor::ReIDFeatureExtractor()
-    : pimpl(std::make_unique<Impl>()) {}
-
-ReIDFeatureExtractor::~ReIDFeatureExtractor() = default;
-
-bool ReIDFeatureExtractor::loadModel(const QString &modelPath) {
-  (void)modelPath;
-  std::cout << "[ReID] OpenVINO not enabled. GPU acceleration disabled."
-            << std::endl;
-  return false;
-}
-
-std::vector<float> ReIDFeatureExtractor::extract(const cv::Mat &image) {
-  (void)image;
-  return {};
-}
-
-#endif

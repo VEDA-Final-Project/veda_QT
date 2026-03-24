@@ -17,6 +17,7 @@ class CctvController;
 class DbPanelController;
 class HardwareController;
 class ChannelRuntimeController;
+class NotificationController;
 class ReidController;
 class RecordPanelController;
 class RecordingWorkflowController;
@@ -58,6 +59,7 @@ private:
   ChannelRuntimeController *m_channelRuntimeController = nullptr;
   CameraSessionController *m_cameraSessionController = nullptr;
   CctvController *m_cctvController = nullptr;
+  NotificationController *m_notificationController = nullptr;
   TelegramPanelController *m_telegramController = nullptr;
   DbPanelController *m_dbPanelController = nullptr;
   HardwareController *m_hardwareController = nullptr;

@@ -1,6 +1,8 @@
-#include "presentation/controllers/recordpanelcontroller.h"
+#include "recordpanelcontroller.h"
+#include <QCheckBox>
 #include <QDebug>
 #include <QFile>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QImage>
 #include <QLabel>
@@ -150,6 +152,17 @@ void RecordPanelController::refreshLogTable() {
                                  new QTableWidgetItem(row["type"].toString()));
     m_ui.recordLogTable->setItem(
         r, 2, new QTableWidgetItem(row["description"].toString()));
+
+    QTableWidgetItem *dummyItem = new QTableWidgetItem();
+    m_ui.recordLogTable->setItem(r, 3, dummyItem);
+
+    QWidget *container = new QWidget();
+    QHBoxLayout *layout = new QHBoxLayout(container);
+    QCheckBox *checkBox = new QCheckBox();
+    layout->addWidget(checkBox);
+    layout->setAlignment(Qt::AlignCenter);
+    layout->setContentsMargins(0, 0, 0, 0);
+    m_ui.recordLogTable->setCellWidget(r, 3, container);
   }
   m_ui.recordLogTable->blockSignals(false);
 }
@@ -162,38 +175,70 @@ void RecordPanelController::onDeleteClicked() {
   if (!m_ui.recordLogTable)
     return;
 
-  int row = m_ui.recordLogTable->currentRow();
-  if (row < 0 || row >= m_currentRecords.size())
+  QVector<int> idsToDelete;
+  QStringList filePathsToDelete;
+
+  // 체크박스 선택된 항목 수집
+  for (int i = 0; i < m_ui.recordLogTable->rowCount(); ++i) {
+    QWidget *container = m_ui.recordLogTable->cellWidget(i, 3);
+    if (!container)
+      continue;
+    QCheckBox *cb = container->findChild<QCheckBox *>();
+    if (cb && cb->isChecked()) {
+      if (i < m_currentRecords.size()) {
+        idsToDelete.append(m_currentRecords[i]["id"].toInt());
+        filePathsToDelete.append(m_currentRecords[i]["file_path"].toString());
+      }
+    }
+  }
+
+  // 만약 체크된 것이 없다면 현재 선택된 행 하나만 처리 (기존 동작 유지)
+  if (idsToDelete.isEmpty()) {
+    int row = m_ui.recordLogTable->currentRow();
+    if (row >= 0 && row < m_currentRecords.size()) {
+      idsToDelete.append(m_currentRecords[row]["id"].toInt());
+      filePathsToDelete.append(m_currentRecords[row]["file_path"].toString());
+    }
+  }
+
+  if (idsToDelete.isEmpty())
     return;
 
-  int id = m_currentRecords[row]["id"].toInt();
-  QString filePath = m_currentRecords[row]["file_path"].toString();
+  QString message =
+      idsToDelete.size() == 1
+          ? QString::fromUtf8("정말로 이 기록을 삭제하시겠습니까?\n파일도 함께 "
+                              "삭제됩니다.")
+          : QString::fromUtf8("정말로 선택한 %1개의 기록을 "
+                              "삭제하시겠습니까?\n파일도 함께 삭제됩니다.")
+                .arg(idsToDelete.size());
 
-  auto reply = QMessageBox::question(
-      nullptr, QString::fromUtf8("삭제 확인"),
-      QString::fromUtf8(
-          "정말로 이 기록을 삭제하시겠습니까?\n파일도 함께 삭제됩니다."),
-      QMessageBox::Yes | QMessageBox::No);
+  auto reply =
+      QMessageBox::question(nullptr, QString::fromUtf8("삭제 확인"), message,
+                            QMessageBox::Yes | QMessageBox::No);
 
   if (reply != QMessageBox::Yes)
     return;
 
-  if (!m_repo->deleteMediaRecord(id))
-    return;
-
-  // 1) 재생 완전 정지
+  // 재생 중지
   onStopClicked();
 
-  // 2) 파일 삭제
-  if (QFile::exists(filePath))
-    QFile::remove(filePath);
+  int successCount = 0;
+  for (int i = 0; i < idsToDelete.size(); ++i) {
+    if (m_repo->deleteMediaRecord(idsToDelete[i])) {
+      if (QFile::exists(filePathsToDelete[i])) {
+        QFile::remove(filePathsToDelete[i]);
+      }
+      successCount++;
+    }
+  }
 
-  // 3) 테이블 갱신 (blockSignals는 refreshLogTable 내부에서 처리)
+  // 테이블 갱신
   refreshLogTable();
 
-  // 4) 미리보기 경로 레이블 초기화
   if (m_ui.recordPreviewPathLabel)
     m_ui.recordPreviewPathLabel->setText(QString());
+
+  qDebug() << "[RecordPanel] Deleted" << successCount << "records";
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -682,8 +727,6 @@ void RecordPanelController::onTriggerEventRecord() {
     postSec = MAX_TOTAL_SEC - preSec;
     if (postSec < 1)
       postSec = 1; // 최소 1초
-
-    // Interval is unified, no need to set postSec spinbox separately
   }
 
   if (desc.trimmed().isEmpty())

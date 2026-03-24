@@ -131,12 +131,13 @@ void RecordPageView::setupUi() {
   listLayout->addLayout(titleRow);
 
   m_ui.recordLogTable = new QTableWidget(this);
-  m_ui.recordLogTable->setColumnCount(3);
+  m_ui.recordLogTable->setColumnCount(4);
   m_ui.recordLogTable->setHorizontalHeaderLabels(
       QStringList() << QString::fromUtf8("시간") << QString::fromUtf8("유형")
-                    << QString::fromUtf8("설명"));
+                    << QString::fromUtf8("설명") << QString::fromUtf8("선택"));
   m_ui.recordLogTable->setColumnWidth(0, 135);
   m_ui.recordLogTable->setColumnWidth(1, 70);
+  m_ui.recordLogTable->setColumnWidth(3, 40);
   m_ui.recordLogTable->horizontalHeader()->setSectionResizeMode(
       2, QHeaderView::Stretch);
   m_ui.recordLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

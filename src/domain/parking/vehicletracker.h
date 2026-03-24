@@ -41,6 +41,7 @@ struct VehicleState {
   qint64 firstSeenMs = 0;      // 최초 감지 시각 (ms)
   qint64 lastSeenMs = 0;       // 마지막 감지 시각 (ms)
   qint64 roiEntryMs = 0; // 주차 구역에 진입하여 'Parked' 상태가 된 시점 (ms)
+  qint64 roiExitCandidateMs = 0; // ROI 밖으로 나간 상태가 시작된 시각 (ms)
   QList<int> roiHistory; // 최근 N프레임 동안의 점유 상태 (히스테리시스 필터용)
   std::vector<float> reidFeatures; // ReID Feature Vector
   QString reidId;                  // Persistent ID from ReID matching
@@ -71,6 +72,7 @@ public:
   QList<VehicleState> update(const QList<ObjectInfo> &objects, int cropOffsetX,
                              int effectiveWidth, int sourceHeight,
                              qint64 nowMs, qint64 pruneTimeoutMs);
+  QList<VehicleState> takePendingDepartures();
 
   void updateReidFeatures(const QList<ObjectInfo> &objects, qint64 nowMs);
 
@@ -125,6 +127,7 @@ private:
   QHash<int, VehicleState> m_vehicles;
   QList<QPolygonF> m_roiPolygons;
   QString m_idPrefix;
+  QList<VehicleState> m_pendingDepartures;
 
   // Instance members for channel-wise independent ReID
   QList<GalleryEntry> m_reidGallery;

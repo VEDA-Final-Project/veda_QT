@@ -133,6 +133,7 @@ private:
   QTimer *m_thumbnailRenderTimer = nullptr;
   QTimer *m_ocrDispatchTimer = nullptr;
   QTimer *m_reidDispatchTimer = nullptr;
+  std::atomic<bool> m_isInitializing{false};
   std::atomic<bool> m_reidProcessing{false};
 };
 

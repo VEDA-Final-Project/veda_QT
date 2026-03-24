@@ -12,6 +12,7 @@
 #include "presentation/controllers/cctvcontroller.h"
 #include "presentation/controllers/dbpanelcontroller.h"
 #include "presentation/controllers/hardwarecontroller.h"
+#include "presentation/controllers/notificationcontroller.h"
 #include "presentation/controllers/reidcontroller.h"
 #include "presentation/controllers/recordpanelcontroller.h"
 #include "presentation/controllers/recordingworkflowcontroller.h"
@@ -48,24 +49,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       m_dbPanelController->refreshUserTable();
     }
   };
-  telegramContext.updatePayment = [this](const QString &plate, int amount) {
-    bool updated = false;
-    const int sourceCount =
-        m_cameraSessionController ? m_cameraSessionController->sourceCount() : 0;
-    for (int i = 0; i < sourceCount; ++i) {
-      ParkingService *service = parkingServiceForCardIndex(i);
-      if (!service) {
-        continue;
-      }
-
-      QString error;
-      if (service->updatePayment(plate, amount, QStringLiteral("결제완료"),
-                                 &error)) {
-        updated = true;
-      }
-    }
-    return updated;
-  };
   telegramContext.refreshParkingLogs = [this]() {
     if (m_dbPanelController) {
       m_dbPanelController->onRefreshParkingLogs();
@@ -94,6 +77,9 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
           });
   connect(m_cameraSessionController, &CameraSessionController::logMessage, this,
           &MainWindowController::onLogMessage);
+
+  m_notificationController =
+      new NotificationController(m_ui.stackedWidget, this);
 
   const QString dbPath =
       QDir(QCoreApplication::applicationDirPath()).filePath("config/veda.db");
@@ -127,6 +113,16 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   };
   cctvContext.appendRoiStructuredLog = [this](const QJsonObject &roiData) {
     appendRoiStructuredLog(roiData);
+  };
+  cctvContext.notifyRoiCreated = [this](const QString &name) {
+    if (m_notificationController) {
+      m_notificationController->showRoiCreated(name);
+    }
+  };
+  cctvContext.notifyRoiDeleted = [this](const QString &name) {
+    if (m_notificationController) {
+      m_notificationController->showRoiDeleted(name);
+    }
   };
   cctvContext.channelAt = [this](int index) {
     return m_channelRuntimeController ? m_channelRuntimeController->channelAt(index)
@@ -176,6 +172,11 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   connect(m_channelRuntimeController, &ChannelRuntimeController::primaryVideoReady,
           this, &MainWindowController::primaryVideoReady);
 
+  if (m_channelRuntimeController) {
+    m_channelRuntimeController->setReidPanelActiveForAll(false);
+  }
+
+  // 로그인 화면 단계에서 미리 카메라 소스 및 모델 비동기 로딩 시작
   if (m_cameraSessionController) {
     m_cameraSessionController->start();
   }
@@ -283,6 +284,20 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
             &DbPanelController::onRefreshParkingLogs);
     connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
             &DbPanelController::onRefreshParkingLogs);
+    connect(service, &ParkingService::vehicleEntered, this,
+            [this, service](int roiIndex, const QString &) {
+              if (m_notificationController) {
+                m_notificationController->showVehicleEntered(
+                    service->zoneNameForIndex(roiIndex));
+              }
+            });
+    connect(service, &ParkingService::vehicleDeparted, this,
+            [this, service](int roiIndex, const QString &) {
+              if (m_notificationController) {
+                m_notificationController->showVehicleDeparted(
+                    service->zoneNameForIndex(roiIndex));
+              }
+            });
   }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();
@@ -335,6 +350,37 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   };
   recordingContext.sourceAt = [this](int cardIndex) {
     return sourceAt(cardIndex);
+  };
+  recordingContext.selectedChannelCount = [this]() {
+    return m_cctvController ? m_cctvController->selectedChannelCount() : 0;
+  };
+  recordingContext.primarySelectedVideoWidget = [this]() -> VideoWidget * {
+    const int cardIndex =
+        m_cctvController ? m_cctvController->primarySelectedChannelIndex() : 0;
+    auto *channel = m_channelRuntimeController
+                        ? m_channelRuntimeController->channelForCardIndex(cardIndex)
+                        : nullptr;
+    if (!channel) {
+      channel = m_channelRuntimeController
+                    ? m_channelRuntimeController->channelAt(0)
+                    : nullptr;
+    }
+    return channel ? channel->videoWidget() : nullptr;
+  };
+  recordingContext.videoWidgetAt = [this](int cardIndex) -> VideoWidget * {
+    auto *channel = m_channelRuntimeController
+                        ? m_channelRuntimeController->channelForCardIndex(cardIndex)
+                        : nullptr;
+    return channel ? channel->videoWidget() : nullptr;
+  };
+  recordingContext.cameraZoomRect = [this](int cardIndex) -> QRectF {
+    auto *channel = m_channelRuntimeController
+                        ? m_channelRuntimeController->channelForCardIndex(cardIndex)
+                        : nullptr;
+    if (channel && channel->videoWidget()) {
+      return channel->videoWidget()->currentZoomRect();
+    }
+    return QRectF();
   };
   m_recordingWorkflowController = new RecordingWorkflowController(
       recordingUiRefs, recordingContext, m_mediaRepo, m_recordPanelController,
@@ -412,14 +458,19 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     m_channelRuntimeController->setReidPanelActiveForAll(false);
   }
 
-  initRoiDbForChannels();
-  if (m_cctvController) {
-    m_cctvController->refreshRoiSelectorForTarget();
-    m_cctvController->updateChannelCardSelection();
-  }
-  if (m_reidController) {
-    m_reidController->refresh(true);
-  }
+  // ROI DB 로드 및 대규모 UI 갱신 작업을 백그라운드로 이동 (void 캐스팅으로 경고 해결)
+  (void)QtConcurrent::run([this]() {
+    initRoiDbForChannels();
+    QMetaObject::invokeMethod(this, [this]() {
+      if (m_cctvController) {
+        m_cctvController->refreshRoiSelectorForTarget();
+        m_cctvController->updateChannelCardSelection();
+      }
+      if (m_reidController) {
+        m_reidController->refresh(true);
+      }
+    });
+  });
   connectSignals();
   if (m_hardwareController) {
     m_hardwareController->connectSignals();

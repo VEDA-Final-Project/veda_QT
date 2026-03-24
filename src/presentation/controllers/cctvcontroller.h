@@ -45,6 +45,8 @@ public:
     std::function<void()> refreshZoneTable;
     std::function<void()> refreshParkingLogs;
     std::function<void(const QJsonObject &)> appendRoiStructuredLog;
+    std::function<void(const QString &)> notifyRoiCreated;
+    std::function<void(const QString &)> notifyRoiDeleted;
     std::function<CameraChannelRuntime *(int)> channelAt;
     std::function<CameraChannelRuntime *(int)> channelForCardIndex;
     std::function<CameraSource *(int)> sourceAt;

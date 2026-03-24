@@ -36,6 +36,7 @@ public:
   virtual ~SrtpOrchestrator();
 
   void setConnectionInfo(const QString &ip, const QString &user, const QString &password, const QString &profile);
+  void setDisabledObjectTypes(const QSet<QString> &types);
   void start();
   void stop();
   bool isRunning() const;
@@ -115,6 +116,7 @@ private:
   bool m_metadataSetupRetriedWithoutRequire = false;
   int m_keepAliveIntervalMs = 20000;
   MikeyBuilder::MikeyKeys m_keys;
+  QSet<QString> m_disabledTypes;
 };
 
 #endif // SRTPORCHESTRATOR_H

@@ -1,4 +1,5 @@
 #include "infrastructure/persistence/parkingrepository.h"
+#include "domain/parking/parkingfeepolicy.h"
 #include "infrastructure/persistence/databasecontext.h"
 #include "infrastructure/security/dataprotection.h"
 #include <QDebug>
@@ -59,26 +60,6 @@ QString normalizedPayStatus(const QString &payStatus, bool defaultToPaid) {
   return trimmed;
 }
 
-int calculateParkingFee(const QDateTime &entryTime, const QDateTime &exitTime) {
-  if (!entryTime.isValid() || !exitTime.isValid() || exitTime <= entryTime) {
-    return 0;
-  }
-
-  constexpr qint64 kFreeMinutes = 15;
-  constexpr qint64 kBillingMinutes = 60;
-  constexpr int kHourlyFee = 1000;
-
-  const qint64 totalMinutes = entryTime.secsTo(exitTime) / 60;
-  if (totalMinutes <= kFreeMinutes) {
-    return 0;
-  }
-
-  const qint64 chargedMinutes = totalMinutes - kFreeMinutes;
-  const qint64 billingUnits =
-      (chargedMinutes + kBillingMinutes - 1) / kBillingMinutes;
-  return static_cast<int>(billingUnits) * kHourlyFee;
-}
-
 bool migrateParkingPlateStorage(QSqlDatabase db, QString *errorMessage) {
   QSqlQuery query(db);
   if (!query.exec(QStringLiteral(
@@ -118,6 +99,15 @@ bool migrateParkingPlateStorage(QSqlDatabase db, QString *errorMessage) {
   }
 
   return true;
+}
+
+QString normalizedReidId(const QString &reidId) {
+  return reidId.trimmed();
+}
+
+bool hasUsableReidId(const QString &reidId) {
+  const QString normalized = normalizedReidId(reidId);
+  return !normalized.isEmpty() && normalized != QStringLiteral("V---");
 }
 } // namespace
 
@@ -186,6 +176,10 @@ bool ParkingRepository::ensureSchema(QString *errorMessage) {
     return false;
   }
 
+  indexQuery.exec(QStringLiteral(
+      "CREATE INDEX IF NOT EXISTS idx_parking_logs_camera_reid_active "
+      "ON parking_logs(camera_key, reid_id, exit_time)"));
+
   return true;
 }
 
@@ -235,6 +229,7 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
 }
 
 bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
+                                   int *resolvedTotalAmount,
                                    QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
@@ -259,7 +254,11 @@ bool ParkingRepository::updateExit(int recordId, const QDateTime &exitTime,
     entryTime =
         QDateTime::fromString(selectQuery.value(0).toString(), Qt::ISODate);
   }
-  const int totalAmount = calculateParkingFee(entryTime, exitTime);
+  const int totalAmount =
+      parking::calculateParkingFee(entryTime, exitTime).totalAmount;
+  if (resolvedTotalAmount) {
+    *resolvedTotalAmount = totalAmount;
+  }
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral("UPDATE parking_logs SET exit_time = :exit, "
@@ -326,6 +325,187 @@ bool ParkingRepository::updatePayment(const QString &cameraKey,
   return query.numRowsAffected() > 0;
 }
 
+QJsonObject ParkingRepository::findActiveByPlateAnyCamera(
+    const QString &plateNumber, QString *errorMessage) const {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return QJsonObject();
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, "
+      "roi_index, entry_time, exit_time, pay_status, total_amount "
+      "FROM parking_logs WHERE plate_number = :plate AND exit_time IS NULL "
+      "ORDER BY entry_time DESC LIMIT 1"));
+  query.bindValue(":plate", plateLookupToken(plateNumber));
+
+  if (!query.exec() || !query.next()) {
+    if (errorMessage && query.lastError().isValid()) {
+      *errorMessage = query.lastError().text();
+    }
+    return QJsonObject();
+  }
+
+  QJsonObject record;
+  record["id"] = query.value("id").toInt();
+  record["camera_key"] = query.value("camera_key").toString();
+  record["object_id"] = query.value("object_id").toInt();
+  record["plate_number"] = resolveStoredPlate(query);
+  record["reid_id"] = query.value("reid_id").toString();
+  record["zone_name"] = query.value("zone_name").toString();
+  record["roi_index"] = query.value("roi_index").toInt();
+  record["entry_time"] = query.value("entry_time").toString();
+  record["exit_time"] = query.value("exit_time").toString();
+  record["pay_status"] = query.value("pay_status").toString();
+  record["total_amount"] = query.value("total_amount").toInt();
+  return record;
+}
+
+QList<QJsonObject> ParkingRepository::findLogsByExactPlateAnyCamera(
+    const QString &plateNumber, int limit, QString *errorMessage) const {
+  QList<QJsonObject> results;
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return results;
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, "
+      "roi_index, entry_time, exit_time, pay_status, total_amount "
+      "FROM parking_logs WHERE plate_number = :plate "
+      "ORDER BY entry_time DESC LIMIT :limit"));
+  query.bindValue(":plate", plateLookupToken(plateNumber));
+  query.bindValue(":limit", limit);
+
+  if (!query.exec()) {
+    if (errorMessage) {
+      *errorMessage = query.lastError().text();
+    }
+    return results;
+  }
+
+  while (query.next()) {
+    QJsonObject record;
+    record["id"] = query.value("id").toInt();
+    record["camera_key"] = query.value("camera_key").toString();
+    record["object_id"] = query.value("object_id").toInt();
+    record["plate_number"] = resolveStoredPlate(query);
+    record["reid_id"] = query.value("reid_id").toString();
+    record["zone_name"] = query.value("zone_name").toString();
+    record["roi_index"] = query.value("roi_index").toInt();
+    record["entry_time"] = query.value("entry_time").toString();
+    record["exit_time"] = query.value("exit_time").toString();
+    record["pay_status"] = query.value("pay_status").toString();
+    record["total_amount"] = query.value("total_amount").toInt();
+    results.append(record);
+  }
+  return results;
+}
+
+QJsonObject ParkingRepository::findLatestUnpaidExitedByPlateAnyCamera(
+    const QString &plateNumber, QString *errorMessage) const {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return QJsonObject();
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, "
+      "roi_index, entry_time, exit_time, pay_status, total_amount "
+      "FROM parking_logs WHERE plate_number = :plate "
+      "AND exit_time IS NOT NULL AND pay_status = :pay_status "
+      "ORDER BY exit_time DESC, entry_time DESC LIMIT 1"));
+  query.bindValue(":plate", plateLookupToken(plateNumber));
+  query.bindValue(":pay_status", kPendingPayStatus);
+
+  if (!query.exec() || !query.next()) {
+    if (errorMessage && query.lastError().isValid()) {
+      *errorMessage = query.lastError().text();
+    }
+    return QJsonObject();
+  }
+
+  QJsonObject record;
+  record["id"] = query.value("id").toInt();
+  record["camera_key"] = query.value("camera_key").toString();
+  record["object_id"] = query.value("object_id").toInt();
+  record["plate_number"] = resolveStoredPlate(query);
+  record["reid_id"] = query.value("reid_id").toString();
+  record["zone_name"] = query.value("zone_name").toString();
+  record["roi_index"] = query.value("roi_index").toInt();
+  record["entry_time"] = query.value("entry_time").toString();
+  record["exit_time"] = query.value("exit_time").toString();
+  record["pay_status"] = query.value("pay_status").toString();
+  record["total_amount"] = query.value("total_amount").toInt();
+  return record;
+}
+
+QJsonObject ParkingRepository::findLogById(int recordId,
+                                           QString *errorMessage) const {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return QJsonObject();
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, "
+      "roi_index, entry_time, exit_time, pay_status, total_amount "
+      "FROM parking_logs WHERE id = :id LIMIT 1"));
+  query.bindValue(":id", recordId);
+
+  if (!query.exec() || !query.next()) {
+    if (errorMessage && query.lastError().isValid()) {
+      *errorMessage = query.lastError().text();
+    }
+    return QJsonObject();
+  }
+
+  QJsonObject record;
+  record["id"] = query.value("id").toInt();
+  record["camera_key"] = query.value("camera_key").toString();
+  record["object_id"] = query.value("object_id").toInt();
+  record["plate_number"] = resolveStoredPlate(query);
+  record["reid_id"] = query.value("reid_id").toString();
+  record["zone_name"] = query.value("zone_name").toString();
+  record["roi_index"] = query.value("roi_index").toInt();
+  record["entry_time"] = query.value("entry_time").toString();
+  record["exit_time"] = query.value("exit_time").toString();
+  record["pay_status"] = query.value("pay_status").toString();
+  record["total_amount"] = query.value("total_amount").toInt();
+  return record;
+}
+
+bool ParkingRepository::markPaymentById(int recordId, int totalAmount,
+                                        const QString &payStatus,
+                                        QString *errorMessage) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return false;
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "UPDATE parking_logs SET pay_status = :pay_status, "
+      "total_amount = :total_amount WHERE id = :id "
+      "AND exit_time IS NOT NULL AND pay_status = :pending_status"));
+  query.bindValue(":pay_status", normalizedPayStatus(payStatus, true));
+  query.bindValue(":total_amount", std::max(0, totalAmount));
+  query.bindValue(":id", recordId);
+  query.bindValue(":pending_status", kPendingPayStatus);
+
+  if (!query.exec()) {
+    const QString err =
+        QStringLiteral("Update payment by id error: ") +
+        query.lastError().text();
+    qWarning() << err;
+    if (errorMessage) {
+      *errorMessage = err;
+    }
+    return false;
+  }
+
+  return query.numRowsAffected() > 0;
+}
+
 QJsonObject
 ParkingRepository::findActiveByObjectId(const QString &cameraKey, int objectId,
                                         QString *errorMessage) const {
@@ -335,8 +515,8 @@ ParkingRepository::findActiveByObjectId(const QString &cameraKey, int objectId,
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, zone_name, roi_index, "
-      "entry_time, pay_status, total_amount "
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, "
+      "roi_index, entry_time, pay_status, total_amount "
       "FROM parking_logs WHERE camera_key = :camera_key "
       "AND object_id = :object_id AND exit_time IS NULL "
       "ORDER BY entry_time DESC LIMIT 1"));
@@ -355,6 +535,50 @@ ParkingRepository::findActiveByObjectId(const QString &cameraKey, int objectId,
   record["camera_key"] = query.value("camera_key").toString();
   record["object_id"] = query.value("object_id").toInt();
   record["plate_number"] = resolveStoredPlate(query);
+  record["reid_id"] = query.value("reid_id").toString();
+  record["zone_name"] = query.value("zone_name").toString();
+  record["roi_index"] = query.value("roi_index").toInt();
+  record["entry_time"] = query.value("entry_time").toString();
+  record["pay_status"] = query.value("pay_status").toString();
+  record["total_amount"] = query.value("total_amount").toInt();
+  return record;
+}
+
+QJsonObject ParkingRepository::findActiveByReidId(const QString &cameraKey,
+                                                  const QString &reidId,
+                                                  QString *errorMessage) const {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return QJsonObject();
+
+  const QString trimmedReid = normalizedReidId(reidId);
+  if (!hasUsableReidId(trimmedReid)) {
+    return QJsonObject();
+  }
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, "
+      "roi_index, entry_time, pay_status, total_amount "
+      "FROM parking_logs WHERE camera_key = :camera_key "
+      "AND reid_id = :reid_id AND exit_time IS NULL "
+      "ORDER BY entry_time DESC LIMIT 1"));
+  query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
+  query.bindValue(":reid_id", trimmedReid);
+
+  if (!query.exec() || !query.next()) {
+    if (errorMessage && query.lastError().isValid()) {
+      *errorMessage = query.lastError().text();
+    }
+    return QJsonObject();
+  }
+
+  QJsonObject record;
+  record["id"] = query.value("id").toInt();
+  record["camera_key"] = query.value("camera_key").toString();
+  record["object_id"] = query.value("object_id").toInt();
+  record["plate_number"] = resolveStoredPlate(query);
+  record["reid_id"] = query.value("reid_id").toString();
   record["zone_name"] = query.value("zone_name").toString();
   record["roi_index"] = query.value("roi_index").toInt();
   record["entry_time"] = query.value("entry_time").toString();
@@ -415,7 +639,7 @@ bool ParkingRepository::updateActivePlateByReidId(const QString &cameraKey,
     return false;
 
   const QString trimmedReid = reidId.trimmed();
-  if (trimmedReid.isEmpty() || trimmedReid == QStringLiteral("V---")) {
+  if (!hasUsableReidId(trimmedReid)) {
     return false;
   }
 
@@ -454,6 +678,57 @@ bool ParkingRepository::updateActivePlateByReidId(const QString &cameraKey,
   return query.numRowsAffected() > 0;
 }
 
+bool ParkingRepository::updateActiveObjectIdByReidId(const QString &cameraKey,
+                                                     const QString &reidId,
+                                                     int objectId,
+                                                     QString *errorMessage) {
+  QSqlDatabase db = DatabaseContext::database();
+  if (!db.isOpen())
+    return false;
+
+  const QString trimmedReid = normalizedReidId(reidId);
+  if (!hasUsableReidId(trimmedReid)) {
+    return false;
+  }
+
+  QSqlQuery selectQuery(db);
+  selectQuery.prepare(QStringLiteral(
+      "SELECT id, object_id FROM parking_logs WHERE camera_key = :camera_key "
+      "AND reid_id = :reid_id AND exit_time IS NULL "
+      "ORDER BY entry_time DESC LIMIT 1"));
+  selectQuery.bindValue(":camera_key", normalizedCameraKey(cameraKey));
+  selectQuery.bindValue(":reid_id", trimmedReid);
+
+  if (!selectQuery.exec() || !selectQuery.next()) {
+    return false;
+  }
+
+  const int recordId = selectQuery.value(0).toInt();
+  const int currentObjectId = selectQuery.value(1).toInt();
+  if (currentObjectId == objectId) {
+    return true;
+  }
+
+  QSqlQuery query(db);
+  query.prepare(QStringLiteral(
+      "UPDATE parking_logs SET object_id = :object_id WHERE id = :id"));
+  query.bindValue(":object_id", objectId);
+  query.bindValue(":id", recordId);
+
+  if (!query.exec()) {
+    const QString err =
+        QStringLiteral("Update active object by reid error: ") +
+        query.lastError().text();
+    qWarning() << err;
+    if (errorMessage) {
+      *errorMessage = err;
+    }
+    return false;
+  }
+
+  return query.numRowsAffected() > 0;
+}
+
 bool ParkingRepository::updateActiveReidByObjectId(const QString &cameraKey,
                                                    int objectId,
                                                    const QString &reidId,
@@ -463,7 +738,7 @@ bool ParkingRepository::updateActiveReidByObjectId(const QString &cameraKey,
     return false;
 
   const QString trimmedReid = reidId.trimmed();
-  if (trimmedReid.isEmpty() || trimmedReid == QStringLiteral("V---")) {
+  if (!hasUsableReidId(trimmedReid)) {
     return false;
   }
 
@@ -510,7 +785,7 @@ QJsonObject ParkingRepository::findActiveByPlate(const QString &cameraKey,
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, zone_name, roi_index, "
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, roi_index, "
       "entry_time, pay_status, total_amount "
       "FROM parking_logs WHERE camera_key = :camera_key "
       "AND plate_number = :plate AND exit_time IS NULL "
@@ -530,6 +805,7 @@ QJsonObject ParkingRepository::findActiveByPlate(const QString &cameraKey,
   record["camera_key"] = query.value("camera_key").toString();
   record["object_id"] = query.value("object_id").toInt();
   record["plate_number"] = resolveStoredPlate(query);
+  record["reid_id"] = query.value("reid_id").toString();
   record["zone_name"] = query.value("zone_name").toString();
   record["roi_index"] = query.value("roi_index").toInt();
   record["entry_time"] = query.value("entry_time").toString();
@@ -669,7 +945,7 @@ QList<QJsonObject> ParkingRepository::getAllLogs(const QString &cameraKey,
   const QString normalizedKey = normalizedCameraKey(cameraKey);
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, zone_name, roi_index, "
+      "SELECT id, camera_key, object_id, plate_number, plate_number_enc, reid_id, zone_name, roi_index, "
       "entry_time, exit_time, pay_status, total_amount "
       "FROM parking_logs WHERE camera_key = :camera_key "
       "ORDER BY entry_time DESC"));
@@ -686,6 +962,7 @@ QList<QJsonObject> ParkingRepository::getAllLogs(const QString &cameraKey,
     row["camera_key"] = query.value("camera_key").toString();
     row["object_id"] = query.value("object_id").toInt();
     row["plate_number"] = resolveStoredPlate(query);
+    row["reid_id"] = query.value("reid_id").toString();
     row["zone_name"] = query.value("zone_name").toString();
     row["roi_index"] = query.value("roi_index").toInt();
     row["entry_time"] = query.value("entry_time").toString();

@@ -115,6 +115,17 @@ void ParkingLogPanelController::onForcePlate() {
   const OperationResult result =
       m_context.service->forcePlate(cameraKey, objectId, plate);
   appendLog(result.message);
+  if (result.success && result.shouldRefresh) {
+    if (m_ui.plateSearchInput &&
+        !m_ui.plateSearchInput->text().trimmed().isEmpty()) {
+      onSearchParkingLogs();
+    } else {
+      onRefreshParkingLogs();
+    }
+    if (m_context.refreshVehicleTable) {
+      m_context.refreshVehicleTable();
+    }
+  }
 }
 
 void ParkingLogPanelController::onEditPlate() {
