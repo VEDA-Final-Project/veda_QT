@@ -79,7 +79,7 @@ public:
                                 QString *errorMessage = nullptr) const;
 
   /**
-   * @brief 번호판으로 기록 검색 (부분 일치)
+   * @brief 번호판으로 기록 검색 (정확히 일치)
    */
   QList<QJsonObject> searchByPlate(const QString &cameraKey,
                                    const QString &plate,

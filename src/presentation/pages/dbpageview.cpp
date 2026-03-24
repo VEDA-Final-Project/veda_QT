@@ -25,7 +25,7 @@ void DbPageView::setupUi() {
   QVBoxLayout *logsLayout = new QVBoxLayout(logsTab);
   QHBoxLayout *logsToolBar = new QHBoxLayout();
   m_ui.plateSearchInput = new QLineEdit(this);
-  m_ui.plateSearchInput->setPlaceholderText("번호판 검색...");
+  m_ui.plateSearchInput->setPlaceholderText("번호판 정확히 검색...");
   m_ui.btnSearchPlate = new QPushButton("검색", this);
   m_ui.btnRefreshLogs = new QPushButton("새로고침", this);
   logsToolBar->addWidget(m_ui.plateSearchInput);

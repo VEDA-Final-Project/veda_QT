@@ -48,7 +48,7 @@ void MediaRecorderWorker::saveVideo(
   writer.release();
   // DB 저장은 주 스레드에서: finished 수신 후 처리
   emit finished(true, filePath, type, description, cameraId);
-  qDebug() << "[Recorder] Video saved to:" << filePath;
+  qDebug() << "[Recorder] Video saved:" << QFileInfo(filePath).fileName();
 }
 
 void MediaRecorderWorker::saveImage(QSharedPointer<cv::Mat> frame,
@@ -69,7 +69,7 @@ void MediaRecorderWorker::saveImage(QSharedPointer<cv::Mat> frame,
   if (cv::imwrite(filePath.toStdString(), *frame)) {
     // DB 저장은 주 스레드에서: finished 수신 후 처리
     emit finished(true, filePath, type, description, cameraId);
-    qDebug() << "[Recorder] Image saved to:" << filePath;
+    qDebug() << "[Recorder] Image saved:" << QFileInfo(filePath).fileName();
   } else {
     emit error("Failed to save image via imwrite");
     emit finished(false, filePath, type, description, cameraId);

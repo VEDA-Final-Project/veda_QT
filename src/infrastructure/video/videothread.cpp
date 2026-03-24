@@ -5,6 +5,41 @@
 #include <QUrl>
 #include <QtGlobal>
 
+namespace {
+QString maskedRtspTarget(const QString &url) {
+  QUrl parsed(url);
+  QString host = parsed.host();
+  int port = parsed.port(554);
+  QString path = parsed.path();
+
+  if (host.isEmpty()) {
+    int atIndex = url.lastIndexOf('@');
+    int schemeIndex = url.indexOf(QStringLiteral("://"));
+    int hostStart = atIndex >= 0 ? atIndex + 1
+                                 : (schemeIndex >= 0 ? schemeIndex + 3 : 0);
+    int slashIndex = url.indexOf('/', hostStart);
+    if (slashIndex == -1) {
+      slashIndex = url.size();
+    }
+    QString hostPort = url.mid(hostStart, slashIndex - hostStart);
+    const int colonIndex = hostPort.indexOf(':');
+    if (colonIndex >= 0) {
+      host = hostPort.left(colonIndex);
+      port = hostPort.mid(colonIndex + 1).toInt();
+    } else {
+      host = hostPort;
+    }
+    path = slashIndex < url.size() ? url.mid(slashIndex) : QString();
+  }
+
+  if (host.isEmpty()) {
+    return QStringLiteral("[unknown]");
+  }
+
+  return QStringLiteral("%1:%2%3").arg(host).arg(port).arg(path);
+}
+} // namespace
+
 /**
  * @brief VideoThread 생성자
  * - OpenCV 기반 RTSP 비디오 수신 전용 스레드
@@ -76,6 +111,7 @@ void VideoThread::run() {
     url = m_url;
     m_stop = false;
   }
+  const QString safeTarget = maskedRtspTarget(url);
 
   // === 타임아웃 방지를 위한 TCP 사전 체크 ===
   // OpenCV FFmpeg `open`은 전역 락을 사용하므로, IP가 오프라인일 때 OS 기본 타임아웃(21초)
@@ -140,7 +176,8 @@ void VideoThread::run() {
     if (sourceFps > 0)
       m_actualFps = sourceFps;
   }
-  qDebug() << "[Video] RTSP Source Native FPS for" << url << ":" << sourceFps;
+  qDebug() << "[Video] RTSP Source Native FPS for" << safeTarget << ":"
+           << sourceFps;
 
   qint64 frameCount = 0;
   qint64 lastFpsTimeMs = QDateTime::currentMSecsSinceEpoch();
@@ -203,7 +240,7 @@ void VideoThread::run() {
     frameCount++;
     if (targetFps == 0 && (readEndMs - lastFpsTimeMs > 5000)) {
       double actualFps = (frameCount * 1000.0) / (readEndMs - lastFpsTimeMs);
-      qDebug() << "[Video] Incoming Frame Loop FPS for" << url << ":"
+      qDebug() << "[Video] Incoming Frame Loop FPS for" << safeTarget << ":"
                << actualFps;
       frameCount = 0;
       lastFpsTimeMs = readEndMs;

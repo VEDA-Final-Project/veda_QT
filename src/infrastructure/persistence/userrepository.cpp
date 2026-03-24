@@ -1,11 +1,80 @@
 #include "infrastructure/persistence/userrepository.h"
 #include "infrastructure/persistence/databasecontext.h"
+#include "infrastructure/security/dataprotection.h"
 #include <QDebug>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
 
 UserRepository::UserRepository() {}
+
+namespace {
+QString encryptUserField(const QString &value) {
+  return DataProtection::instance().encryptString(value.trimmed());
+}
+
+QString decryptUserField(const QString &value) {
+  return DataProtection::instance().decryptString(value);
+}
+
+QString encryptPlateNumber(const QString &plateNumber) {
+  return DataProtection::instance().encryptString(plateNumber.trimmed());
+}
+
+QString plateLookupToken(const QString &plateNumber) {
+  return DataProtection::instance().lookupToken(QStringLiteral("telegram_plate"),
+                                                plateNumber);
+}
+
+QString resolveStoredPlate(const QSqlQuery &query) {
+  const QString encryptedPlate = query.value("plate_number_enc").toString();
+  if (!encryptedPlate.isEmpty()) {
+    return DataProtection::instance().decryptString(encryptedPlate);
+  }
+  return query.value("plate_number").toString().trimmed();
+}
+
+bool migrateUserPlateStorage(QSqlDatabase db, QString *errorMessage) {
+  QSqlQuery query(db);
+  if (!query.exec(QStringLiteral(
+          "SELECT chat_id, plate_number, plate_number_enc FROM telegram_users"))) {
+    if (errorMessage) {
+      *errorMessage = query.lastError().text();
+    }
+    return false;
+  }
+
+  while (query.next()) {
+    const QString chatId = query.value("chat_id").toString();
+    const QString resolvedPlate = resolveStoredPlate(query);
+    const QString lookupToken = plateLookupToken(resolvedPlate);
+    const QString encryptedPlate = encryptPlateNumber(resolvedPlate);
+    const QString currentStored = query.value("plate_number").toString();
+    const QString currentEncrypted = query.value("plate_number_enc").toString();
+
+    if (currentStored == lookupToken && currentEncrypted == encryptedPlate) {
+      continue;
+    }
+
+    QSqlQuery updateQuery(db);
+    updateQuery.prepare(QStringLiteral(
+        "UPDATE telegram_users SET plate_number = :plate_hash, "
+        "plate_number_enc = :plate_enc WHERE chat_id = :chat_id"));
+    updateQuery.bindValue(":plate_hash", lookupToken);
+    updateQuery.bindValue(":plate_enc", encryptedPlate);
+    updateQuery.bindValue(":chat_id", chatId);
+
+    if (!updateQuery.exec()) {
+      if (errorMessage) {
+        *errorMessage = updateQuery.lastError().text();
+      }
+      return false;
+    }
+  }
+
+  return true;
+}
+}
 
 bool UserRepository::init(QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
@@ -19,7 +88,11 @@ bool UserRepository::init(QString *errorMessage) {
   const QString sql =
       QStringLiteral("CREATE TABLE IF NOT EXISTS telegram_users ("
                      "  chat_id TEXT PRIMARY KEY,"
-                     "  plate_number TEXT NOT NULL,"
+                     "  plate_number TEXT NOT NULL DEFAULT '',"
+                     "  plate_number_enc TEXT NOT NULL DEFAULT '',"
+                     "  name TEXT,"
+                     "  phone TEXT,"
+                     "  payment_info TEXT,"
                      "  created_at TEXT DEFAULT (datetime('now','localtime'))"
                      ")");
 
@@ -35,6 +108,7 @@ bool UserRepository::init(QString *errorMessage) {
 
   // 마이그레이션: 신규 컬럼 추가
   const QStringList newColumns = {
+      "ALTER TABLE telegram_users ADD COLUMN plate_number_enc TEXT NOT NULL DEFAULT ''",
       "ALTER TABLE telegram_users ADD COLUMN name TEXT",
       "ALTER TABLE telegram_users ADD COLUMN phone TEXT",
       "ALTER TABLE telegram_users ADD COLUMN payment_info TEXT"};
@@ -42,6 +116,10 @@ bool UserRepository::init(QString *errorMessage) {
   for (const QString &alterSql : newColumns) {
     QSqlQuery alterQuery(db);
     alterQuery.exec(alterSql);
+  }
+
+  if (!migrateUserPlateStorage(db, errorMessage)) {
+    return false;
   }
 
   return true;
@@ -56,14 +134,16 @@ bool UserRepository::registerUser(const QString &chatId,
   QSqlQuery query(db);
   query.prepare(
       QStringLiteral("INSERT OR REPLACE INTO telegram_users (chat_id, "
-                     "plate_number, name, phone, payment_info, created_at) "
-                     "VALUES (:chat_id, :plate, :name, :phone, :payment, "
+                     "plate_number, plate_number_enc, name, phone, "
+                     "payment_info, created_at) "
+                     "VALUES (:chat_id, :plate_hash, :plate_enc, :name, :phone, :payment, "
                      "datetime('now','localtime'))"));
   query.bindValue(":chat_id", chatId);
-  query.bindValue(":plate", plateNumber);
-  query.bindValue(":name", name);
-  query.bindValue(":phone", phone);
-  query.bindValue(":payment", paymentInfo);
+  query.bindValue(":plate_hash", plateLookupToken(plateNumber));
+  query.bindValue(":plate_enc", encryptPlateNumber(plateNumber));
+  query.bindValue(":name", encryptUserField(name));
+  query.bindValue(":phone", encryptUserField(phone));
+  query.bindValue(":payment", encryptUserField(paymentInfo));
 
   if (!query.exec()) {
     const QString err =
@@ -84,14 +164,15 @@ bool UserRepository::updateUser(const QString &chatId,
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
   query.prepare(
-      QStringLiteral("UPDATE telegram_users SET plate_number=:plate, "
-                     "name=:name, phone=:phone, payment_info=:payment "
+      QStringLiteral("UPDATE telegram_users SET plate_number=:plate_hash, "
+                     "plate_number_enc=:plate_enc, name=:name, phone=:phone, payment_info=:payment "
                      "WHERE chat_id=:chat_id"));
   query.bindValue(":chat_id", chatId);
-  query.bindValue(":plate", plateNumber);
-  query.bindValue(":name", name);
-  query.bindValue(":phone", phone);
-  query.bindValue(":payment", paymentInfo);
+  query.bindValue(":plate_hash", plateLookupToken(plateNumber));
+  query.bindValue(":plate_enc", encryptPlateNumber(plateNumber));
+  query.bindValue(":name", encryptUserField(name));
+  query.bindValue(":phone", encryptUserField(phone));
+  query.bindValue(":payment", encryptUserField(paymentInfo));
   if (!query.exec()) {
     const QString err =
         QStringLiteral("Failed to update user: ") + query.lastError().text();
@@ -119,15 +200,15 @@ UserRepository::getAllUsers(QString *errorMessage) const {
     return users;
 
   QSqlQuery query(db);
-  if (!query.exec(
-          QStringLiteral("SELECT chat_id, plate_number FROM telegram_users"))) {
+  if (!query.exec(QStringLiteral(
+          "SELECT chat_id, plate_number, plate_number_enc FROM telegram_users"))) {
     if (errorMessage)
       *errorMessage = query.lastError().text();
     return users;
   }
 
   while (query.next()) {
-    users.insert(query.value(0).toString(), query.value(1).toString());
+    users.insert(query.value("chat_id").toString(), resolveStoredPlate(query));
   }
   return users;
 }
@@ -158,7 +239,7 @@ UserRepository::getAllUsersFull(QString *errorMessage) const {
     return results;
 
   QSqlQuery query(db);
-  if (!query.exec(QStringLiteral("SELECT chat_id, plate_number, name, phone, "
+  if (!query.exec(QStringLiteral("SELECT chat_id, plate_number, plate_number_enc, name, phone, "
                                  "payment_info, created_at FROM telegram_users "
                                  "ORDER BY created_at DESC"))) {
     if (errorMessage)
@@ -169,10 +250,11 @@ UserRepository::getAllUsersFull(QString *errorMessage) const {
   while (query.next()) {
     QJsonObject row;
     row["chat_id"] = query.value("chat_id").toString();
-    row["plate_number"] = query.value("plate_number").toString();
-    row["name"] = query.value("name").toString();
-    row["phone"] = query.value("phone").toString();
-    row["payment_info"] = query.value("payment_info").toString();
+    row["plate_number"] = resolveStoredPlate(query);
+    row["name"] = decryptUserField(query.value("name").toString());
+    row["phone"] = decryptUserField(query.value("phone").toString());
+    row["payment_info"] =
+        decryptUserField(query.value("payment_info").toString());
     row["created_at"] = query.value("created_at").toString();
     results.append(row);
   }
@@ -187,7 +269,7 @@ QString UserRepository::findChatIdByPlate(const QString &plateNumber) const {
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "SELECT chat_id FROM telegram_users WHERE plate_number = :plate"));
-  query.bindValue(":plate", plateNumber);
+  query.bindValue(":plate", plateLookupToken(plateNumber));
 
   if (query.exec() && query.next()) {
     return query.value(0).toString();
@@ -202,11 +284,11 @@ QString UserRepository::findPlateByChatId(const QString &chatId) const {
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "SELECT plate_number FROM telegram_users WHERE chat_id = :chatId"));
+      "SELECT plate_number, plate_number_enc FROM telegram_users WHERE chat_id = :chatId"));
   query.bindValue(":chatId", chatId);
 
   if (query.exec() && query.next()) {
-    return query.value(0).toString();
+    return resolveStoredPlate(query);
   }
   return QString();
 }

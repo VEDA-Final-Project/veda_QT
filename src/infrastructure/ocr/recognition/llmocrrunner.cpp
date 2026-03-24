@@ -83,7 +83,8 @@ OcrResult LlmOcrRunner::runSingleCandidate(const QImage &image, int objectId) {
     }
     qWarning() << "[LLM OCR] API Error:" << errTitle;
     if (!errorData.isEmpty()) {
-      qWarning() << "[LLM OCR] Error Response Body:" << errorData;
+      qWarning() << "[LLM OCR] Error Response Body suppressed. bytes="
+                 << errorData.size();
     }
     result.text = "";
   }
@@ -157,7 +158,7 @@ QString LlmOcrRunner::parseResponse(const QByteArray &response) const {
     }
   }
 
-  qWarning() << "[LLM OCR] Failed to parse response:" << response;
+  qWarning() << "[LLM OCR] Failed to parse response. bytes=" << response.size();
   return "";
 }
 

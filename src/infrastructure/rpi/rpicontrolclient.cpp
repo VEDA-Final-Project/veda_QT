@@ -63,8 +63,8 @@ void RpiControlClient::sendDbData(const QString &jsonData) {
     m_socket->write(payload);
     m_socket->flush();
     
-    // 로컬 로그에 전송 텍스트 표시
-    emit logMessage(QString("[RPi] TX DB: %1").arg(QString::fromUtf8(payload).trimmed()));
+    emit logMessage(QString("[RPi] TX DB sync sent (%1 bytes)")
+                        .arg(payload.size()));
 }
 
 void RpiControlClient::onConnected() {

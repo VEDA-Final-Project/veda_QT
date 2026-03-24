@@ -150,6 +150,8 @@ qt_add_executable(rtsp_test
     # Database (New Phase 9)
     src/infrastructure/persistence/databasecontext.cpp
     src/infrastructure/persistence/databasecontext.h
+    src/infrastructure/security/dataprotection.cpp
+    src/infrastructure/security/dataprotection.h
     src/infrastructure/persistence/userrepository.cpp
     src/infrastructure/persistence/userrepository.h
     src/infrastructure/persistence/hardwarelogrepository.cpp
@@ -234,6 +236,10 @@ endif()
 find_package(OpenCV REQUIRED)
 target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
+
+if(WIN32)
+    target_link_libraries(rtsp_test PRIVATE crypt32 bcrypt)
+endif()
 
 # ONNX Runtime 패키지 찾기 (vcpkg 또는 ONNXRUNTIME_ROOT 환경 변수)
 find_package(ONNXRUNTIME CONFIG QUIET)
