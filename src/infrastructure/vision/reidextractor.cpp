@@ -42,7 +42,7 @@ std::vector<float> extractFeaturesWithRequest(ov::InferRequest &inferRequest,
   inferRequest.set_input_tensor(inputTensor);
   inferRequest.infer();
 
-  const ov::Tensor &outputTensor = inferRequest.get_output_tensor();
+  ov::Tensor outputTensor = inferRequest.get_output_tensor();
   const float *outData = outputTensor.data<const float>();
   const size_t count = outputTensor.get_size();
 
