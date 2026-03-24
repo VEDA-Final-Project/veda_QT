@@ -31,6 +31,7 @@ public:
   struct Context {
     ParkingLogApplicationService *service = nullptr;
     std::function<void(const QString &)> logMessage;
+    std::function<void()> refreshVehicleTable;
   };
 
   explicit ParkingLogPanelController(const UiRefs &uiRefs, Context context,

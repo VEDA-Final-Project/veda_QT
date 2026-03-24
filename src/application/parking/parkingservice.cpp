@@ -10,6 +10,15 @@
 
 namespace {
 constexpr qint64 kEntryPersistDelayMs = 5000;
+
+QString normalizedReidId(const QString &reidId) {
+  return reidId.trimmed();
+}
+
+bool hasPersistentReidId(const QString &reidId) {
+  const QString normalized = normalizedReidId(reidId);
+  return !normalized.isEmpty() && normalized != QStringLiteral("V---");
+}
 }
 
 ParkingService::ParkingService(QObject *parent) : QObject(parent) {}
@@ -136,18 +145,13 @@ void ParkingService::updateReidFeatures(const QList<ObjectInfo> &objects) {
   for (auto it = vehicles.cbegin(); it != vehicles.cend(); ++it) {
     const int objectId = it.key();
     const VehicleState &vs = it.value();
-    if (vs.reidId.isEmpty() || vs.reidId == "V---") {
+    if (!hasPersistentReidId(vs.reidId)) {
       continue;
     }
 
     const QString previous = m_lastReidByObjectId.value(objectId);
-    if (previous == vs.reidId) {
-      continue;
-    }
-
-    QString error;
-    if (m_repository.updateActiveReidByObjectId(m_cameraKey, objectId,
-                                                vs.reidId, &error)) {
+    if (previous != vs.reidId) {
+      syncActiveIdentity(vs);
       m_lastReidByObjectId.insert(objectId, vs.reidId);
     }
 
@@ -186,24 +190,30 @@ void ParkingService::processOcrResult(int objectId,
   m_ocrObjectReidSnapshot.remove(objectId);
 
   if (hasVehicle && vs.occupiedRoiIndex >= 0 && !normalizedPlate.isEmpty()) {
+    if (hasPersistentReidId(reidId)) {
+      syncActiveIdentity(vs);
+    }
+
     QString error;
-    const QJsonObject activeBefore =
-        m_repository.findActiveByObjectId(m_cameraKey, objectId, &error);
+    const QJsonObject activeBefore = findActiveLog(vs, &error);
     const bool shouldSendEntryTelegram =
         !activeBefore.isEmpty() &&
         activeBefore["plate_number"].toString().trimmed().isEmpty();
+
     bool updated = false;
-    if (!reidId.isEmpty()) {
+    if (hasPersistentReidId(reidId)) {
+      m_repository.updateActiveObjectIdByReidId(m_cameraKey, reidId, objectId,
+                                                &error);
       updated = m_repository.updateActivePlateByReidId(m_cameraKey, reidId,
                                                        normalizedPlate, &error);
+    } else {
+      updated = m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
+                                                         normalizedPlate,
+                                                         &error);
     }
+
     if (!updated) {
-      if (!m_repository.updateActivePlateByObjectId(m_cameraKey, objectId,
-                                                    normalizedPlate, &error)) {
-        handleNewEntry(vs);
-      } else if (shouldSendEntryTelegram) {
-        sendTelegramEntryNotice(normalizedPlate);
-      }
+      handleNewEntry(vs);
     } else if (shouldSendEntryTelegram) {
       sendTelegramEntryNotice(normalizedPlate);
     }
@@ -282,19 +292,26 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
     return;
   }
 
+  const QString reidId = normalizedReidId(vs.reidId);
+  if (!hasPersistentReidId(reidId)) {
+    return;
+  }
+
+  syncActiveIdentity(vs);
+
   const QDateTime now = QDateTime::currentDateTime();
   const QString zoneName = zoneNameForIndex(vs.occupiedRoiIndex);
   const QString vehicleLabel =
       !vs.plateNumber.isEmpty() ? vs.plateNumber
                                 : QStringLiteral("OBJ#%1").arg(vs.objectId);
 
-  QJsonObject existing =
-      m_repository.findActiveByObjectId(m_cameraKey, vs.objectId);
+  QJsonObject existing = m_repository.findActiveByReidId(m_cameraKey, reidId);
   if (!existing.isEmpty()) {
+    m_repository.updateActiveObjectIdByReidId(m_cameraKey, reidId, vs.objectId);
     if (existing["plate_number"].toString().trimmed().isEmpty() &&
         !vs.plateNumber.isEmpty()) {
-      m_repository.updateActivePlateByObjectId(m_cameraKey, vs.objectId,
-                                               vs.plateNumber);
+      m_repository.updateActivePlateByReidId(m_cameraKey, reidId,
+                                             vs.plateNumber);
     }
     emit logMessage(QString("[Parking] %1 — already has active entry, skipping")
                         .arg(vehicleLabel));
@@ -305,7 +322,7 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
   QDateTime entryTime = vs.roiEntryMs > 0 ? QDateTime::fromMSecsSinceEpoch(vs.roiEntryMs) : now;
   int recordId = m_repository.insertEntry(m_cameraKey, vs.objectId,
                                           vs.plateNumber, zoneName,
-                                          vs.occupiedRoiIndex, vs.reidId, entryTime);
+                                          vs.occupiedRoiIndex, reidId, entryTime);
   if (recordId >= 0) {
     emit logMessage(QString("[Parking] Entry recorded: %1 at %2 (DB ID: %3)")
                         .arg(vehicleLabel, zoneName)
@@ -330,8 +347,10 @@ void ParkingService::handleDeparture(const VehicleState &vs)
                                 : QStringLiteral("OBJ#%1").arg(vs.objectId);
 
   // DB에서 활성 레코드 찾아 출차 시각 업데이트
-  QJsonObject active =
-      m_repository.findActiveByObjectId(m_cameraKey, vs.objectId);
+  if (hasPersistentReidId(vs.reidId)) {
+    syncActiveIdentity(vs);
+  }
+  QJsonObject active = findActiveLog(vs);
   if (!active.isEmpty()) 
   {
     int recordId = active["id"].toInt();
@@ -362,8 +381,34 @@ void ParkingService::handleDeparture(const VehicleState &vs)
       return;
     }
 
-    m_telegram->sendExitNotice(plateNumber, resolvedTotalAmount);
+    m_telegram->sendExitNotice(plateNumber, resolvedTotalAmount, recordId);
   }
+}
+
+void ParkingService::syncActiveIdentity(const VehicleState &vs) {
+  const QString reidId = normalizedReidId(vs.reidId);
+  if (!hasPersistentReidId(reidId)) {
+    return;
+  }
+
+  QString error;
+  if (m_repository.updateActiveObjectIdByReidId(m_cameraKey, reidId,
+                                                vs.objectId, &error)) {
+    return;
+  }
+
+  m_repository.updateActiveReidByObjectId(m_cameraKey, vs.objectId, reidId,
+                                          &error);
+}
+
+QJsonObject ParkingService::findActiveLog(const VehicleState &vs,
+                                          QString *errorMessage) const {
+  const QString reidId = normalizedReidId(vs.reidId);
+  if (hasPersistentReidId(reidId)) {
+    return m_repository.findActiveByReidId(m_cameraKey, reidId, errorMessage);
+  }
+  return m_repository.findActiveByObjectId(m_cameraKey, vs.objectId,
+                                           errorMessage);
 }
 
 void ParkingService::sendTelegramEntryNotice(const QString &plateNumber)

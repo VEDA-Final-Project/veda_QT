@@ -93,21 +93,15 @@ void TelegramPanelController::onUsersUpdated(int count) {
   }
 }
 
-void TelegramPanelController::onPaymentConfirmed(const QString &plate,
+void TelegramPanelController::onPaymentConfirmed(int recordId,
+                                                 const QString &plate,
                                                  int amount) {
-  const bool updated =
-      m_context.updatePayment ? m_context.updatePayment(plate, amount) : false;
-
-  appendLog(QString("[Payment] 💰 결제 완료 수신! 차량: %1, 금액: %2원")
+  appendLog(QString("[Payment] 💰 결제 완료 수신! ID=%1, 차량: %2, 금액: %3원")
+                .arg(recordId)
                 .arg(plate)
                 .arg(amount));
-  if (updated) {
-    appendLog(QString("[Payment] DB 결제 상태 반영 완료: %1, %2원")
-                  .arg(plate)
-                  .arg(amount));
-  }
 
-  if (updated && m_context.refreshParkingLogs) {
+  if (m_context.refreshParkingLogs) {
     m_context.refreshParkingLogs();
   }
 }

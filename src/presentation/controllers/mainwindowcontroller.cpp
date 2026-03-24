@@ -49,24 +49,6 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
       m_dbPanelController->refreshUserTable();
     }
   };
-  telegramContext.updatePayment = [this](const QString &plate, int amount) {
-    bool updated = false;
-    const int sourceCount =
-        m_cameraSessionController ? m_cameraSessionController->sourceCount() : 0;
-    for (int i = 0; i < sourceCount; ++i) {
-      ParkingService *service = parkingServiceForCardIndex(i);
-      if (!service) {
-        continue;
-      }
-
-      QString error;
-      if (service->updatePayment(plate, amount, QStringLiteral("결제완료"),
-                                 &error)) {
-        updated = true;
-      }
-    }
-    return updated;
-  };
   telegramContext.refreshParkingLogs = [this]() {
     if (m_dbPanelController) {
       m_dbPanelController->onRefreshParkingLogs();

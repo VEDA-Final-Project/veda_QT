@@ -1,4 +1,5 @@
 #include "telegrambotapi.h"
+#include "domain/parking/parkingfeepolicy.h"
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QProcessEnvironment>
@@ -82,7 +83,8 @@ void TelegramBotAPI::sendEntryNotice(const QString &plateNumber) {
  * 출차 알림 (차량번호 매칭 사용자에게만 전송)
  * ============================================================ */
 
-void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee) {
+void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee,
+                                    int paymentRecordId) {
   QString targetChatId = m_plateToChat.value(plateNumber);
 
   if (targetChatId.isEmpty()) {
@@ -104,7 +106,7 @@ void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee) {
   if (resolvedFee <= 0) {
     text = QString("🚗 *출차 안내*\n\n"
                    "차량번호: `%1`\n"
-                   "15분 이내에 출차시 무료입니다.")
+                   "5분 이내에 출차시 무료입니다.")
                .arg(plateNumber);
   } else {
     text = QString("🚗 *출차 안내*\n\n"
@@ -114,13 +116,11 @@ void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee) {
                .arg(resolvedFee);
   }
 
-  // 모의 결제 버튼 (Callback 방식)
   QString replyMarkup;
-  // URL이 있든 없든, 요금이 있으면 결제 버튼 표시 (모의 결제용)
-  if (resolvedFee > 0) {
+  if (resolvedFee > 0 && paymentRecordId > 0) {
     QJsonObject btn;
     btn["text"] = QString::fromUtf8("💰 결제하기");
-    btn["callback_data"] = QString("PAY_%1").arg(plateNumber);
+    btn["callback_data"] = QString("PAYREC_%1").arg(paymentRecordId);
 
     QJsonArray row;
     row.append(btn);
@@ -390,37 +390,60 @@ void TelegramBotAPI::pollUpdates() {
             message["chat"].toObject()["id"].toVariant().toLongLong());
 
         // 결제 요청 처리
-        if (data.startsWith("PAY_")) {
-          QStringList parts = data.split('_');
-          if (parts.size() >= 2) {
-            QString plate = parts[1];
-            int amount = 0;
-            const QJsonObject pendingLog =
-                m_parkingRepository.findActiveByPlate("camera",
-                                                                    plate);
-            if (!pendingLog.isEmpty()) {
-              amount = pendingLog["total_amount"].toInt();
-            } else if (parts.size() >= 3) {
-              amount = parts[2].toInt();
-            }
-
-            emit logMessage(
-                QString("[Telegram] 💰 결제 확인됨: %1 (%2원) by %3")
-                    .arg(plate)
-                    .arg(amount)
-                    .arg(firstName));
-            emit paymentConfirmed(plate, amount);
-
-            // 1) 팝업 알림 (Toast)
-            answerCallbackQuery(id, "결제가 완료되었습니다!");
-
-            // 2) 메시지 전송
-            sendMessage(chatId,
-                        QString("✅ 결제가 성공적으로 완료되었습니다.\n(차량: "
-                                "%1, 금액: %2원)")
-                            .arg(plate)
-                            .arg(amount));
+        if (data.startsWith("PAYREC_")) {
+          const int recordId = data.mid(QStringLiteral("PAYREC_").size()).toInt();
+          const QJsonObject record = m_parkingRepository.findLogById(recordId);
+          if (record.isEmpty()) {
+            answerCallbackQuery(id, "결제 대상 내역을 찾을 수 없습니다.");
+            sendMessage(chatId, "결제 대상 내역을 찾을 수 없습니다. 최신 요금 조회 후 다시 시도해주세요.");
+            continue;
           }
+
+          const QString exitTime = record["exit_time"].toString().trimmed();
+          const QString payStatus = record["pay_status"].toString().trimmed();
+          const QString plate = record["plate_number"].toString().trimmed();
+          const int amount = record["total_amount"].toInt();
+
+          if (exitTime.isEmpty()) {
+            answerCallbackQuery(id, "출차 완료 후 결제할 수 있습니다.");
+            sendMessage(chatId, "이 내역은 아직 출차 처리되지 않았습니다.");
+            continue;
+          }
+          if (payStatus != QStringLiteral("정산대기")) {
+            answerCallbackQuery(id, "이미 처리된 결제입니다.");
+            sendMessage(chatId, "이미 결제가 완료된 내역입니다.");
+            continue;
+          }
+
+          QString error;
+          if (!m_parkingRepository.markPaymentById(recordId, amount,
+                                                   QStringLiteral("결제완료"),
+                                                   &error)) {
+            answerCallbackQuery(id, "결제 반영에 실패했습니다.");
+            sendMessage(chatId,
+                        error.isEmpty()
+                            ? QStringLiteral("결제 반영에 실패했습니다. 다시 시도해주세요.")
+                            : QStringLiteral("결제 반영에 실패했습니다: %1").arg(error));
+            continue;
+          }
+
+          emit logMessage(
+              QString("[Telegram] 💰 결제 확인됨: recordId=%1, %2 (%3원) by %4")
+                  .arg(recordId)
+                  .arg(plate)
+                  .arg(amount)
+                  .arg(firstName));
+          emit paymentConfirmed(recordId, plate, amount);
+
+          answerCallbackQuery(id, "결제가 완료되었습니다!");
+          sendMessage(chatId,
+                      QString("✅ 결제가 성공적으로 완료되었습니다.\n(차량: %1, 금액: %2원)")
+                          .arg(plate)
+                          .arg(amount));
+        } else if (data.startsWith("PAY_")) {
+          answerCallbackQuery(id, "기존 결제 링크는 만료되었습니다.");
+          sendMessage(chatId,
+                      "기존 결제 링크는 만료되었습니다. 최신 요금 조회 후 다시 결제해주세요.");
         }
         // 수정하기 → 필드 선택 화면 표시
         else if (data == "edit_select") {
@@ -926,70 +949,109 @@ void TelegramBotAPI::handleInfoInquiry(const QString &chatId) {
 }
 
 void TelegramBotAPI::handleFeeInquiry(const QString &chatId) {
-  QString plate = m_chatToPlate.value(chatId);
+  const QString plate = m_chatToPlate.value(chatId).trimmed();
   if (plate.isEmpty()) {
     sendMessage(chatId, "등록된 차량이 없습니다.");
     return;
   }
 
+  auto formatTime = [](const QString &isoText) {
+    const QDateTime parsed = QDateTime::fromString(isoText, Qt::ISODate);
+    if (parsed.isValid()) {
+      return parsed.toString("yyyy-MM-dd HH:mm");
+    }
+    return isoText.left(16).replace('T', ' ');
+  };
+
+  const QJsonObject active = m_parkingRepository.findActiveByPlateAnyCamera(plate);
+  if (!active.isEmpty()) {
+    const QString entryTimeText = active["entry_time"].toString();
+    const QDateTime entryTime = QDateTime::fromString(entryTimeText, Qt::ISODate);
+    const parking::ParkingFeeResult feeResult =
+        parking::calculateParkingFee(entryTime, QDateTime::currentDateTime());
+    const QString cameraKey = active["camera_key"].toString().trimmed();
+    const QString zoneName = active["zone_name"].toString().trimmed().isEmpty()
+                                 ? QStringLiteral("-")
+                                 : active["zone_name"].toString().trimmed();
+    const QString feeText =
+        feeResult.totalAmount > 0
+            ? QStringLiteral("%1원").arg(feeResult.totalAmount)
+            : QStringLiteral("무료");
+    QString text = QString("💳 *현재 요금 조회*\n\n"
+                           "차량번호: `%1`\n"
+                           "채널: %2\n"
+                           "구역: %3\n"
+                           "입차 시간: %4\n"
+                           "이용 시간: %5분\n"
+                           "현재 요금: *%6*\n"
+                           "출차 시점에 최종 요금이 확정됩니다.")
+                       .arg(plate)
+                       .arg(cameraKey.isEmpty() ? QStringLiteral("-") : cameraKey)
+                       .arg(zoneName)
+                       .arg(formatTime(entryTimeText))
+                       .arg(feeResult.totalMinutes)
+                       .arg(feeText);
+    sendMessage(chatId, text);
+    return;
+  }
+
   const QJsonObject pendingLog =
-      m_parkingRepository.findActiveByPlate("camera", plate);
+      m_parkingRepository.findLatestUnpaidExitedByPlateAnyCamera(plate);
   if (!pendingLog.isEmpty()) {
+    const int recordId = pendingLog["id"].toInt();
     const int fee = pendingLog["total_amount"].toInt();
     const QString exitTime = pendingLog["exit_time"].toString();
-
-    QString text = QString("💳 *정산 요금 안내*\n\n"
+    const QString cameraKey = pendingLog["camera_key"].toString().trimmed();
+    const QString zoneName = pendingLog["zone_name"].toString().trimmed().isEmpty()
+                                 ? QStringLiteral("-")
+                                 : pendingLog["zone_name"].toString().trimmed();
+    QString text = QString("💳 *미납 정산 안내*\n\n"
+                           "현재 주차 중인 내역은 없습니다.\n\n"
                            "차량번호: `%1`\n"
-                           "출차 시간: %2\n"
-                           "💰 총 금액: *%3원*")
+                           "채널: %2\n"
+                           "구역: %3\n"
+                           "출차 시간: %4\n"
+                           "미납 금액: *%5원*")
                        .arg(plate)
-                       .arg(exitTime.left(16).replace('T', ' '))
+                       .arg(cameraKey.isEmpty() ? QStringLiteral("-") : cameraKey)
+                       .arg(zoneName)
+                       .arg(formatTime(exitTime))
                        .arg(fee);
 
     if (fee > 0) {
       QJsonObject btnPay;
       btnPay["text"] = QString::fromUtf8("💰 납부하기");
-      btnPay["callback_data"] = QString("PAY_%1").arg(plate);
+      btnPay["callback_data"] = QString("PAYREC_%1").arg(recordId);
       QJsonArray row;
       row.append(btnPay);
       QJsonArray keyboard;
       keyboard.append(row);
       QJsonObject markup;
       markup["inline_keyboard"] = keyboard;
-      QString replyMarkup =
+      const QString replyMarkup =
           QJsonDocument(markup).toJson(QJsonDocument::Compact);
       sendMessage(chatId, text, replyMarkup);
     } else {
       sendMessage(chatId, text);
     }
-    return;
-  }
-
-  QJsonObject active = m_parkingRepository.findActiveByPlate("camera", plate);
-  if (active.isEmpty()) {
-    sendMessage(chatId, "현재 주차 중인 내역이 없습니다.");
   } else {
-    QDateTime entryTime =
-        QDateTime::fromString(active["entry_time"].toString(), Qt::ISODate);
     QString text = QString("💳 *요금 조회*\n\n"
                            "차량번호: `%1`\n"
-                           "입차 시간: %2\n"
-                           "현재 주차 중입니다.\n"
-                           "확정 요금은 출차 처리 후 안내됩니다.")
-                       .arg(plate)
-                       .arg(entryTime.toString("yyyy-MM-dd HH:mm"));
+                           "현재 주차 중인 내역이 없습니다.")
+                       .arg(plate);
     sendMessage(chatId, text);
   }
 }
 
 void TelegramBotAPI::handleUsageHistory(const QString &chatId) {
-  QString plate = m_chatToPlate.value(chatId);
+  const QString plate = m_chatToPlate.value(chatId).trimmed();
   if (plate.isEmpty()) {
     sendMessage(chatId, "등록된 차량이 없습니다.");
     return;
   }
 
-  QList<QJsonObject> logs = m_parkingRepository.searchByPlate("camera", plate);
+  const QList<QJsonObject> logs =
+      m_parkingRepository.findLogsByExactPlateAnyCamera(plate);
   auto formatTime = [](const QString &isoText) {
     const QDateTime parsed = QDateTime::fromString(isoText, Qt::ISODate);
     if (parsed.isValid()) {
@@ -1010,13 +1072,18 @@ void TelegramBotAPI::handleUsageHistory(const QString &chatId) {
     const QString zoneName = log["zone_name"].toString().trimmed().isEmpty()
                                  ? QStringLiteral("-")
                                  : log["zone_name"].toString().trimmed();
+    const QString cameraKey = log["camera_key"].toString().trimmed().isEmpty()
+                                  ? QStringLiteral("-")
+                                  : log["camera_key"].toString().trimmed();
     text += QString("%1. %2\n"
-                    "구역: %3\n"
-                    "입차: %4\n"
-                    "출차: %5\n"
-                    "요금: %6원\n\n")
+                    "채널: %3\n"
+                    "구역: %4\n"
+                    "입차: %5\n"
+                    "출차: %6\n"
+                    "요금: %7원\n\n")
                 .arg(count + 1)
                 .arg(formatTime(entryTime).left(10))
+                .arg(cameraKey)
                 .arg(zoneName)
                 .arg(formatTime(entryTime))
                 .arg(formatTime(exitTime))
@@ -1042,14 +1109,15 @@ void TelegramBotAPI::handleCallAdmin(const QString &chatId) {
 }
 
 void TelegramBotAPI::handleFeePayment(const QString &chatId) {
-  QString plate = m_chatToPlate.value(chatId);
+  const QString plate = m_chatToPlate.value(chatId).trimmed();
   if (plate.isEmpty()) {
     sendMessage(chatId, "등록된 차량이 없습니다.");
     return;
   }
 
-  QJsonObject active = m_parkingRepository.findActiveByPlate("camera", plate);
-  if (active.isEmpty()) {
+  const QJsonObject pendingLog =
+      m_parkingRepository.findLatestUnpaidExitedByPlateAnyCamera(plate);
+  if (pendingLog.isEmpty()) {
     sendMessage(chatId, "현재 납부할 요금이 있는 주차 내역이 없습니다.");
   } else {
     handleFeeInquiry(chatId); // 요금 조회를 먼저 보여주어 결제 버튼 유도

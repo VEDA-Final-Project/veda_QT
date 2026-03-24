@@ -125,6 +125,9 @@ private:
   void handleNewEntry(const VehicleState &vs);
   void handleDeparture(const VehicleState &vs);
   void sendTelegramEntryNotice(const QString &plateNumber);
+  void syncActiveIdentity(const VehicleState &vs);
+  QJsonObject findActiveLog(const VehicleState &vs,
+                            QString *errorMessage = nullptr) const;
 
   VehicleTracker m_tracker;
   ParkingRepository m_repository;

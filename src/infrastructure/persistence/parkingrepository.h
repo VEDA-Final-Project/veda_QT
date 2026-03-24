@@ -44,11 +44,30 @@ public:
                      int totalAmount, const QString &payStatus,
                      QString *errorMessage = nullptr);
 
+  QJsonObject findActiveByPlateAnyCamera(const QString &plateNumber,
+                                         QString *errorMessage = nullptr) const;
+  QList<QJsonObject> findLogsByExactPlateAnyCamera(
+      const QString &plateNumber, int limit = 100,
+      QString *errorMessage = nullptr) const;
+  QJsonObject findLatestUnpaidExitedByPlateAnyCamera(
+      const QString &plateNumber, QString *errorMessage = nullptr) const;
+  QJsonObject findLogById(int recordId,
+                          QString *errorMessage = nullptr) const;
+  bool markPaymentById(int recordId, int totalAmount,
+                       const QString &payStatus = QStringLiteral("결제완료"),
+                       QString *errorMessage = nullptr);
+
   /**
    * @brief obj_id로 현재 입차 중인 레코드 조회
    */
   QJsonObject findActiveByObjectId(const QString &cameraKey, int objectId,
                                    QString *errorMessage = nullptr) const;
+
+  /**
+   * @brief reid_id로 현재 입차 중인 레코드 조회
+   */
+  QJsonObject findActiveByReidId(const QString &cameraKey, const QString &reidId,
+                                 QString *errorMessage = nullptr) const;
 
   /**
    * @brief 활성 레코드의 번호판을 obj_id 기준으로 갱신
@@ -60,6 +79,13 @@ public:
                                  const QString &reidId,
                                  const QString &plateNumber,
                                  QString *errorMessage = nullptr);
+
+  /**
+   * @brief 활성 레코드의 현재 object_id를 reid_id 기준으로 동기화
+   */
+  bool updateActiveObjectIdByReidId(const QString &cameraKey,
+                                    const QString &reidId, int objectId,
+                                    QString *errorMessage = nullptr);
 
   bool updateActiveReidByObjectId(const QString &cameraKey, int objectId,
                                   const QString &reidId,
