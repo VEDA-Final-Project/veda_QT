@@ -2,7 +2,6 @@
 #include "config/config.h"
 #include <QDateTime>
 #include <QPainter>
-#include <QRegion>
 #include <QVector>
 #include <QtGlobal>
 #include <algorithm>
@@ -68,20 +67,6 @@ int matchedVehicleObjectId(const QImage &frame, const QList<ObjectInfo> &objects
   }
 
   return bestVehicleId;
-}
-
-QRegion roiRegionOnFrame(const QRect &frameRect,
-                         const QList<QPolygon> &roiPolygons) {
-  QRegion region;
-  const QRegion frameRegion(frameRect);
-  for (const QPolygon &polygon : roiPolygons) {
-    if (polygon.size() < 3) {
-      continue;
-    }
-    region = region.united(
-        QRegion(polygon, Qt::WindingFill).intersected(frameRegion));
-  }
-  return region;
 }
 
 QList<QPolygon> scaleRoiPolygons(const QList<QPolygon> &roiPolygons,
@@ -226,9 +211,6 @@ QImage VideoFrameRenderer::compose(
 
   const QList<QPolygon> scaledRoiPolygons =
       scaleRoiPolygons(roiPolygons, sourceFrame.size(), renderTarget.size());
-  const QRegion roiRegion =
-      roiRegionOnFrame(renderTarget.rect(), scaledRoiPolygons);
-  const bool hasActiveRoi = roiEnabled && !roiRegion.isEmpty();
 
   // Draw ROIs
   if (roiEnabled) {
@@ -298,11 +280,6 @@ QImage VideoFrameRenderer::compose(
 
     if (!uRect.intersects(QRect(0, 0, outputSize.width(), outputSize.height())))
       continue;
-    
-    // SRTP 필터링 로직 적용
-    if (hasActiveRoi && !roiRegion.intersects(uRect)) {
-      continue;
-    }
 
     painter.drawRect(uRect);
 
