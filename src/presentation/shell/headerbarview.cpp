@@ -5,9 +5,13 @@
 #include <QLabel>
 #include <QMenu>
 #include <QPainter>
+#include "presentation/controllers/notificationcontroller.h"
 #include <QPixmap>
 #include <QPushButton>
 #include <QToolButton>
+#include <QDialog>
+#include <QListWidget>
+#include <QVBoxLayout>
 
 namespace {
 QIcon tintIcon(const QString &path, const QColor &color) {
@@ -72,7 +76,7 @@ void HeaderBarView::setupUi() {
 
   m_ui.settingsButton = new QToolButton(this);
   m_ui.settingsButton->setIcon(tintIcon(
-      PROJECT_SOURCE_DIR "/src/ui/icon/settings.png", QColor("#94A3B8")));
+      PROJECT_SOURCE_DIR "/src/ui/icon/option.png", QColor("#94A3B8")));
   m_ui.settingsButton->setIconSize(QSize(18, 18));
   m_ui.settingsButton->setObjectName("navBtn");
   m_ui.settingsButton->setCursor(Qt::PointingHandCursor);
@@ -81,6 +85,39 @@ void HeaderBarView::setupUi() {
   headerLayout->addSpacing(2);
 
   headerLayout->addStretch();
+
+  QPushButton *btnAlarm = new QPushButton(this);
+  btnAlarm->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/alarm.png", QColor("#94A3B8")));
+  btnAlarm->setIconSize(QSize(18, 18));
+  btnAlarm->setObjectName("btnWindowCtrl");
+  btnAlarm->setFixedSize(32, 32);
+  btnAlarm->setToolTip(QString::fromUtf8("알람 로그"));
+  btnAlarm->setCursor(Qt::PointingHandCursor);
+  
+  connect(btnAlarm, &QPushButton::clicked, this, [this]() {
+    QDialog *logDialog = new QDialog(this);
+    logDialog->setWindowTitle(QString::fromUtf8("알람 로그"));
+    logDialog->resize(450, 300);
+    logDialog->setStyleSheet("QDialog { background-color: #1e1e2d; }");
+    QVBoxLayout *l = new QVBoxLayout(logDialog);
+    QListWidget *list = new QListWidget(logDialog);
+    list->setStyleSheet("QListWidget { background-color: #1e1e2d; color: #e2e8f0; border: 1px solid #334155; font-size: 13px; padding: 4px; }");
+    QStringList history = NotificationController::getHistory();
+    if (history.isEmpty()) {
+      list->addItem(QString::fromUtf8("알람 로그가 없습니다."));
+    } else {
+      list->addItems(history);
+    }
+    l->addWidget(list);
+    QPushButton *btnClose = new QPushButton(QString::fromUtf8("닫기"), logDialog);
+    btnClose->setStyleSheet("QPushButton { background: #334155; color: white; padding: 6px; border-radius: 4px; border: none; } QPushButton:hover { background: #475569; }");
+    btnClose->setCursor(Qt::PointingHandCursor);
+    connect(btnClose, &QPushButton::clicked, logDialog, &QDialog::accept);
+    l->addWidget(btnClose);
+    logDialog->setAttribute(Qt::WA_DeleteOnClose);
+    logDialog->show();
+  });
+  headerLayout->addWidget(btnAlarm);
 
   m_ui.btnMinimize = new QPushButton(this);
   m_ui.btnMinimize->setIcon(tintIcon(
