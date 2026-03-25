@@ -127,7 +127,7 @@ cmake --build build --config Release
 ### 4. 실행
 `build/Release/rtsp_test.exe`를 실행합니다. 빌드 시 `config/` 폴더가 실행 파일 옆으로 자동 복사됩니다.
 
-> **참고**: FFmpeg 실행 파일(`ffmpeg.exe`)이 시스템 PATH에 있거나 실행 파일과 같은 폴더에 있어야 메타데이터 수신 기능이 작동합니다.
+> **참고**: 메타데이터 수신은 FFmpeg 실행 파일이 아니라 FFmpeg 개발용 라이브러리(`avformat`, `avcodec`, `avutil`, `swscale`) 링크를 사용합니다. 빌드 시 vcpkg 경로가 올바르게 설정되어 있어야 합니다.
 
 ## ⚙️ 설정 방법 (settings.json)
 

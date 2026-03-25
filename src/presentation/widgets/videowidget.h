@@ -1,7 +1,7 @@
 #ifndef VIDEOWIDGET_H
 #define VIDEOWIDGET_H
 
-#include "infrastructure/metadata/metadatathread.h"
+#include "infrastructure/metadata/objectinfo.h"
 #include "presentation/widgets/roiinteractionstate.h"
 #include "presentation/widgets/videoframerenderer.h"
 #include "infrastructure/video/sharedvideoframe.h"

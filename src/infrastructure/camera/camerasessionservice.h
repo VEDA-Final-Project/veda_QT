@@ -15,7 +15,7 @@ public:
   void stop();
 
   void pushMetadata(const QList<ObjectInfo> &objects, qint64 tsMs);
-  QList<ObjectInfo> consumeReadyMetadata(qint64 nowMs);
+  QList<ObjectInfo> consumeReadyMetadata(qint64 frameTimestampMs);
 
 private:
   CameraManager *m_cameraManager = nullptr;

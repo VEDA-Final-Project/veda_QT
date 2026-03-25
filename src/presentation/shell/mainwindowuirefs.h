@@ -51,8 +51,6 @@ struct CctvUiRefs {
   QPushButton *btnFinishRoi = nullptr;
   QPushButton *btnDeleteRoi = nullptr;
   QCheckBox *chkVehicle = nullptr;
-  QCheckBox *chkPerson = nullptr;
-  QCheckBox *chkFace = nullptr;
   QCheckBox *chkPlate = nullptr;
   QCheckBox *chkOther = nullptr;
   QPushButton *chkShowFps = nullptr;

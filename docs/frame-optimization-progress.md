@@ -172,7 +172,7 @@
 
 - `setTargetFps()`는 여전히 디코드 이후 프레임을 버리는 구조임
 - 하드웨어 디코드는 아직 적용하지 않음
-- metadata는 여전히 별도 FFmpeg subprocess를 사용함
+- metadata는 FFmpeg 라이브러리 기반으로 전환되었고, 일반 RTSP 비디오만 OpenCV 경로를 유지함
 - display timeout 시 reconnect 정책이 아직 다소 공격적임
 - `src/architecture_overview.md`는 현재 구조를 아직 반영하지 못함
 

@@ -38,7 +38,7 @@ void CameraSessionService::pushMetadata(const QList<ObjectInfo> &objects, qint64
   m_metadataSynchronizer.pushMetadata(objects, tsMs);
 }
 
-QList<ObjectInfo> CameraSessionService::consumeReadyMetadata(qint64 nowMs)
+QList<ObjectInfo> CameraSessionService::consumeReadyMetadata(qint64 frameTimestampMs)
 {
-  return m_metadataSynchronizer.consumeReady(nowMs);
+  return m_metadataSynchronizer.consumeReady(frameTimestampMs);
 }

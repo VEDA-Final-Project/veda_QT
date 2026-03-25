@@ -117,31 +117,16 @@ void MainWindow::attachController(MainWindowController *controller) {
       disabled.insert("Motorcycle");
       disabled.insert("Bicycle");
     }
-    if (cctvUi.chkPerson && !cctvUi.chkPerson->isChecked())
-      disabled.insert("Human");
-    if (cctvUi.chkFace && !cctvUi.chkFace->isChecked())
-      disabled.insert("Face");
     if (cctvUi.chkPlate && !cctvUi.chkPlate->isChecked())
       disabled.insert("LicensePlate");
-    if (cctvUi.chkOther && !cctvUi.chkOther->isChecked())
-      disabled.insert("Other");
     m_controller->updateObjectFilter(disabled);
   };
   const CctvUiRefs &cctvUi = m_cctvView->uiRefs();
   if (cctvUi.chkVehicle) {
     connect(cctvUi.chkVehicle, &QCheckBox::toggled, this, updateFilter);
   }
-  if (cctvUi.chkPerson) {
-    connect(cctvUi.chkPerson, &QCheckBox::toggled, this, updateFilter);
-  }
-  if (cctvUi.chkFace) {
-    connect(cctvUi.chkFace, &QCheckBox::toggled, this, updateFilter);
-  }
   if (cctvUi.chkPlate) {
     connect(cctvUi.chkPlate, &QCheckBox::toggled, this, updateFilter);
-  }
-  if (cctvUi.chkOther) {
-    connect(cctvUi.chkOther, &QCheckBox::toggled, this, updateFilter);
   }
   updateFilter();
 }

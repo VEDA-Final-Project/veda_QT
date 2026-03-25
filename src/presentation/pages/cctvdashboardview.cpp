@@ -18,8 +18,6 @@
 #include <QIcon>
 #include <QPainter>
 #include <QPixmap>
-#include <QGridLayout>
-#include <QPushButton>
 
 CctvDashboardView::CctvDashboardView(QWidget *parent) : QWidget(parent) {
   setupUi();
@@ -107,14 +105,19 @@ void CctvDashboardView::setupUi() {
   m_ui.btnRecordManual->setCursor(Qt::PointingHandCursor);
   m_ui.btnRecordManual->setStyleSheet(btnStyle);
 
-  m_ui.chkShowFps = new QPushButton(this);
+  m_ui.chkShowFps = new QCheckBox(this);
   m_ui.chkShowFps->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/fps.png", QColor("#94A3B8")));
   m_ui.chkShowFps->setIconSize(QSize(30, 30));
   m_ui.chkShowFps->setFixedSize(44, 44);
   m_ui.chkShowFps->setCheckable(true);
   m_ui.chkShowFps->setToolTip(QString::fromUtf8("FPS 표시"));
   m_ui.chkShowFps->setCursor(Qt::PointingHandCursor);
-  m_ui.chkShowFps->setStyleSheet(btnStyle);
+  m_ui.chkShowFps->setText(QString());
+  m_ui.chkShowFps->setStyleSheet(
+      "QCheckBox { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 6px; } "
+      "QCheckBox:hover { background: #334155; border: 1px solid transparent; } "
+      "QCheckBox:checked { background: #0f172a; border: 1px solid #10b981; } "
+      "QCheckBox::indicator { width: 0px; height: 0px; }");
 
   QFrame *toolsBox = new QFrame(this);
   toolsBox->setObjectName("toolsBox");
@@ -191,22 +194,14 @@ void CctvDashboardView::setupUi() {
   QWidget *filterWidget = new QWidget(this);
   QVBoxLayout *filterLayout = new QVBoxLayout(filterWidget);
   filterLayout->setContentsMargins(0, 0, 0, 0);
+  filterLayout->setSpacing(4);
   
   m_ui.chkVehicle = new QCheckBox(QString::fromUtf8("차량"), filterWidget);
   m_ui.chkVehicle->setChecked(true);
-  m_ui.chkPerson = new QCheckBox(QString::fromUtf8("사람"), filterWidget);
-  m_ui.chkPerson->setChecked(true);
-  m_ui.chkFace = new QCheckBox(QString::fromUtf8("얼굴"), filterWidget);
-  m_ui.chkFace->setChecked(true);
   m_ui.chkPlate = new QCheckBox(QString::fromUtf8("번호판"), filterWidget);
   m_ui.chkPlate->setChecked(true);
-  m_ui.chkOther = new QCheckBox(QString::fromUtf8("기타"), filterWidget);
-  m_ui.chkOther->setChecked(false);
   filterLayout->addWidget(m_ui.chkVehicle);
-  filterLayout->addWidget(m_ui.chkPerson);
-  filterLayout->addWidget(m_ui.chkFace);
   filterLayout->addWidget(m_ui.chkPlate);
-  filterLayout->addWidget(m_ui.chkOther);
   
   filterWidget->setVisible(false);
   channelPanelLayout->addWidget(filterWidget);
@@ -217,7 +212,7 @@ void CctvDashboardView::setupUi() {
   m_ui.lblAvgFps->setStyleSheet("color: #94A3B8; font-size: 11px;");
   m_ui.lblAvgFps->setVisible(false);
   channelPanelLayout->addWidget(m_ui.lblAvgFps);
-  connect(m_ui.chkShowFps, &QPushButton::toggled, m_ui.lblAvgFps, &QLabel::setVisible);
+  connect(m_ui.chkShowFps, &QCheckBox::toggled, m_ui.lblAvgFps, &QLabel::setVisible);
 
   channelPanelLayout->addSpacing(16);
 
