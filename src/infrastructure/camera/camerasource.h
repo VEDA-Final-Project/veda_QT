@@ -71,7 +71,7 @@ signals:
   void logMessage(const QString &msg);
 
 private slots:
-  void onMetadataReceived(const QList<ObjectInfo> &objects);
+  void onMetadataReceived(const QList<ObjectInfo> &objects, qint64 timestampMs);
   void onFrameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
   void onOcrResult(int objectId, const OcrFullResult &result);
   void onDisplayRenderTick();

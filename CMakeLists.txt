@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.19)
 project(rtsp_test LANGUAGES CXX)
 
+set(APP_TARGET rtsp_test)
+
 # Qt6 필수 구성 요소 찾기
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql Multimedia)
 
 qt_standard_project_setup()
 
 # 실행 파일 생성 및 소스 파일 정의
-qt_add_executable(rtsp_test
+qt_add_executable(${APP_TARGET}
     WIN32 MACOSX_BUNDLE
     # Main
     src/main.cpp
@@ -81,8 +83,13 @@ qt_add_executable(rtsp_test
     src/infrastructure/video/mediarecorderworker.cpp
     src/infrastructure/video/mediarecorderworker.h
     # Metadata
+    src/infrastructure/metadata/ffmpegmetadatastreamreader.cpp
+    src/infrastructure/metadata/ffmpegmetadatastreamreader.h
     src/infrastructure/metadata/metadatathread.cpp
     src/infrastructure/metadata/metadatathread.h
+    src/infrastructure/metadata/objectinfo.h
+    src/infrastructure/metadata/onvifmetadataparser.cpp
+    src/infrastructure/metadata/onvifmetadataparser.h
     # OCR
     src/infrastructure/ocr/ocrmanager.cpp
     src/infrastructure/ocr/ocrmanager.h
@@ -172,27 +179,27 @@ qt_add_executable(rtsp_test
 )
 
 # 헤더 파일 경로 추가 (다른 폴더의 헤더를 include 할 수 있도록 설정)
-target_include_directories(rtsp_test PRIVATE
+target_include_directories(${APP_TARGET} PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 
-target_compile_definitions(rtsp_test PRIVATE
+target_compile_definitions(${APP_TARGET} PRIVATE
     PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
 
 # 설정 폴더를 빌드 디렉토리로 복사
 # 빌드 후 실행 파일 경로 옆으로 config 폴더를 복사합니다 (멀티 컨피그 대응).
-add_custom_command(TARGET rtsp_test POST_BUILD
+add_custom_command(TARGET ${APP_TARGET} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/config
-            $<TARGET_FILE_DIR:rtsp_test>/config
+            $<TARGET_FILE_DIR:${APP_TARGET}>/config
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/model
-            $<TARGET_FILE_DIR:rtsp_test>/model
+            $<TARGET_FILE_DIR:${APP_TARGET}>/model
 )
 
 # Qt 라이브러리 링크
-target_link_libraries(rtsp_test
+target_link_libraries(${APP_TARGET}
     PRIVATE
         Qt::Core
         Qt::Widgets
@@ -205,7 +212,7 @@ target_link_libraries(rtsp_test
 # 설치 설정
 include(GNUInstallDirs)
 
-install(TARGETS rtsp_test
+install(TARGETS ${APP_TARGET}
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -217,21 +224,30 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/config
 
 # 배포 스크립트 생성
 qt_generate_deploy_app_script(
-    TARGET rtsp_test
+    TARGET ${APP_TARGET}
     OUTPUT_SCRIPT deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
 
 # ============================================================
-# 의존성 설정 (vcpkg 툴체인 또는 환경 변수 사용)
+# 의존성 설정
 # ============================================================
-# 빌드 시 다음 명령어로 vcpkg 툴체인을 지정하세요:
-#   cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
+# 권장 방식:
+#   Qt Creator / CLI 에서 CMAKE_TOOLCHAIN_FILE 로 vcpkg toolchain 을 지정합니다.
+#   예) cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
 #
-# 또는 환경 변수로 개별 경로 지정 가능:
-#   - OPENCV_DIR: OpenCV 설치 경로
+# 선택적 환경 변수:
+#   - OPENCV_DIR: OpenCV CMake 패키지 경로
+#   - FFMPEG_ROOT: FFmpeg 루트 경로 (include/, lib/ 포함)
+#   - SRTP_ROOT: libsrtp 루트 경로 (include/, lib/ 포함)
 # ============================================================
+
+if(DEFINED CMAKE_TOOLCHAIN_FILE)
+    message(STATUS "Using CMake toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
+else()
+    message(STATUS "CMAKE_TOOLCHAIN_FILE is not set. Dependency discovery will rely on the default CMake search paths and optional *_ROOT environment variables.")
+endif()
 
 # OpenCV 패키지 찾기 (vcpkg 또는 환경 변수에서 자동 검사)
 if(DEFINED ENV{OPENCV_DIR})
@@ -239,8 +255,8 @@ if(DEFINED ENV{OPENCV_DIR})
 endif()
 
 find_package(OpenCV REQUIRED)
-target_include_directories(rtsp_test PRIVATE ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
+target_include_directories(${APP_TARGET} PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(${APP_TARGET} PRIVATE ${OpenCV_LIBS})
 
 # ONNX Runtime은 더 이상 사용하지 않으며 OpenVINO를 주력으로 사용합니다.
 
@@ -248,37 +264,76 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/CMakeLists_OpenVINO_Fragment.txt")
     include("${CMAKE_SOURCE_DIR}/CMakeLists_OpenVINO_Fragment.txt")
 endif()
 
-# SRTP & FFmpeg 연동
-find_package(FFmpeg QUIET)
+# FFmpeg 라이브러리 연동
 unset(FFMPEG_AVCODEC CACHE)
 unset(FFMPEG_AVFORMAT CACHE)
 unset(FFMPEG_AVUTIL CACHE)
 unset(FFMPEG_SWSCALE CACHE)
-find_library(FFMPEG_AVCODEC NAMES avcodec PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
-find_library(FFMPEG_AVFORMAT NAMES avformat PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
-find_library(FFMPEG_AVUTIL NAMES avutil PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
-find_library(FFMPEG_SWSCALE NAMES swscale PATHS "C:/vcpkg/installed/x64-windows/lib" "D:/vcpkg/installed/x64-windows/lib")
+unset(FFMPEG_INCLUDE_DIR CACHE)
+set(FFMPEG_ROOT_HINT "")
+if(DEFINED ENV{FFMPEG_ROOT})
+    set(FFMPEG_ROOT_HINT "$ENV{FFMPEG_ROOT}")
+endif()
+find_path(FFMPEG_INCLUDE_DIR libavformat/avformat.h
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        include
+)
+find_library(FFMPEG_AVCODEC NAMES avcodec
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
+find_library(FFMPEG_AVFORMAT NAMES avformat
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
+find_library(FFMPEG_AVUTIL NAMES avutil
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
+find_library(FFMPEG_SWSCALE NAMES swscale
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
 
-if(FFMPEG_AVCODEC AND FFMPEG_AVFORMAT AND FFMPEG_AVUTIL AND FFMPEG_SWSCALE)
-    target_include_directories(rtsp_test PRIVATE "C:/vcpkg/installed/x64-windows/include")
-    target_link_libraries(rtsp_test PRIVATE 
+if(FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC AND FFMPEG_AVFORMAT AND FFMPEG_AVUTIL AND FFMPEG_SWSCALE)
+    target_include_directories(${APP_TARGET} PRIVATE ${FFMPEG_INCLUDE_DIR})
+    target_link_libraries(${APP_TARGET} PRIVATE
         ${FFMPEG_AVCODEC} ${FFMPEG_AVFORMAT} ${FFMPEG_AVUTIL} ${FFMPEG_SWSCALE}
     )
 else()
-    message(WARNING "FFmpeg libavcodec/avformat/avutil/swscale not found in vcpkg struct.")
+    message(FATAL_ERROR "FFmpeg headers/libraries (avcodec, avformat, avutil, swscale) are required. Check your vcpkg installation.")
 endif()
 
+# libsrtp2 연동
+set(SRTP_ROOT_HINT "")
+if(DEFINED ENV{SRTP_ROOT})
+    set(SRTP_ROOT_HINT "$ENV{SRTP_ROOT}")
+endif()
 find_path(SRTP_INCLUDE_DIR srtp2/srtp.h
-    PATHS
-        "C:/vcpkg/installed/x64-windows/include"
-        "D:/vcpkg/installed/x64-windows/include")
+    HINTS
+        ${SRTP_ROOT_HINT}
+    PATH_SUFFIXES
+        include
+)
 find_library(SRTP_LIBRARY NAMES srtp2
-    PATHS
-        "C:/vcpkg/installed/x64-windows/lib"
-        "D:/vcpkg/installed/x64-windows/lib")
+    HINTS
+        ${SRTP_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
 if(SRTP_INCLUDE_DIR AND SRTP_LIBRARY)
-    target_include_directories(rtsp_test PRIVATE ${SRTP_INCLUDE_DIR})
-    target_link_libraries(rtsp_test PRIVATE ${SRTP_LIBRARY})
+    target_include_directories(${APP_TARGET} PRIVATE ${SRTP_INCLUDE_DIR})
+    target_link_libraries(${APP_TARGET} PRIVATE ${SRTP_LIBRARY})
 else()
-    message(WARNING "libsrtp2 not found. Make sure vcpkg is correctly installed.")
+    message(WARNING "libsrtp2 not found. Set CMAKE_TOOLCHAIN_FILE for vcpkg or provide SRTP_ROOT.")
 endif()

@@ -1,7 +1,7 @@
 #ifndef METADATASYNCHRONIZER_H
 #define METADATASYNCHRONIZER_H
 
-#include "infrastructure/metadata/metadatathread.h"
+#include "infrastructure/metadata/objectinfo.h"
 #include <QList>
 #include <QPair>
 #include <QQueue>
@@ -12,11 +12,15 @@ class MetadataSynchronizer
 public:
   void setDelayMs(int delayMs);
   void pushMetadata(const QList<ObjectInfo> &objects, qint64 tsMs);
-  QList<ObjectInfo> consumeReady(qint64 nowMs);
+  QList<ObjectInfo> consumeReady(qint64 frameTimestampMs);
 
 private:
+  static constexpr qsizetype kMaxQueuedMetadataFrames = 120;
+  static constexpr qint64 kMetadataStaleTimeoutMs = 1000;
+
   QQueue<QPair<qint64, QList<ObjectInfo>>> m_queue;
   QList<ObjectInfo> m_currentObjects;
+  qint64 m_currentTimestampMs = -1;
   int m_delayMs = 0;
 };
 
