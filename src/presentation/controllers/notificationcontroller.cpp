@@ -1,6 +1,14 @@
 #include "notificationcontroller.h"
 
 #include "presentation/widgets/toastoverlay.h"
+#include <QDateTime>
+#include <QStringList>
+
+QStringList NotificationController::s_history;
+
+QStringList NotificationController::getHistory() {
+  return s_history;
+}
 
 NotificationController::NotificationController(QWidget *hostWidget,
                                                QObject *parent)
@@ -32,6 +40,15 @@ void NotificationController::showVehicleDeparted(const QString &zoneName) {
 
 void NotificationController::showToast(const QString &message,
                                        ToastOverlay::Level level) {
+  QString timeStr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+  QString levelStr = (level == ToastOverlay::Level::Success) ? "INFO" : "WARN";
+  QString logMsg = QString("[%1] [%2] %3").arg(timeStr, levelStr, message);
+
+  s_history.prepend(logMsg);
+  while (s_history.size() > 100) {
+    s_history.removeLast();
+  }
+
   if (m_overlay) {
     m_overlay->showToast(message, level);
   }

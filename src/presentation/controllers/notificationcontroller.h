@@ -12,6 +12,8 @@ class NotificationController : public QObject {
 public:
   explicit NotificationController(QWidget *hostWidget, QObject *parent = nullptr);
 
+  static QStringList getHistory();
+
   void showRoiCreated(const QString &name);
   void showRoiDeleted(const QString &name);
   void showVehicleEntered(const QString &zoneName);
@@ -22,6 +24,7 @@ private:
   static QString normalizedLabel(const QString &value);
 
   ToastOverlay *m_overlay = nullptr;
+  static QStringList s_history;
 };
 
 #endif // NOTIFICATIONCONTROLLER_H
