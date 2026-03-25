@@ -51,7 +51,7 @@ public:
 
 signals:
   void frameCaptured(QSharedPointer<cv::Mat> framePtr, qint64 timestampMs);
-  void metadataReceived(const QList<ObjectInfo> &objects);
+  void metadataReceived(const QList<ObjectInfo> &objects, qint64 timestampMs);
   void logMessage(const QString &msg);
 
 private:

@@ -1,22 +1,11 @@
 #ifndef METADATATHREAD_H
 #define METADATATHREAD_H
 
+#include "infrastructure/metadata/objectinfo.h"
+
 #include <QMutex>
-#include <QProcess>
-#include <QRectF>
 #include <QSet>
 #include <QThread>
-
-struct ObjectInfo {
-  int id;
-  QString type;      // Person, Vehicle, Face...
-  QString extraInfo; // License Plate Number, etc. (Legacy)
-  QString plate;     // Explicit plate number
-  float score;       // Confidence score
-  QRectF rect;       // 0~1000 Normalized Coordinate or Pixel Coordinate
-  std::vector<float> reidFeatures; // ReID Feature Vector
-  QString reidId;                // Persistent ID from ReID matching
-};
 
 class MetadataThread : public QThread {
   Q_OBJECT
@@ -30,19 +19,11 @@ public:
   void stop();
 
 signals:
-  void metadataReceived(const QList<ObjectInfo> &objects);
+  void metadataReceived(const QList<ObjectInfo> &objects, qint64 timestampMs);
   void logMessage(const QString &msg);
 
 protected:
   void run() override;
-
-private slots:
-  void onReadyReadStandardOutput();
-
-private:
-  void processBuffer();
-  void parseFrame(const QString &frameXml);
-  QString findFFmpegPath();
 
 private:
   QString m_ip;
@@ -50,9 +31,7 @@ private:
   QString m_password;
   QString m_profile;
 
-  QProcess *m_process;
   QMutex m_mutex;
-  QByteArray m_buffer;
   QSet<QString> m_disabledTypes;
 };
 

@@ -144,7 +144,8 @@ end note
 
 현재 특징:
 
-- FFmpeg subprocess 기반으로 동작
+- FFmpeg 라이브러리(`libavformat`) 기반으로 metadata data stream을 직접 읽음
+- ONVIF XML 파서는 SRTP 경로와 공통 구현을 사용함
 - 비디오 스트림과는 별도 경로이지만 상위 계층에서 동기화
 
 관련 파일:
@@ -291,7 +292,7 @@ end note
 ## 현재 남아 있는 한계
 
 - `setTargetFps()`는 디코드 후 프레임 스킵이라 CPU 절감 효과가 제한적임
-- metadata는 여전히 FFmpeg subprocess 기반
+- metadata는 FFmpeg 라이브러리 기반으로 전환되었지만, 일반 RTSP 비디오 경로는 아직 OpenCV `VideoCapture` 기반
 - 하드웨어 디코드는 아직 미적용
 - reconnect 정책은 아직 더 부드럽게 조정할 여지가 있음
 
