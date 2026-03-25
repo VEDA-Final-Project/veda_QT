@@ -55,7 +55,7 @@ struct CctvUiRefs {
   QCheckBox *chkFace = nullptr;
   QCheckBox *chkPlate = nullptr;
   QCheckBox *chkOther = nullptr;
-  QCheckBox *chkShowFps = nullptr;
+  QPushButton *chkShowFps = nullptr;
   QLabel *lblAvgFps = nullptr;
   QPushButton *btnCaptureManual = nullptr;
   QPushButton *btnRecordManual = nullptr;

@@ -2,7 +2,11 @@
 <RCC version="1.0">
     <qresource prefix="/">
         <file>src/ui/icon/menu.png</file>
-        <file>src/ui/icon/settings.png</file>
+        <file>src/ui/icon/option.png</file>
+        <file>src/ui/icon/filter.png</file>
+        <file>src/ui/icon/capture.png</file>
+        <file>src/ui/icon/rec.png</file>
+        <file>src/ui/icon/fps.png</file>
         <file>src/ui/icon/minimize.png</file>
         <file>src/ui/icon/maximize.png</file>
         <file>src/ui/icon/exit.png</file>
