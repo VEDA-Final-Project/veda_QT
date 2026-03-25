@@ -6,5 +6,6 @@
         <file>src/ui/icon/minimize.png</file>
         <file>src/ui/icon/maximize.png</file>
         <file>src/ui/icon/exit.png</file>
+        <file>src/ui/icon/roadside_mark.ico</file>
     </qresource>
 </RCC>

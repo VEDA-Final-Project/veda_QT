@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
+#include <QIcon>
 #include <QTimer>
 
 // ── 카테고리 기반 로그 필터 핸들러 ──
@@ -56,6 +57,10 @@ int main(int argc, char *argv[]) {
       "std::vector<QSharedPointer<cv::Mat>>");
 
   QApplication a(argc, argv);
+  const QIcon appIcon(QStringLiteral(":/src/ui/icon/roadside_mark.ico"));
+  if (!appIcon.isNull()) {
+    a.setWindowIcon(appIcon);
+  }
 
   // Load Hanwha fonts
   QDir fontDir(":/resources/fonts");
@@ -84,8 +89,14 @@ int main(int argc, char *argv[]) {
 
   MainWindow w;
   w.setWindowTitle(QStringLiteral("Veda Main"));
+  if (!appIcon.isNull()) {
+    w.setWindowIcon(appIcon);
+  }
 
   LoginPage loginPage;
+  if (!appIcon.isNull()) {
+    loginPage.setWindowIcon(appIcon);
+  }
   bool isAuthenticated = false;
 
   MainWindowController *controller = nullptr;
