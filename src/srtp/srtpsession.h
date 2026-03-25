@@ -17,6 +17,7 @@ public:
   explicit SrtpSession(QObject *parent = nullptr);
   virtual ~SrtpSession();
 
+  void setAllowedFingerprints(const QStringList &fingerprints);
   void connectToCamera(const QString &ip, int port = 322);
   void disconnectFromCamera();
 

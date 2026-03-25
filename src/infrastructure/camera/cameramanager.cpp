@@ -44,7 +44,11 @@ void CameraManager::startDisplayPipeline() {
       connect(m_srtpOrchestrator, &SrtpOrchestrator::logMessage, this, &CameraManager::logMessage);
     }
     m_srtpOrchestrator->setDisabledObjectTypes(m_disabledTypes);
-    m_srtpOrchestrator->setConnectionInfo(m_connectionInfo.ip, m_connectionInfo.username, m_connectionInfo.password, m_connectionInfo.profile);
+    m_srtpOrchestrator->setConnectionInfo(m_connectionInfo.ip,
+                                         m_connectionInfo.username,
+                                         m_connectionInfo.password,
+                                         m_connectionInfo.profile,
+                                         m_connectionInfo.pinnedSha256);
     m_srtpOrchestrator->start();
     return;
   }

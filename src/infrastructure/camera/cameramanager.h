@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QThread>
 
 struct CameraConnectionInfo {
@@ -17,6 +18,7 @@ struct CameraConnectionInfo {
   QString profile;
   QString subProfile;
   bool srtpEnabled = false;
+  QStringList pinnedSha256;
 
   bool isValid() const { return !ip.isEmpty() && !username.isEmpty(); }
 };

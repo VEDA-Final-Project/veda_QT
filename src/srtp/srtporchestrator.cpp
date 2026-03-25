@@ -107,8 +107,16 @@ SrtpOrchestrator::~SrtpOrchestrator() {
   delete m_videoDecoder;
 }
 
-void SrtpOrchestrator::setConnectionInfo(const QString &ip, const QString &user, const QString &password, const QString &profile) {
-  m_ip = ip; m_user = user; m_password = password; m_profile = profile;
+void SrtpOrchestrator::setConnectionInfo(const QString &ip,
+                                         const QString &user,
+                                         const QString &password,
+                                         const QString &profile,
+                                         const QStringList &allowedFingerprints) {
+  m_ip = ip;
+  m_user = user;
+  m_password = password;
+  m_profile = profile;
+  m_allowedFingerprints = allowedFingerprints;
 }
 
 void SrtpOrchestrator::setDisabledObjectTypes(const QSet<QString> &types) {
@@ -183,6 +191,7 @@ void SrtpOrchestrator::start() {
   m_phase = HandshakePhase::ConnectingTls;
   bindUdpSockets();
   m_rtspClient->setCredentials(m_user, m_password);
+  m_session->setAllowedFingerprints(m_allowedFingerprints);
   m_session->connectToCamera(m_ip, 322);
 }
 

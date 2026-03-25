@@ -689,6 +689,7 @@ bool CameraSource::refreshConnectionFromConfig(const QString &displayProfile,
   connectionInfo.username = cfg.cameraUsername(m_cameraKey).trimmed();
   connectionInfo.password = cfg.cameraPassword(m_cameraKey);
   connectionInfo.srtpEnabled = cfg.cameraSrtpEnabled(m_cameraKey);
+  connectionInfo.pinnedSha256 = cfg.cameraPinnedSha256(m_cameraKey);
 
   // 공식 MIKEY 샘플 검증 중에는 허용된 카메라만 SRTP를 타게 해서
   // RTSP 요청/응답 흐름을 단계적으로 확장합니다.

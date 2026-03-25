@@ -18,25 +18,37 @@
     "srtpEnabled": true,
     "ip": "192.168.0.23",
     "username": "admin",
-    "password": "1team@@@"
+    "password": "1team@@@",
+    "pinnedSha256": [
+      "c14cfa33c9a713649c52dab20e5de0b75ba2a62522f3a42e6341a3b08572df13"
+    ]
   },
   "camera2": {
     "srtpEnabled": true,
     "ip": "192.168.0.34",
     "username": "admin",
-    "password": "1team@@@"
+    "password": "1team@@@",
+    "pinnedSha256": [
+      "c14cfa33c9a713649c52dab20e5de0b75ba2a62522f3a42e6341a3b08572df13"
+    ]
   },
   "camera3": {
     "srtpEnabled": true,
     "ip": "192.168.0.76",
     "username": "admin",
-    "password": "1team@@@"
+    "password": "1team@@@",
+    "pinnedSha256": [
+      "c14cfa33c9a713649c52dab20e5de0b75ba2a62522f3a42e6341a3b08572df13"
+    ]
   },
   "camera4": {
     "srtpEnabled": true,
     "ip": "192.168.0.78",
     "username": "admin",
-    "password": "1team@@@"
+    "password": "1team@@@",
+    "pinnedSha256": [
+      "c14cfa33c9a713649c52dab20e5de0b75ba2a62522f3a42e6341a3b08572df13"
+    ]
   },
   "video": {
     "sourceWidth": 3840,
