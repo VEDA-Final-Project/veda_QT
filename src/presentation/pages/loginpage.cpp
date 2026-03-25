@@ -1,149 +1,104 @@
 #include "loginpage.h"
+#include "loginpageview.h"
 
 #include "config/config.h"
 #include "infrastructure/rpi/rpiauthclient.h"
 
 #include <QCloseEvent>
-#include <QFrame>
-#include <QHBoxLayout>
+#include <QEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPushButton>
-#include <QRegularExpression>
-#include <QRegularExpressionValidator>
-#include <QSizePolicy>
-#include <QVBoxLayout>
+#include <QResizeEvent>
 
 LoginPage::LoginPage(QWidget *parent) : QWidget(parent) {
   authClient_ = new RpiAuthClient(this);
   authClient_->setTimeouts(Config::instance().authConnectTimeoutMs(),
                            Config::instance().authRequestTimeoutMs());
+  setWindowFlag(Qt::FramelessWindowHint, true);
   buildUi();
   connect(authClient_, &RpiAuthClient::loginStepFinished, this,
           &LoginPage::handleLoginStepFinished);
   connect(authClient_, &RpiAuthClient::authFinished, this,
           &LoginPage::handleAuthFinished);
   setWindowTitle(QStringLiteral("로그인"));
-  resize(920, 600);
+  resize(840, 540);
 }
 
 void LoginPage::buildUi() {
-  setObjectName("loginPage");
-
-  auto *rootLayout = new QHBoxLayout(this);
-  rootLayout->setContentsMargins(0, 0, 0, 0);
-  rootLayout->setSpacing(0);
-
-  auto *leftPanel = new QFrame(this);
-  leftPanel->setObjectName("leftPanel");
-  leftPanel->setFixedWidth(350);
-
-  auto *leftLayout = new QVBoxLayout(leftPanel);
-  leftLayout->setContentsMargins(0, 0, 0, 0);
-  leftLayout->setSpacing(0);
-
-  auto *leftImage = new QLabel(leftPanel);
-  leftImage->setObjectName("leftImage");
-  leftImage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  leftImage->setAlignment(Qt::AlignCenter);
-  leftImage->setText(QString());
-  leftLayout->addWidget(leftImage, 1);
-
-  auto *rightPanel = new QFrame(this);
-  rightPanel->setObjectName("rightPanel");
-
-  auto *rightLayout = new QVBoxLayout(rightPanel);
-  rightLayout->setContentsMargins(24, 22, 24, 22);
-  rightLayout->setSpacing(16);
-
-  auto *titleLabel = new QLabel(QStringLiteral("로그인"), rightPanel);
-  titleLabel->setObjectName("titleLabel");
-  titleLabel->setAlignment(Qt::AlignHCenter);
-
-  auto *credentialHint = new QLabel(
-      QStringLiteral("Raspberry Pi 인증 서버와 OTP 앱으로 인증합니다."),
-      rightPanel);
-  credentialHint->setObjectName("credentialHint");
-  credentialHint->setAlignment(Qt::AlignHCenter);
-
-  auto *formArea = new QWidget(rightPanel);
-  formArea->setObjectName("formArea");
-  formArea->setFixedWidth(430);
-
-  auto *formLayout = new QVBoxLayout(formArea);
-  formLayout->setContentsMargins(0, 0, 0, 0);
-  formLayout->setSpacing(16);
-
-  idInput_ = new QLineEdit(formArea);
-  idInput_->setObjectName("idInput");
-  idInput_->setMinimumHeight(54);
-  idInput_->setPlaceholderText(QStringLiteral("아이디"));
-
-  passwordInput_ = new QLineEdit(formArea);
-  passwordInput_->setObjectName("passwordInput");
-  passwordInput_->setMinimumHeight(54);
-  passwordInput_->setEchoMode(QLineEdit::Password);
-  passwordInput_->setPlaceholderText(QStringLiteral("비밀번호"));
-
-  otpHintLabel_ = new QLabel(formArea);
-  otpHintLabel_->setObjectName("otpHintLabel");
-  otpHintLabel_->setAlignment(Qt::AlignCenter);
-  otpHintLabel_->setWordWrap(true);
-
-  otpInput_ = new QLineEdit(formArea);
-  otpInput_->setObjectName("otpInput");
-  otpInput_->setMinimumHeight(54);
-  otpInput_->setPlaceholderText(QStringLiteral("OTP (6자리)"));
-  otpInput_->setMaxLength(6);
-  otpInput_->setValidator(new QRegularExpressionValidator(
-      QRegularExpression(QStringLiteral("\\d{0,6}")), otpInput_));
-
-  loginButton_ = new QPushButton(QStringLiteral("인증하고 시작"), formArea);
-  loginButton_->setObjectName("loginButton");
-  loginButton_->setMinimumHeight(56);
-
-  backButton_ = new QPushButton(QStringLiteral("뒤로가기"), formArea);
-  backButton_->setObjectName("secondaryButton");
-  backButton_->setMinimumHeight(56);
-
-  loginStatusLabel_ = new QLabel(formArea);
-  loginStatusLabel_->setObjectName("loginStatusLabel");
-  loginStatusLabel_->setAlignment(Qt::AlignCenter);
-  loginStatusLabel_->setVisible(false);
-
-  auto *buttonRow = new QHBoxLayout();
-  buttonRow->setContentsMargins(0, 0, 0, 0);
-  buttonRow->setSpacing(12);
-  buttonRow->addWidget(backButton_);
-  buttonRow->addWidget(loginButton_, 1);
-
-  formLayout->addWidget(idInput_);
-  formLayout->addWidget(passwordInput_);
-  formLayout->addWidget(otpHintLabel_);
-  formLayout->addWidget(otpInput_);
-  formLayout->addLayout(buttonRow);
-  formLayout->addWidget(loginStatusLabel_);
+  const LoginPageUiRefs ui = buildLoginPageUi(this);
+  leftImageLabel_ = ui.leftImageLabel;
+  idInput_ = ui.idInput;
+  passwordInput_ = ui.passwordInput;
+  otpHintLabel_ = ui.otpHintLabel;
+  otpInput_ = ui.otpInput;
+  loginButton_ = ui.loginButton;
+  backButton_ = ui.backButton;
+  closeButton_ = ui.closeButton;
+  loginStatusLabel_ = ui.loginStatusLabel;
 
   connect(loginButton_, &QPushButton::clicked, this, &LoginPage::handleLogin);
   connect(backButton_, &QPushButton::clicked, this,
           &LoginPage::showCredentialsStep);
+  connect(closeButton_, &QPushButton::clicked, this, &QWidget::close);
   connect(idInput_, &QLineEdit::returnPressed, this, &LoginPage::handleLogin);
   connect(passwordInput_, &QLineEdit::returnPressed, this,
           &LoginPage::handleLogin);
   connect(otpInput_, &QLineEdit::returnPressed, this, &LoginPage::handleLogin);
 
-  rightLayout->addStretch();
-  rightLayout->addWidget(titleLabel);
-  rightLayout->addWidget(credentialHint);
-  rightLayout->addSpacing(4);
-  rightLayout->addWidget(formArea, 0, Qt::AlignHCenter);
-  rightLayout->addStretch();
+  installEventFilter(this);
+  const auto widgets = findChildren<QWidget *>();
+  for (QWidget *widget : widgets) {
+    widget->installEventFilter(this);
+  }
 
-  rootLayout->addWidget(leftPanel);
-  rootLayout->addWidget(rightPanel, 1);
-
+  updateLeftImage();
   updateStepUi();
+}
+
+bool LoginPage::eventFilter(QObject *watched, QEvent *event) {
+  if (qobject_cast<QLineEdit *>(watched) || qobject_cast<QPushButton *>(watched)) {
+    return QWidget::eventFilter(watched, event);
+  }
+
+  switch (event->type()) {
+  case QEvent::MouseButtonPress: {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (mouseEvent->button() == Qt::LeftButton) {
+      dragInProgress_ = true;
+      dragOffset_ = mouseEvent->globalPosition().toPoint() - frameGeometry().topLeft();
+      return true;
+    }
+    break;
+  }
+  case QEvent::MouseMove: {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (dragInProgress_ && (mouseEvent->buttons() & Qt::LeftButton)) {
+      move(mouseEvent->globalPosition().toPoint() - dragOffset_);
+      return true;
+    }
+    break;
+  }
+  case QEvent::MouseButtonRelease: {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (mouseEvent->button() == Qt::LeftButton) {
+      dragInProgress_ = false;
+      return true;
+    }
+    break;
+  }
+  default:
+    break;
+  }
+
+  return QWidget::eventFilter(watched, event);
+}
+
+void LoginPage::resizeEvent(QResizeEvent *event) {
+  QWidget::resizeEvent(event);
+  updateLeftImage();
 }
 
 void LoginPage::handleLogin() {
@@ -314,9 +269,10 @@ void LoginPage::showStatusMessage(const QString &message, bool success) {
   loginStatusLabel_->setText(message);
   loginStatusLabel_->setStyleSheet(
       success
-          ? QStringLiteral("color: #10B981; font-size: 14px; font-weight: 700;")
+          ? QStringLiteral(
+                "color: #10B981; font-size: 12px; font-weight: 700;")
           : QStringLiteral(
-                "color: #EF4444; font-size: 14px; font-weight: 700;"));
+                "color: #EF4444; font-size: 12px; font-weight: 700;"));
 }
 
 void LoginPage::showProgressMessage(const QString &message) {
@@ -327,7 +283,7 @@ void LoginPage::showProgressMessage(const QString &message) {
   loginStatusLabel_->setVisible(true);
   loginStatusLabel_->setText(message);
   loginStatusLabel_->setStyleSheet(
-      QStringLiteral("color: #CBD5E1; font-size: 14px; font-weight: 700;"));
+      QStringLiteral("color: #CBD5E1; font-size: 12px; font-weight: 700;"));
 }
 
 void LoginPage::updateStepUi() {
@@ -355,7 +311,7 @@ void LoginPage::updateStepUi() {
   }
   if (loginButton_) {
     loginButton_->setText(otpStep ? QStringLiteral("인증하고 시작")
-                                  : QStringLiteral("다음"));
+                                  : QStringLiteral("로그인"));
   }
 }
 
@@ -401,6 +357,10 @@ QString LoginPage::messageForAuthCode(const QString &code,
   return fallbackMessage.isEmpty()
              ? QStringLiteral("알 수 없는 인증 오류가 발생했습니다.")
              : fallbackMessage;
+}
+
+void LoginPage::updateLeftImage() {
+  updateLoginPageLeftImage(leftImageLabel_);
 }
 
 void LoginPage::closeEvent(QCloseEvent *event) {

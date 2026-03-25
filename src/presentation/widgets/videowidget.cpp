@@ -309,7 +309,10 @@ void VideoWidget::paintEvent(QPaintEvent *event) {
     p.drawEllipse(px + 10, py + 8, 12, 12);
 
     p.setPen(Qt::white);
-    p.setFont(QFont("Arial", 11, QFont::Bold));
+    QFont recFont = font();
+    recFont.setPointSize(11);
+    recFont.setBold(true);
+    p.setFont(recFont);
     p.drawText(px + 28, py, 50, 28, Qt::AlignVCenter | Qt::AlignLeft, "REC");
   }
 }
