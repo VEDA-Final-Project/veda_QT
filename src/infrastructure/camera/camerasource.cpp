@@ -356,8 +356,9 @@ QStringList CameraSource::roiLabels() const {
   return labels;
 }
 
-void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects) {
-  m_cameraSession.pushMetadata(objects, QDateTime::currentMSecsSinceEpoch());
+void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects,
+                                      qint64 timestampMs) {
+  m_cameraSession.pushMetadata(objects, timestampMs);
 
   if ((!m_roiSyncTimer.isValid() ||
        m_roiSyncTimer.elapsed() >= kRoiSyncIntervalMs) &&
@@ -396,7 +397,7 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
   setStatus(Status::Live);
 
   const QList<ObjectInfo> readyMetadata =
-      m_cameraSession.consumeReadyMetadata(QDateTime::currentMSecsSinceEpoch());
+      m_cameraSession.consumeReadyMetadata(timestampMs);
   m_latestFramePtr = framePtr;
   m_latestFrameObjects = readyMetadata;
   m_latestBufferedFrameTimestampMs = timestampMs;

@@ -20,7 +20,7 @@ public:
   void setTypeFilter(TypeFilter filter);
 
 signals:
-  void metadataReceived(const QList<ObjectInfo> &objects);
+  void metadataReceived(const QList<ObjectInfo> &objects, qint64 timestampMs);
   void logMessage(const QString &msg);
 
 private:
@@ -29,6 +29,8 @@ private:
   bool isTypeDisabled(const QString &type) const;
 
   QByteArray m_buffer;
+  QByteArray m_currentStreamStartTag;
+  QByteArray m_currentStreamClosingTag;
   TypeFilter m_typeFilter;
 };
 

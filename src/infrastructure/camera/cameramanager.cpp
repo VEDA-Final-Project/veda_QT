@@ -26,7 +26,8 @@ void CameraManager::createAnalyticsThreads() {
   if (!m_metadataThread) {
     m_metadataThread = new MetadataThread(this);
     m_metadataThread->setDisabledTypes(m_disabledTypes);
-    connect(m_metadataThread, &MetadataThread::metadataReceived, this, &CameraManager::metadataReceived);
+    connect(m_metadataThread, &MetadataThread::metadataReceived, this,
+            &CameraManager::metadataReceived);
     connect(m_metadataThread, &MetadataThread::logMessage, this, &CameraManager::logMessage);
   }
 }
@@ -40,7 +41,10 @@ void CameraManager::startDisplayPipeline() {
     if (!m_srtpOrchestrator) {
       m_srtpOrchestrator = new SrtpOrchestrator(this);
       connect(m_srtpOrchestrator, &SrtpOrchestrator::frameCaptured, this, &CameraManager::frameCaptured);
-      connect(m_srtpOrchestrator, &SrtpOrchestrator::metadataReceived, this, &CameraManager::metadataReceived);
+      connect(m_srtpOrchestrator, &SrtpOrchestrator::metadataReceived, this,
+              [this](const QList<ObjectInfo> &objects) {
+                emit metadataReceived(objects, QDateTime::currentMSecsSinceEpoch());
+              });
       connect(m_srtpOrchestrator, &SrtpOrchestrator::logMessage, this, &CameraManager::logMessage);
     }
     m_srtpOrchestrator->setDisabledObjectTypes(m_disabledTypes);

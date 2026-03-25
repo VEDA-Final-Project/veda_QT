@@ -19,7 +19,7 @@ public:
   void stop();
 
 signals:
-  void metadataReceived(const QList<ObjectInfo> &objects);
+  void metadataReceived(const QList<ObjectInfo> &objects, qint64 timestampMs);
   void logMessage(const QString &msg);
 
 protected:

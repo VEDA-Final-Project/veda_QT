@@ -231,24 +231,23 @@ qt_generate_deploy_app_script(
 install(SCRIPT ${deploy_script})
 
 # ============================================================
-# 의존성 설정 (vcpkg 툴체인 또는 환경 변수 사용)
+# 의존성 설정
 # ============================================================
-# 빌드 시 다음 명령어로 vcpkg 툴체인을 지정하세요:
-#   cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
+# 권장 방식:
+#   Qt Creator / CLI 에서 CMAKE_TOOLCHAIN_FILE 로 vcpkg toolchain 을 지정합니다.
+#   예) cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
 #
-# 또는 환경 변수로 개별 경로 지정 가능:
-#   - OPENCV_DIR: OpenCV 설치 경로
+# 선택적 환경 변수:
+#   - OPENCV_DIR: OpenCV CMake 패키지 경로
+#   - FFMPEG_ROOT: FFmpeg 루트 경로 (include/, lib/ 포함)
+#   - SRTP_ROOT: libsrtp 루트 경로 (include/, lib/ 포함)
 # ============================================================
 
-set(VCPKG_INCLUDE_PATHS
-    "C:/vcpkg/installed/x64-windows/include"
-    "D:/vcpkg/installed/x64-windows/include"
-)
-
-set(VCPKG_LIB_PATHS
-    "C:/vcpkg/installed/x64-windows/lib"
-    "D:/vcpkg/installed/x64-windows/lib"
-)
+if(DEFINED CMAKE_TOOLCHAIN_FILE)
+    message(STATUS "Using CMake toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
+else()
+    message(STATUS "CMAKE_TOOLCHAIN_FILE is not set. Dependency discovery will rely on the default CMake search paths and optional *_ROOT environment variables.")
+endif()
 
 # OpenCV 패키지 찾기 (vcpkg 또는 환경 변수에서 자동 검사)
 if(DEFINED ENV{OPENCV_DIR})
@@ -271,13 +270,40 @@ unset(FFMPEG_AVFORMAT CACHE)
 unset(FFMPEG_AVUTIL CACHE)
 unset(FFMPEG_SWSCALE CACHE)
 unset(FFMPEG_INCLUDE_DIR CACHE)
+set(FFMPEG_ROOT_HINT "")
+if(DEFINED ENV{FFMPEG_ROOT})
+    set(FFMPEG_ROOT_HINT "$ENV{FFMPEG_ROOT}")
+endif()
 find_path(FFMPEG_INCLUDE_DIR libavformat/avformat.h
-    PATHS ${VCPKG_INCLUDE_PATHS}
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        include
 )
-find_library(FFMPEG_AVCODEC NAMES avcodec PATHS ${VCPKG_LIB_PATHS})
-find_library(FFMPEG_AVFORMAT NAMES avformat PATHS ${VCPKG_LIB_PATHS})
-find_library(FFMPEG_AVUTIL NAMES avutil PATHS ${VCPKG_LIB_PATHS})
-find_library(FFMPEG_SWSCALE NAMES swscale PATHS ${VCPKG_LIB_PATHS})
+find_library(FFMPEG_AVCODEC NAMES avcodec
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
+find_library(FFMPEG_AVFORMAT NAMES avformat
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
+find_library(FFMPEG_AVUTIL NAMES avutil
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
+find_library(FFMPEG_SWSCALE NAMES swscale
+    HINTS
+        ${FFMPEG_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
 
 if(FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC AND FFMPEG_AVFORMAT AND FFMPEG_AVUTIL AND FFMPEG_SWSCALE)
     target_include_directories(${APP_TARGET} PRIVATE ${FFMPEG_INCLUDE_DIR})
@@ -289,13 +315,25 @@ else()
 endif()
 
 # libsrtp2 연동
+set(SRTP_ROOT_HINT "")
+if(DEFINED ENV{SRTP_ROOT})
+    set(SRTP_ROOT_HINT "$ENV{SRTP_ROOT}")
+endif()
 find_path(SRTP_INCLUDE_DIR srtp2/srtp.h
-    PATHS ${VCPKG_INCLUDE_PATHS}
+    HINTS
+        ${SRTP_ROOT_HINT}
+    PATH_SUFFIXES
+        include
 )
-find_library(SRTP_LIBRARY NAMES srtp2 PATHS ${VCPKG_LIB_PATHS})
+find_library(SRTP_LIBRARY NAMES srtp2
+    HINTS
+        ${SRTP_ROOT_HINT}
+    PATH_SUFFIXES
+        lib
+)
 if(SRTP_INCLUDE_DIR AND SRTP_LIBRARY)
     target_include_directories(${APP_TARGET} PRIVATE ${SRTP_INCLUDE_DIR})
     target_link_libraries(${APP_TARGET} PRIVATE ${SRTP_LIBRARY})
 else()
-    message(WARNING "libsrtp2 not found. Make sure vcpkg is correctly installed.")
+    message(WARNING "libsrtp2 not found. Set CMAKE_TOOLCHAIN_FILE for vcpkg or provide SRTP_ROOT.")
 endif()

@@ -148,19 +148,10 @@ void CctvDashboardView::setupUi() {
 
   m_ui.chkVehicle = new QCheckBox(QString::fromUtf8("차량"), this);
   m_ui.chkVehicle->setChecked(true);
-  m_ui.chkPerson = new QCheckBox(QString::fromUtf8("사람"), this);
-  m_ui.chkPerson->setChecked(true);
-  m_ui.chkFace = new QCheckBox(QString::fromUtf8("얼굴"), this);
-  m_ui.chkFace->setChecked(true);
   m_ui.chkPlate = new QCheckBox(QString::fromUtf8("번호판"), this);
   m_ui.chkPlate->setChecked(true);
-  m_ui.chkOther = new QCheckBox(QString::fromUtf8("기타"), this);
-  m_ui.chkOther->setChecked(false);
   channelPanelLayout->addWidget(m_ui.chkVehicle);
-  channelPanelLayout->addWidget(m_ui.chkPerson);
-  channelPanelLayout->addWidget(m_ui.chkFace);
   channelPanelLayout->addWidget(m_ui.chkPlate);
-  channelPanelLayout->addWidget(m_ui.chkOther);
   channelPanelLayout->addSpacing(12);
 
   QLabel *displayTitle = new QLabel(QString::fromUtf8("DISPLAY"), this);

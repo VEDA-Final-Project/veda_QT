@@ -8,8 +8,7 @@ extern "C" {
 #include <libavutil/error.h>
 }
 
-FfmpegMetadataStreamReader::FfmpegMetadataStreamReader(QString url,
-                                                       StopCallback shouldStop)
+FfmpegMetadataStreamReader::FfmpegMetadataStreamReader(QString url, StopCallback shouldStop)
     : m_url(std::move(url)), m_shouldStop(std::move(shouldStop)) {}
 
 FfmpegMetadataStreamReader::~FfmpegMetadataStreamReader() {
