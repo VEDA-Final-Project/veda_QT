@@ -402,8 +402,8 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
   m_latestFrameObjects = readyMetadata;
   m_latestBufferedFrameTimestampMs = timestampMs;
 
-  // Restore 30fps tracking update
-  if (m_parkingService && !readyMetadata.isEmpty()) {
+  // Keep parking state moving even when the metadata frame is empty.
+  if (m_parkingService) {
     const auto &cfg = Config::instance();
     m_parkingService->processMetadata(readyMetadata, 0, cfg.effectiveWidth(),
                                       cfg.sourceHeight(), 5000);
