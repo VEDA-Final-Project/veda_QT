@@ -1,39 +1,33 @@
 #ifndef SRTPMETADATAPARSER_H
 #define SRTPMETADATAPARSER_H
 
-#include <QObject>
+#include "infrastructure/metadata/objectinfo.h"
+
 #include <QByteArray>
 #include <QList>
+#include <QObject>
 #include <QSet>
-#include "infrastructure/metadata/metadatathread.h" // ObjectInfo 구조체 재사용
+
+class OnvifMetadataParser;
 
 /**
- * @brief SRTP 메타데이터 파싱 클래스 (Step 5)
- * - 재조립된 XML 데이터를 QXmlStreamReader를 사용하여 파싱합니다.
- * - 기존 MetadataThread의 파싱 로직을 캡슐화합니다.
+ * @brief SRTP 메타데이터 파싱 어댑터
+ * - SRTP 재조립 XML 청크를 공통 ONVIF 메타데이터 파서에 위임합니다.
  */
 class SrtpMetadataParser : public QObject {
   Q_OBJECT
 public:
   explicit SrtpMetadataParser(QObject *parent = nullptr);
   void setDisabledTypes(const QSet<QString> &types);
-
-  /**
-   * @brief XML 프레임 파싱
-   * @param xmlData 재조립된 XML 프레임 데이터
-   */
   void parse(const QByteArray &xmlData);
+  void reset();
 
 signals:
   void metadataReceived(const QList<ObjectInfo> &objects);
   void logMessage(const QString &msg);
 
 private:
-  void processBuffer();
-  void parseFrame(const QString &frameXml);
-
-private:
-  QByteArray m_buffer;
+  OnvifMetadataParser *m_parser = nullptr;
   QSet<QString> m_disabledTypes;
 };
 

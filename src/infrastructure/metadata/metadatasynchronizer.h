@@ -1,7 +1,7 @@
 #ifndef METADATASYNCHRONIZER_H
 #define METADATASYNCHRONIZER_H
 
-#include "infrastructure/metadata/metadatathread.h"
+#include "infrastructure/metadata/objectinfo.h"
 #include <QList>
 #include <QPair>
 #include <QQueue>

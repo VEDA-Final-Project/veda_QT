@@ -178,6 +178,9 @@ bool SrtpOrchestrator::isRunning() const {
 void SrtpOrchestrator::start() {
   m_stopRequested = false;
   clearNegotiationState();
+  if (m_metaParser) {
+    m_metaParser->reset();
+  }
   m_videoPreferTcpInterleaved = true;
   m_metadataPreferUdp = !forceMetadataTcpInterleaved();
   m_phase = HandshakePhase::ConnectingTls;
@@ -194,6 +197,9 @@ void SrtpOrchestrator::stop() {
   m_session->disconnectFromCamera();
   m_udpSocket->close();
   m_metaUdpSocket->close();
+  if (m_metaParser) {
+    m_metaParser->reset();
+  }
   clearNegotiationState();
   m_phase = HandshakePhase::Idle;
 }

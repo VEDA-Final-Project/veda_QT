@@ -15,7 +15,7 @@
 #include "srtpvideothread.h"
 #include "srtpmetadataparser.h"
 #include "mikeybuilder.h"
-#include "infrastructure/metadata/metadatathread.h" // ObjectInfo
+#include "infrastructure/metadata/objectinfo.h"
 
 class SrtpOrchestrator : public QObject {
   Q_OBJECT

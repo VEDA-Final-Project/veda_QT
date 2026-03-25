@@ -71,7 +71,7 @@ src/
 ### 5. `infrastructure`
 
 - 외부 시스템 연결 구현 계층입니다.
-- DB, RTSP, FFmpeg subprocess, OCR 엔진, Telegram API, RPi TCP, 파일 저장, 설정 파일 입출력이 여기에 속합니다.
+- DB, RTSP, FFmpeg 라이브러리 연동, OCR 엔진, Telegram API, RPi TCP, 파일 저장, 설정 파일 입출력이 여기에 속합니다.
 - application/domain에서 정의한 추상 인터페이스를 구현하는 위치로 사용합니다.
 
 ### 6. `shared`

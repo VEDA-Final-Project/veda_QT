@@ -1,7 +1,7 @@
 #ifndef CAMERACHANNELRUNTIME_H
 #define CAMERACHANNELRUNTIME_H
 
-#include "infrastructure/metadata/metadatathread.h"
+#include "infrastructure/metadata/objectinfo.h"
 #include "domain/parking/vehicletracker.h"
 #include <QElapsedTimer>
 #include <QImage>
