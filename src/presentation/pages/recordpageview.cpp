@@ -33,9 +33,9 @@ void RecordPageView::setupUi() {
   m_ui.cmbManualCamera->addItem(QStringLiteral("Ch3"), 2);
   m_ui.cmbManualCamera->addItem(QStringLiteral("Ch4"), 3);
   m_ui.btnCaptureRecordTab =
-      new QPushButton(QString::fromUtf8("📸 즉시 캡처"), this);
+      new QPushButton(QString::fromUtf8("즉시 캡처"), this);
   m_ui.btnRecordRecordTab =
-      new QPushButton(QString::fromUtf8("⏺ 녹화 시작"), this);
+      new QPushButton(QString::fromUtf8("녹화 시작"), this);
   m_ui.btnCaptureRecordTab->setMinimumHeight(32);
   m_ui.btnRecordRecordTab->setMinimumHeight(32);
   m_ui.cmbManualCamera->setMinimumHeight(32);
@@ -65,7 +65,7 @@ void RecordPageView::setupUi() {
   eventLayout->addWidget(m_ui.btnApplyEventSetting);
   eventLayout->addSpacing(8);
   m_ui.btnTriggerEventRecord =
-      new QPushButton(QString::fromUtf8("▶ 저장 실행"), this);
+      new QPushButton(QString::fromUtf8("저장 실행"), this);
   m_ui.btnTriggerEventRecord->setMinimumHeight(32);
   m_ui.btnTriggerEventRecord->setStyleSheet(
       "background: #2563eb; color: white; border-radius: 4px; font-weight: "
@@ -96,7 +96,7 @@ void RecordPageView::setupUi() {
       "color: #10b981; font-weight: bold; margin-left: 8px;");
   continuousLayout->addWidget(m_ui.lblContinuousStatus);
   continuousLayout->addSpacing(16);
-  m_ui.btnViewContinuous = new QPushButton(QString::fromUtf8("▶ 상시영상"), this);
+  m_ui.btnViewContinuous = new QPushButton(QString::fromUtf8("상시영상"), this);
   m_ui.btnViewContinuous->setMinimumHeight(32);
   m_ui.btnViewContinuous->setStyleSheet(
       "background: #10b981; color: white; border-radius: 4px; font-weight: "
@@ -111,9 +111,9 @@ void RecordPageView::setupUi() {
   listLayout->setSpacing(4);
   QHBoxLayout *titleRow = new QHBoxLayout();
   m_ui.btnRefreshRecordLogs =
-      new QPushButton(QString::fromUtf8("🔄 새로고침"), this);
+      new QPushButton(QString::fromUtf8("새로고침"), this);
   m_ui.btnDeleteRecordLog =
-      new QPushButton(QString::fromUtf8("🗑 선택 삭제"), this);
+      new QPushButton(QString::fromUtf8("선택 삭제"), this);
   const QString topBtnStyle =
       "QPushButton { background: #334155; color: #CBD5E1; border: none; "
       "border-radius: 4px; padding: 4px 10px; font-size: 11px; }"
@@ -182,9 +182,9 @@ void RecordPageView::setupUi() {
 
   QHBoxLayout *btnRow = new QHBoxLayout();
   btnRow->setSpacing(6);
-  m_ui.btnVideoPlay = new QPushButton(QString::fromUtf8("▶ 재생"), this);
-  m_ui.btnVideoPause = new QPushButton(QString::fromUtf8("⏸ 일시정지"), this);
-  m_ui.btnVideoStop = new QPushButton(QString::fromUtf8("⏹ 정지"), this);
+  m_ui.btnVideoPlay = new QPushButton(QString::fromUtf8("재생"), this);
+  m_ui.btnVideoPause = new QPushButton(QString::fromUtf8("일시정지"), this);
+  m_ui.btnVideoStop = new QPushButton(QString::fromUtf8("정지"), this);
   m_ui.videoTimeLabel = new QLabel(QString::fromUtf8("00:00 / 00:00"), this);
   const QString playerBtnStyle =
       "QPushButton { background: #334155; color: #CBD5E1; border: none; "

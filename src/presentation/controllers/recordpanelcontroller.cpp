@@ -733,14 +733,14 @@ void RecordPanelController::onTriggerEventRecord() {
     desc = QString::fromUtf8("수동 이벤트");
 
   if (m_ui.btnTriggerEventRecord) {
-    m_ui.btnTriggerEventRecord->setText(QString::fromUtf8("⏺ 저장 중..."));
+    m_ui.btnTriggerEventRecord->setText(QString::fromUtf8("저장 중..."));
     m_ui.btnTriggerEventRecord->setStyleSheet(
         "background-color: #ff4d4d; color: white; font-weight: bold; "
         "border-radius: 4px; padding: 5px;");
 
     QTimer::singleShot(postSec * 1000, this, [this]() {
       if (m_ui.btnTriggerEventRecord) {
-        m_ui.btnTriggerEventRecord->setText(QString::fromUtf8("▶ 저장 실행"));
+        m_ui.btnTriggerEventRecord->setText(QString::fromUtf8("저장 실행"));
         m_ui.btnTriggerEventRecord->setStyleSheet(
             "background: #2563eb; color: white; border-radius: 4px; "
             "font-weight: bold;");

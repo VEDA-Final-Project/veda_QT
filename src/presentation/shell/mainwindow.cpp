@@ -285,26 +285,35 @@ void MainWindow::setupUi() {
     headerUi.headerTitleLabel->installEventFilter(this);
   }
 
-  const QStringList menuLabels = {
-      QString::fromUtf8("\xF0\x9F\x93\xB1 "
-                        "\xED\x85\x94\xEB\xA0\x88\xEA\xB7\xB8\xEB\x9E\xA8"),
-      QString::fromUtf8("\xF0\x9F\x97\x84\xEF\xB8\x8F DB"),
-      QString::fromUtf8("\xF0\x9F\x93\xBD REC")};
-  const QList<int> menuIndices = {2, 3, 4};
+  const struct {
+    QString label;
+    int tabIndex;
+  } dbMenuActions[] = {
+      {QString::fromUtf8("\xEC\xA3\xBC\xEC\xB0\xA8 \xEC\x9D\xB4\xEB\xA0\xA5"), 0},
+      {QString::fromUtf8("\xEC\x82\xAC\xEC\x9A\xA9\xEC\x9E\x90"), 1},
+      {QString::fromUtf8("\xEC\xB0\xA8\xEB\x9F\x89 \xEC\xA0\x95\xEB\xB3\xB4"), 2},
+      {QString::fromUtf8(
+           "\xEC\xA3\xBC\xEC\xB0\xA8\xEA\xB5\xAC\xEC\x97\xAD \xED\x98\x84\xED"
+           "\x99\xA9"),
+       3},
+  };
 
-  for (int i = 0; i < menuLabels.size(); ++i) {
-    QAction *action = headerUi.navMenu->addAction(menuLabels[i]);
+  for (const auto &menuAction : dbMenuActions) {
+    QAction *action = headerUi.navMenu->addAction(menuAction.label);
     connect(action, &QAction::triggered, this,
-            [this, menuIndices, i]() {
-              if (m_stackedWidget) {
-                m_stackedWidget->setCurrentIndex(menuIndices[i]);
-              }
+            [this, tabIndex = menuAction.tabIndex]() {
+              navigateToDbSubTab(tabIndex);
             });
   }
 
-  headerUi.navMenu->addSeparator();
+  QAction *recordAction =
+      headerUi.navMenu->addAction(QString::fromUtf8("REC"));
+  connect(recordAction, &QAction::triggered, this, [this]() {
+    navigateToPage(4);
+  });
+
   QAction *ctrlAction = headerUi.navMenu->addAction(
-      QString::fromUtf8("\xF0\x9F\x8E\xAE 컨트롤러"));
+      QString::fromUtf8("\xEC\xBB\xA8\xED\x8A\xB8\xEB\xA1\xA4\xEB\x9F\xAC"));
   connect(ctrlAction, &QAction::triggered, this, [this]() {
     if (!m_controllerDialog) {
       m_controllerDialog = new ControllerDialog(this);
@@ -427,7 +436,7 @@ void MainWindow::openLogFilterSettings() {
   layout->setSpacing(6);
 
   QLabel *title =
-      new QLabel(QString::fromUtf8("⚙️ 로그 출력 카테고리 설정"), &dlg);
+      new QLabel(QString::fromUtf8("로그 출력 카테고리 설정"), &dlg);
   title->setStyleSheet("font-size: 15px; font-weight: bold; color: #F1F5F9;");
   layout->addWidget(title);
   layout->addSpacing(4);

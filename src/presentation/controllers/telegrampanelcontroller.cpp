@@ -96,7 +96,7 @@ void TelegramPanelController::onUsersUpdated(int count) {
 void TelegramPanelController::onPaymentConfirmed(int recordId,
                                                  const QString &plate,
                                                  int amount) {
-  appendLog(QString("[Payment] 💰 결제 완료 수신! ID=%1, 차량: %2, 금액: %3원")
+  appendLog(QString("[Payment] 결제 완료 수신: ID=%1, 차량: %2, 금액: %3원")
                 .arg(recordId)
                 .arg(plate)
                 .arg(amount));
@@ -108,13 +108,13 @@ void TelegramPanelController::onPaymentConfirmed(int recordId,
 
 void TelegramPanelController::onAdminSummoned(const QString &chatId,
                                               const QString &name) {
-  appendLog(QString("[알림] 🚨 관리자 호출 수신! (User: %1, ChatID: %2)")
+  appendLog(QString("[알림] 관리자 호출 수신 (User: %1, ChatID: %2)")
                 .arg(name, chatId));
 
   QMessageBox *box = new QMessageBox(nullptr);
   box->setWindowTitle("관리자 호출");
   box->setText(
-      QString("🚨 사용자가 관리자를 호출했습니다!\n\n이름: %1\nChat ID: %2")
+      QString("사용자가 관리자를 호출했습니다.\n\n이름: %1\nChat ID: %2")
           .arg(name, chatId));
   box->setIcon(QMessageBox::Warning);
   box->setStandardButtons(QMessageBox::Ok);

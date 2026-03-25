@@ -11,6 +11,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
 #include <QTimer>
@@ -57,19 +58,29 @@ int main(int argc, char *argv[]) {
       "std::vector<QSharedPointer<cv::Mat>>");
 
   QApplication a(argc, argv);
+  a.setApplicationName(QStringLiteral("RoadSide"));
+  a.setApplicationDisplayName(QStringLiteral("RoadSide"));
   const QIcon appIcon(QStringLiteral(":/src/ui/icon/roadside_mark.ico"));
   if (!appIcon.isNull()) {
     a.setWindowIcon(appIcon);
   }
 
-  // Load Hanwha fonts
+  // Load bundled application fonts and prefer Pretendard for the main UI.
   QDir fontDir(":/resources/fonts");
   for (const QString &fileName :
-       fontDir.entryList(QStringList() << "*.ttf", QDir::Files)) {
+       fontDir.entryList(QStringList() << "*.ttf" << "*.otf", QDir::Files)) {
     int id = QFontDatabase::addApplicationFont(":/resources/fonts/" + fileName);
     if (id == -1) {
       qWarning() << "Warning: Could not load application font:" << fileName;
     }
+  }
+
+  if (QFontDatabase::families().contains(QStringLiteral("Pretendard"))) {
+    QFont appFont(QStringLiteral("Pretendard"));
+    appFont.setPointSize(10);
+    a.setFont(appFont);
+  } else {
+    qWarning() << "Warning: Pretendard font family is not available.";
   }
 
   if (!Config::instance().load()) {
