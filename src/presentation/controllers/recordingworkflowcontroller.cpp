@@ -592,7 +592,9 @@ void RecordingWorkflowController::syncManualRecordButtons(bool checked) {
     QSignalBlocker blocker(m_ui.btnRecordRecordTab);
     m_ui.btnRecordRecordTab->setChecked(checked);
   }
-  updateManualRecordButtonStyle(m_ui.btnRecordManual, checked);
+  
+  // Dashboard's btnRecordManual relies on its QSS (:checked pseudo-class).
+  // Only update the Record Tab button explicitly.
   updateManualRecordButtonStyle(m_ui.btnRecordRecordTab, checked);
 }
 

@@ -26,6 +26,19 @@ public:
     QTableWidget *userDbTable = nullptr;
     QTableWidget *reidTable = nullptr;
     QTableWidget *zoneTable = nullptr;
+
+    // PTZ sidebar buttons
+    QPushButton *btnPtzUp = nullptr;
+    QPushButton *btnPtzDown = nullptr;
+    QPushButton *btnPtzLeft = nullptr;
+    QPushButton *btnPtzRight = nullptr;
+    QPushButton *btnPtzUpLeft = nullptr;
+    QPushButton *btnPtzUpRight = nullptr;
+    QPushButton *btnPtzDownLeft = nullptr;
+    QPushButton *btnPtzDownRight = nullptr;
+    QPushButton *btnPtzReset = nullptr;
+    QPushButton *btnZoomIn = nullptr;
+    QPushButton *btnZoomOut = nullptr;
   };
 
   struct Context {

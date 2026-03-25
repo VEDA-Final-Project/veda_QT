@@ -51,20 +51,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             &MainWindow::close);
   }
 
-  // 실시간 시계 타이머
+  // 실시간 시계 타이머 (CCTV 시간 보정: +2초)
   m_clockTimer = new QTimer(this);
   connect(m_clockTimer, &QTimer::timeout, this, [this]() {
     if (m_cctvView && m_cctvView->uiRefs().footerTimeLabel) {
-      QDateTime now = QDateTime::currentDateTime();
+      QDateTime now = QDateTime::currentDateTime().addSecs(2);
       m_cctvView->uiRefs().footerTimeLabel->setText(
           now.toString("yyyy/MM/dd  HH:mm:ss"));
     }
   });
   m_clockTimer->start(1000);
-  // 즉시 한 번 갱신
+  // 즉시 한 번 갱신 (+2초 보정)
   if (m_cctvView && m_cctvView->uiRefs().footerTimeLabel) {
     m_cctvView->uiRefs().footerTimeLabel->setText(
-        QDateTime::currentDateTime().toString("yyyy/MM/dd  HH:mm:ss"));
+        QDateTime::currentDateTime().addSecs(2).toString("yyyy/MM/dd  HH:mm:ss"));
   }
 
   // 초기 창 크기 설정
@@ -317,10 +317,6 @@ void MainWindow::setupUi() {
     m_controllerDialog->activateWindow();
   });
 
-  if (headerUi.settingsButton) {
-    connect(headerUi.settingsButton, &QToolButton::clicked, this,
-            &MainWindow::openLogFilterSettings);
-  }
 
   if (headerUi.btnMinimize) {
     connect(headerUi.btnMinimize, &QPushButton::clicked, this,
@@ -344,6 +340,12 @@ void MainWindow::setupUi() {
   m_splashView = new CctvSplashPageView(this);
   m_cctvView = new CctvDashboardView(this);
   const CctvUiRefs &cctvUi = m_cctvView->uiRefs();
+  
+  if (cctvUi.settingsButton) {
+    connect(cctvUi.settingsButton, &QPushButton::clicked, this,
+            &MainWindow::openLogFilterSettings);
+  }
+
   if (cctvUi.roiTargetCombo) {
     cctvUi.roiTargetCombo->installEventFilter(this);
   }

@@ -60,35 +60,28 @@ void HeaderBarView::setupUi() {
   headerLayout->addWidget(m_ui.headerTitleLabel);
   headerLayout->addSpacing(24);
 
-  m_ui.menuButton = new QToolButton(this);
+  m_ui.menuButton = new QPushButton(this);
   m_ui.menuButton->setIcon(
       tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/menu.png", QColor("#94A3B8")));
-  m_ui.menuButton->setIconSize(QSize(18, 18));
-  m_ui.menuButton->setObjectName("navBtn");
-  m_ui.menuButton->setPopupMode(QToolButton::InstantPopup);
+  m_ui.menuButton->setIconSize(QSize(28, 28));
+  m_ui.menuButton->setFixedSize(32, 32);
+  m_ui.menuButton->setObjectName("btnWindowCtrl");
   m_ui.menuButton->setCursor(Qt::PointingHandCursor);
+  m_ui.menuButton->setStyleSheet(
+      "QPushButton::menu-indicator { image: none; width: 0px; }");
 
   m_ui.navMenu = new QMenu(this);
   m_ui.navMenu->setObjectName("navMenu");
   m_ui.menuButton->setMenu(m_ui.navMenu);
-  headerLayout->addWidget(m_ui.menuButton);
-  headerLayout->addSpacing(2);
-
-  m_ui.settingsButton = new QToolButton(this);
-  m_ui.settingsButton->setIcon(tintIcon(
-      PROJECT_SOURCE_DIR "/src/ui/icon/option.png", QColor("#94A3B8")));
-  m_ui.settingsButton->setIconSize(QSize(18, 18));
-  m_ui.settingsButton->setObjectName("navBtn");
-  m_ui.settingsButton->setCursor(Qt::PointingHandCursor);
-  m_ui.settingsButton->setToolTip(QString::fromUtf8("로그 설정"));
-  headerLayout->addWidget(m_ui.settingsButton);
-  headerLayout->addSpacing(2);
+  // 설정 버튼(settingsButton)은 CCTV Footer로 이동됨
 
   headerLayout->addStretch();
 
+  headerLayout->addWidget(m_ui.menuButton);
+
   QPushButton *btnAlarm = new QPushButton(this);
   btnAlarm->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/alarm.png", QColor("#94A3B8")));
-  btnAlarm->setIconSize(QSize(18, 18));
+  btnAlarm->setIconSize(QSize(22, 22));
   btnAlarm->setObjectName("btnWindowCtrl");
   btnAlarm->setFixedSize(32, 32);
   btnAlarm->setToolTip(QString::fromUtf8("알람 로그"));
@@ -122,7 +115,7 @@ void HeaderBarView::setupUi() {
   m_ui.btnMinimize = new QPushButton(this);
   m_ui.btnMinimize->setIcon(tintIcon(
       PROJECT_SOURCE_DIR "/src/ui/icon/minimize.png", QColor("#94A3B8")));
-  m_ui.btnMinimize->setIconSize(QSize(18, 18));
+  m_ui.btnMinimize->setIconSize(QSize(22, 22));
   m_ui.btnMinimize->setObjectName("btnWindowCtrl");
   m_ui.btnMinimize->setFixedSize(32, 32);
   m_ui.btnMinimize->setToolTip(QString::fromUtf8("최소화"));
@@ -131,7 +124,7 @@ void HeaderBarView::setupUi() {
   m_ui.btnMaxRestore = new QPushButton(this);
   m_ui.btnMaxRestore->setIcon(tintIcon(
       PROJECT_SOURCE_DIR "/src/ui/icon/maximize.png", QColor("#94A3B8")));
-  m_ui.btnMaxRestore->setIconSize(QSize(18, 18));
+  m_ui.btnMaxRestore->setIconSize(QSize(22, 22));
   m_ui.btnMaxRestore->setObjectName("btnWindowCtrl");
   m_ui.btnMaxRestore->setFixedSize(32, 32);
   m_ui.btnMaxRestore->setToolTip(QString::fromUtf8("최대화"));
@@ -140,7 +133,7 @@ void HeaderBarView::setupUi() {
   m_ui.btnExit = new QPushButton(this);
   m_ui.btnExit->setIcon(
       tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/exit.png", QColor("#94A3B8")));
-  m_ui.btnExit->setIconSize(QSize(18, 18));
+  m_ui.btnExit->setIconSize(QSize(22, 22));
   m_ui.btnExit->setObjectName("btnClose");
   m_ui.btnExit->setFixedSize(32, 32);
   m_ui.btnExit->setToolTip(QString::fromUtf8("종료"));

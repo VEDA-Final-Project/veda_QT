@@ -11,5 +11,11 @@
         <file>src/ui/icon/minimize.png</file>
         <file>src/ui/icon/maximize.png</file>
         <file>src/ui/icon/exit.png</file>
+        <file>src/ui/icon/up.png</file>
+        <file>src/ui/icon/down.png</file>
+        <file>src/ui/icon/left.png</file>
+        <file>src/ui/icon/right.png</file>
+        <file>src/ui/icon/zoon_in.png</file>
+        <file>src/ui/icon/zoom_out.png</file>
     </qresource>
 </RCC>

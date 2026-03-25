@@ -11,6 +11,7 @@ class QSpinBox;
 class VideoWidget;
 class QFrame;
 class QEvent;
+class QPushButton;
 
 class ChannelRuntimeController : public QObject {
   Q_OBJECT
@@ -25,7 +26,7 @@ public:
     QSpinBox *staleTimeoutInput = nullptr;
     QSpinBox *pruneTimeoutInput = nullptr;
     QCheckBox *chkShowStaleObjects = nullptr;
-    QCheckBox *chkShowFps = nullptr;
+    QPushButton *chkShowFps = nullptr;
     QLabel *avgFpsLabel = nullptr;
   };
 
