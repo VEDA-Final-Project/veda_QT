@@ -24,9 +24,9 @@ class QToolButton;
 struct HeaderUiRefs {
   QLabel *headerIconLabel = nullptr;
   QLabel *headerTitleLabel = nullptr;
-  QToolButton *menuButton = nullptr;
+  QPushButton *menuButton = nullptr;
   QMenu *navMenu = nullptr;
-  QToolButton *settingsButton = nullptr;
+  // Moved settingsButton to CctvUiRefs
   QPushButton *btnMinimize = nullptr;
   QPushButton *btnMaxRestore = nullptr;
   QPushButton *btnExit = nullptr;
@@ -52,13 +52,26 @@ struct CctvUiRefs {
   QPushButton *btnDeleteRoi = nullptr;
   QCheckBox *chkVehicle = nullptr;
   QCheckBox *chkPlate = nullptr;
-  QCheckBox *chkShowFps = nullptr;
+  QCheckBox *chkOther = nullptr;
+  QPushButton *chkShowFps = nullptr;
   QLabel *lblAvgFps = nullptr;
   QPushButton *btnCaptureManual = nullptr;
   QPushButton *btnRecordManual = nullptr;
   QLabel *footerTimeLabel = nullptr;
-  QLabel *recordingDot = nullptr;
-  QLabel *footerRecordingLabel = nullptr;
+  QPushButton *settingsButton = nullptr;
+  
+  // PTZ Control Buttons
+  QPushButton *btnPtzUp = nullptr;
+  QPushButton *btnPtzDown = nullptr;
+  QPushButton *btnPtzLeft = nullptr;
+  QPushButton *btnPtzRight = nullptr;
+  QPushButton *btnPtzUpLeft = nullptr;
+  QPushButton *btnPtzUpRight = nullptr;
+  QPushButton *btnPtzDownLeft = nullptr;
+  QPushButton *btnPtzDownRight = nullptr;
+  QPushButton *btnPtzReset = nullptr;
+  QPushButton *btnZoomIn = nullptr;
+  QPushButton *btnZoomOut = nullptr;
 };
 
 struct TelegramUiRefs {
