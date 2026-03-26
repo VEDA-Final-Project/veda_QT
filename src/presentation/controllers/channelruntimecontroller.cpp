@@ -3,6 +3,7 @@
 #include "presentation/widgets/videowidget.h"
 #include "presentation/widgets/camerachannelruntime.h"
 #include <QCheckBox>
+#include <QPushButton>
 #include <QEvent>
 #include <QFrame>
 #include <QLabel>
@@ -86,7 +87,7 @@ void ChannelRuntimeController::connectSignals() {
   }
 
   if (m_ui.chkShowFps) {
-    connect(m_ui.chkShowFps, &QCheckBox::toggled, this, [this](bool checked) {
+    connect(m_ui.chkShowFps, &QPushButton::toggled, this, [this](bool checked) {
       for (CameraChannelRuntime *channel : m_channels) {
         if (channel) {
           channel->setShowFps(checked);

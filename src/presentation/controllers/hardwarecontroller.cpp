@@ -63,6 +63,53 @@ void HardwareController::connectSignals() {
     connect(m_ui.dbSubTabs, &QTabWidget::currentChanged, this,
             &HardwareController::syncDbDataToRpi);
   }
+
+  // Connect sidebar PTZ buttons
+  if (m_ui.btnPtzUp) {
+    auto connectPtz = [this](QPushButton *btn, const QString &dir) {
+      if (!btn)
+        return;
+      connect(btn, &QPushButton::pressed, this,
+              [this, dir]() { onHardwareJoystickMoved(dir, 1); });
+      connect(btn, &QPushButton::released, this,
+              [this, dir]() { onHardwareJoystickMoved(dir, 0); });
+    };
+    connectPtz(m_ui.btnPtzUp, "U");
+    connectPtz(m_ui.btnPtzDown, "D");
+    connectPtz(m_ui.btnPtzLeft, "L");
+    connectPtz(m_ui.btnPtzRight, "R");
+    connectPtz(m_ui.btnPtzUpLeft, "UL");
+    connectPtz(m_ui.btnPtzUpRight, "UR");
+    connectPtz(m_ui.btnPtzDownLeft, "DL");
+    connectPtz(m_ui.btnPtzDownRight, "DR");
+  }
+
+  if (m_ui.btnPtzReset) {
+    connect(m_ui.btnPtzReset, &QPushButton::clicked, this, [this]() {
+      m_joystickTargetX = 0.0;
+      m_joystickTargetY = 0.0;
+      if (m_joystickTimer)
+        m_joystickTimer->stop();
+
+      VideoWidget *videoWidget =
+          m_context.primarySelectedVideoWidget
+              ? m_context.primarySelectedVideoWidget()
+              : nullptr;
+      if (videoWidget) {
+        videoWidget->setZoom(1.0);
+        appendLog("[Controller] PTZ/Zoom Reset for active channel");
+      }
+    });
+  }
+
+  if (m_ui.btnZoomIn) {
+    connect(m_ui.btnZoomIn, &QPushButton::clicked, this,
+            [this]() { onHardwareEncoderRotated(1); });
+  }
+  if (m_ui.btnZoomOut) {
+    connect(m_ui.btnZoomOut, &QPushButton::clicked, this,
+            [this]() { onHardwareEncoderRotated(-1); });
+  }
 }
 
 void HardwareController::connectControllerDialog(ControllerDialog *dialog) {
@@ -240,6 +287,18 @@ void HardwareController::onHardwareJoystickMoved(const QString &dir, int state) 
       m_joystickTargetX = -1.0;
     } else if (dir == "R") {
       m_joystickTargetX = 1.0;
+    } else if (dir == "UL") {
+      m_joystickTargetX = -0.707;
+      m_joystickTargetY = -0.707;
+    } else if (dir == "UR") {
+      m_joystickTargetX = 0.707;
+      m_joystickTargetY = -0.707;
+    } else if (dir == "DL") {
+      m_joystickTargetX = -0.707;
+      m_joystickTargetY = 0.707;
+    } else if (dir == "DR") {
+      m_joystickTargetX = 0.707;
+      m_joystickTargetY = 0.707;
     }
     if (!m_joystickTimer->isActive()) {
       m_joystickTimer->start(16);
@@ -255,6 +314,9 @@ void HardwareController::onHardwareJoystickMoved(const QString &dir, int state) 
     m_joystickTargetX = 0.0;
   } else if (dir == "R" && m_joystickTargetX > 0) {
     m_joystickTargetX = 0.0;
+  } else if (dir == "UL" || dir == "UR" || dir == "DL" || dir == "DR") {
+    m_joystickTargetX = 0.0;
+    m_joystickTargetY = 0.0;
   }
 }
 
