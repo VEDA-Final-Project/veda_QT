@@ -9,7 +9,7 @@
 
 ControllerDialog::ControllerDialog(QWidget *parent) : QDialog(parent) {
   setupUi();
-  setWindowTitle(QString::fromUtf8("🎮 컨트롤러 팝업"));
+  setWindowTitle(QString::fromUtf8("컨트롤러 팝업"));
   setFixedSize(500, 350);
 }
 

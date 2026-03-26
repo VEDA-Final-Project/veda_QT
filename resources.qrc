@@ -1,6 +1,17 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/">
+        <file>resources/fonts/01HanwhaB.ttf</file>
+        <file>resources/fonts/02HanwhaR.ttf</file>
+        <file>resources/fonts/03HanwhaL.ttf</file>
+        <file>resources/fonts/05HanwhaGothicR.ttf</file>
+        <file>resources/fonts/06HanwhaGothicL.ttf</file>
+        <file>resources/fonts/07HanwhaGothicEL.ttf</file>
+        <file>resources/fonts/08HanwhaGothicT.ttf</file>
+        <file>resources/fonts/Pretendard-Regular.otf</file>
+        <file>resources/fonts/Pretendard-Medium.otf</file>
+        <file>resources/fonts/Pretendard-SemiBold.otf</file>
+        <file>resources/fonts/Pretendard-Bold.otf</file>
         <file>src/ui/icon/menu.png</file>
         <file>src/ui/icon/settings.png</file>
         <file>src/ui/icon/option.png</file>
@@ -17,5 +28,6 @@
         <file>src/ui/icon/right.png</file>
         <file>src/ui/icon/zoon_in.png</file>
         <file>src/ui/icon/zoom_out.png</file>
+        <file>src/ui/icon/roadside_mark.ico</file>
     </qresource>
 </RCC>

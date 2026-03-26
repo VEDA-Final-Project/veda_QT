@@ -48,11 +48,18 @@ void HeaderBarView::setupUi() {
 
   m_ui.headerIconLabel = new QLabel(this);
   m_ui.headerIconLabel->setObjectName("headerIcon");
-  m_ui.headerIconLabel->setText(QString::fromUtf8("\xF0\x9F\x93\xA1"));
   m_ui.headerIconLabel->setFixedSize(32, 32);
   m_ui.headerIconLabel->setAlignment(Qt::AlignCenter);
+  
+  const QPixmap headerMark(
+      QStringLiteral(PROJECT_SOURCE_DIR "/src/ui/icon/roadside_mark.png"));
+  if (!headerMark.isNull()) {
+    m_ui.headerIconLabel->setPixmap(
+        headerMark.scaled(QSize(20, 20), Qt::KeepAspectRatio,
+                          Qt::SmoothTransformation));
+  }
 
-  m_ui.headerTitleLabel = new QLabel("Veda CCTV Dashboard", this);
+  m_ui.headerTitleLabel = new QLabel("RoadSide", this);
   m_ui.headerTitleLabel->setObjectName("headerTitle");
 
   headerLayout->addWidget(m_ui.headerIconLabel);
@@ -91,10 +98,10 @@ void HeaderBarView::setupUi() {
     QDialog *logDialog = new QDialog(this);
     logDialog->setWindowTitle(QString::fromUtf8("알람 로그"));
     logDialog->resize(450, 300);
-    logDialog->setStyleSheet("QDialog { background-color: #1e1e2d; }");
+    logDialog->setStyleSheet("QDialog { background-color: #25282d; }");
     QVBoxLayout *l = new QVBoxLayout(logDialog);
     QListWidget *list = new QListWidget(logDialog);
-    list->setStyleSheet("QListWidget { background-color: #1e1e2d; color: #e2e8f0; border: 1px solid #334155; font-size: 13px; padding: 4px; }");
+    list->setStyleSheet("QListWidget { background-color: #25282d; color: #e5e7eb; border: 1px solid #4b5563; font-size: 13px; padding: 4px; }");
     QStringList history = NotificationController::getHistory();
     if (history.isEmpty()) {
       list->addItem(QString::fromUtf8("알람 로그가 없습니다."));
@@ -103,7 +110,7 @@ void HeaderBarView::setupUi() {
     }
     l->addWidget(list);
     QPushButton *btnClose = new QPushButton(QString::fromUtf8("닫기"), logDialog);
-    btnClose->setStyleSheet("QPushButton { background: #334155; color: white; padding: 6px; border-radius: 4px; border: none; } QPushButton:hover { background: #475569; }");
+    btnClose->setStyleSheet("QPushButton { background: #525862; color: white; padding: 6px; border-radius: 4px; border: none; } QPushButton:hover { background: #626975; }");
     btnClose->setCursor(Qt::PointingHandCursor);
     connect(btnClose, &QPushButton::clicked, logDialog, &QDialog::accept);
     l->addWidget(btnClose);
