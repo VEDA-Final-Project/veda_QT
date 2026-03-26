@@ -11,7 +11,6 @@ set(CMAKE_AUTORCC ON)
 # 실행 파일 생성 및 소스 파일 정의
 qt_add_executable(${APP_TARGET}
     WIN32 MACOSX_BUNDLE
-    app_icon.rc
     # Main
     src/main.cpp
     # UI
