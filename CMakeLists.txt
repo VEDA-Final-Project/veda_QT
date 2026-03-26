@@ -8,6 +8,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent Sql Mul
 
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
+# vcpkg 충돌 방지: app_icon.rc가 빌드 시점에 자동 생성됨을 명시
+set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc PROPERTIES GENERATED TRUE)
 # 실행 파일 생성 및 소스 파일 정의
 qt_add_executable(${APP_TARGET}
     WIN32 MACOSX_BUNDLE
