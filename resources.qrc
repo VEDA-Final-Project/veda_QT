@@ -13,7 +13,6 @@
         <file>resources/fonts/Pretendard-SemiBold.otf</file>
         <file>resources/fonts/Pretendard-Bold.otf</file>
         <file>src/ui/icon/menu.png</file>
-        <file>src/ui/icon/settings.png</file>
         <file>src/ui/icon/option.png</file>
         <file>src/ui/icon/filter.png</file>
         <file>src/ui/icon/capture.png</file>
