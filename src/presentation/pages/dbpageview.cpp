@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -46,7 +47,7 @@ void DbPageView::setupUi() {
   m_ui.parkingLogTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   logsLayout->addLayout(logsToolBar);
   logsLayout->addWidget(m_ui.parkingLogTable);
-  m_ui.dbSubTabs->addTab(logsTab, "🚗 주차 이력");
+  m_ui.dbSubTabs->addTab(logsTab, "주차 이력");
 
   QWidget *usersTab = new QWidget(this);
   QVBoxLayout *usersLayout = new QVBoxLayout(usersTab);
@@ -72,7 +73,7 @@ void DbPageView::setupUi() {
   m_ui.userDbTable->setSelectionMode(QAbstractItemView::SingleSelection);
   usersLayout->addLayout(usersToolBar);
   usersLayout->addWidget(m_ui.userDbTable);
-  m_ui.dbSubTabs->addTab(usersTab, "👥 사용자");
+  m_ui.dbSubTabs->addTab(usersTab, "사용자");
 
   QWidget *vhTab = new QWidget(this);
   QVBoxLayout *vhLayout = new QVBoxLayout(vhTab);
@@ -141,7 +142,7 @@ void DbPageView::setupUi() {
   settingsLayout->addStretch();
   settingsGroup->setLayout(settingsLayout);
   vhLayout->addWidget(settingsGroup);
-  m_ui.dbSubTabs->addTab(vhTab, "🚘 차량 정보");
+  m_ui.dbSubTabs->addTab(vhTab, "차량 정보");
 
   QWidget *zoneTab = new QWidget(this);
   QVBoxLayout *zoneLayout = new QVBoxLayout(zoneTab);
@@ -158,7 +159,8 @@ void DbPageView::setupUi() {
   m_ui.zoneTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   zoneLayout->addLayout(zoneToolBar);
   zoneLayout->addWidget(m_ui.zoneTable);
-  m_ui.dbSubTabs->addTab(zoneTab, "📍 주차구역 현황");
+  m_ui.dbSubTabs->addTab(zoneTab, "주차구역 현황");
+  m_ui.dbSubTabs->tabBar()->hide();
 
   dbLayout->addWidget(m_ui.dbSubTabs);
 }

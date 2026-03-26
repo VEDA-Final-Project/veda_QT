@@ -8,7 +8,7 @@
 QWidget {
     background-color: #0F172A;
     color: #F1F5F9;
-    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+    font-family: "Pretendard", "Malgun Gothic", "Segoe UI", sans-serif;
     font-size: 10pt;
 }
 
