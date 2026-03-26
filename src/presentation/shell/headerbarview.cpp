@@ -104,7 +104,7 @@ void HeaderBarView::setupUi() {
     list->setStyleSheet("QListWidget { background-color: #25282d; color: #e5e7eb; border: 1px solid #4b5563; font-size: 13px; padding: 4px; }");
     QStringList history = NotificationController::getHistory();
     if (history.isEmpty()) {
-      list->addItem(QString::fromUtf8("알람 로그가 없습니다."));
+      list->addItem(QString::fromUtf8("알람 내역이 존재하지 않습니다."));
     } else {
       list->addItems(history);
     }
