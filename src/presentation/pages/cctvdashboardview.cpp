@@ -6,18 +6,21 @@
 #include <QDateTime>
 #include <QFrame>
 #include <QGridLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
+#include <QPixmap>
 #include <QPushButton>
+#include <QRegion>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QScrollArea>
 #include <QSplitter>
+#include <QToolButton>
 #include <QVBoxLayout>
-#include <QIcon>
-#include <QPainter>
-#include <QPixmap>
 
 CctvDashboardView::CctvDashboardView(QWidget *parent) : QWidget(parent) {
   setupUi();
@@ -53,9 +56,18 @@ void CctvDashboardView::setupUi() {
 
   // --- QUICK TOOLS ---
 
-  auto tintIcon = [](const QString &iconPath, const QColor &color) -> QIcon {
+  auto tintIcon = [](const QString &iconPath, const QColor &color,
+                     int rotation = 0) -> QIcon {
     QPixmap pixmap(iconPath);
-    if (pixmap.isNull()) return QIcon();
+    if (pixmap.isNull())
+      return QIcon();
+
+    if (rotation != 0) {
+      QTransform t;
+      t.rotate(rotation);
+      pixmap = pixmap.transformed(t, Qt::SmoothTransformation);
+    }
+
     QPixmap result(pixmap.size());
     result.fill(Qt::transparent);
     QPainter painter(&result);
@@ -66,12 +78,16 @@ void CctvDashboardView::setupUi() {
     return QIcon(result);
   };
 
-  QString btnStyle = "QPushButton { background: transparent; border: 1px solid transparent; border-radius: 4px; } "
-                     "QPushButton:hover { background: #334155; border: 1px solid transparent; } "
-                     "QPushButton:checked { background: #0f172a; border: 1px solid #10b981; }";
+  QString btnStyle =
+      "QPushButton { background: transparent; border: 1px solid transparent; "
+      "border-radius: 4px; } "
+      "QPushButton:hover { background: #334155; border: 1px solid transparent; "
+      "} "
+      "QPushButton:checked { background: #0f172a; border: 1px solid #10b981; }";
 
   QPushButton *btnOptionToggle = new QPushButton(this);
-  btnOptionToggle->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/roi.png", QColor("#94A3B8")));
+  btnOptionToggle->setIcon(
+      tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/roi.png", QColor("#94A3B8")));
   btnOptionToggle->setIconSize(QSize(30, 30));
   btnOptionToggle->setFixedSize(44, 44);
   btnOptionToggle->setCheckable(true);
@@ -80,7 +96,8 @@ void CctvDashboardView::setupUi() {
   btnOptionToggle->setStyleSheet(btnStyle);
 
   QPushButton *btnFilterToggle = new QPushButton(this);
-  btnFilterToggle->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/filter.png", QColor("#94A3B8")));
+  btnFilterToggle->setIcon(tintIcon(
+      PROJECT_SOURCE_DIR "/src/ui/icon/filter.png", QColor("#94A3B8")));
   btnFilterToggle->setIconSize(QSize(30, 30));
   btnFilterToggle->setFixedSize(44, 44);
   btnFilterToggle->setCheckable(true);
@@ -89,7 +106,8 @@ void CctvDashboardView::setupUi() {
   btnFilterToggle->setStyleSheet(btnStyle);
 
   m_ui.btnCaptureManual = new QPushButton(this);
-  m_ui.btnCaptureManual->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/capture.png", QColor("#94A3B8")));
+  m_ui.btnCaptureManual->setIcon(tintIcon(
+      PROJECT_SOURCE_DIR "/src/ui/icon/capture.png", QColor("#94A3B8")));
   m_ui.btnCaptureManual->setIconSize(QSize(30, 30));
   m_ui.btnCaptureManual->setFixedSize(44, 44);
   m_ui.btnCaptureManual->setToolTip(QString::fromUtf8("이미지 캡처"));
@@ -97,40 +115,50 @@ void CctvDashboardView::setupUi() {
   m_ui.btnCaptureManual->setStyleSheet(btnStyle);
 
   m_ui.btnRecordManual = new QPushButton(this);
-  m_ui.btnRecordManual->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/rec.png", QColor("#94A3B8")));
+  m_ui.btnRecordManual->setIcon(
+      tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/rec.png", QColor("#94A3B8")));
   m_ui.btnRecordManual->setIconSize(QSize(30, 30));
   m_ui.btnRecordManual->setFixedSize(44, 44);
   m_ui.btnRecordManual->setCheckable(true);
   m_ui.btnRecordManual->setToolTip(QString::fromUtf8("영상 녹화"));
   m_ui.btnRecordManual->setCursor(Qt::PointingHandCursor);
-  m_ui.btnRecordManual->setStyleSheet(btnStyle);
 
-  m_ui.chkShowFps = new QCheckBox(this);
-  m_ui.chkShowFps->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/fps.png", QColor("#94A3B8")));
+  QString recBtnStyle = "QPushButton { background: transparent; border: 1px "
+                        "solid transparent; border-radius: 4px; } "
+                        "QPushButton:hover { background: #334155; border: 1px "
+                        "solid transparent; } "
+                        "QPushButton:checked { background: #ef4444; border: "
+                        "1px solid transparent; }";
+  m_ui.btnRecordManual->setStyleSheet(recBtnStyle);
+
+  m_ui.chkShowFps = new QPushButton(this);
+  m_ui.chkShowFps->setIcon(
+      tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/fps.png", QColor("#94A3B8")));
   m_ui.chkShowFps->setIconSize(QSize(30, 30));
   m_ui.chkShowFps->setFixedSize(44, 44);
   m_ui.chkShowFps->setCheckable(true);
   m_ui.chkShowFps->setToolTip(QString::fromUtf8("FPS 표시"));
   m_ui.chkShowFps->setCursor(Qt::PointingHandCursor);
   m_ui.chkShowFps->setText(QString());
-  m_ui.chkShowFps->setStyleSheet(
-      "QCheckBox { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 6px; } "
-      "QCheckBox:hover { background: #334155; border: 1px solid transparent; } "
-      "QCheckBox:checked { background: #0f172a; border: 1px solid #10b981; } "
-      "QCheckBox::indicator { width: 0px; height: 0px; }");
+  m_ui.chkShowFps->setStyleSheet(btnStyle);
 
-  QFrame *toolsBox = new QFrame(this);
+  QString groupBoxStyle =
+      "QGroupBox { background-color: transparent; border: 1px solid #334155; "
+      "border-radius: 6px; margin-top: 10px; padding-top: 8px; }"
+      "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top "
+      "left; left: 10px; padding: 0 4px; color: #94A3B8; font-size: 11px; "
+      "font-weight: bold; }";
+
+  QGroupBox *toolsBox = new QGroupBox(QString::fromUtf8("TOOLS"), this);
   toolsBox->setObjectName("toolsBox");
-  toolsBox->setStyleSheet("QFrame#toolsBox { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; }");
+  toolsBox->setStyleSheet(groupBoxStyle);
 
   QGridLayout *toolsGrid = new QGridLayout(toolsBox);
   toolsGrid->setContentsMargins(12, 12, 12, 12);
   toolsGrid->setHorizontalSpacing(8);
   toolsGrid->setVerticalSpacing(8);
 
-  // 5번째 열까지 모두 아이콘을 채우고, 혹시 남는 우측 공간은 Stretch(인덱스 5)로 밀착
-  toolsGrid->setColumnStretch(5, 1);
-  toolsGrid->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+  toolsGrid->setAlignment(Qt::AlignCenter);
 
   toolsGrid->addWidget(btnOptionToggle, 0, 0);
   toolsGrid->addWidget(btnFilterToggle, 0, 1);
@@ -139,17 +167,48 @@ void CctvDashboardView::setupUi() {
   toolsGrid->addWidget(m_ui.chkShowFps, 0, 4);
 
   channelPanelLayout->addWidget(toolsBox);
-  channelPanelLayout->addSpacing(8);
 
   // --- ROI WIDGET (Collapsible) ---
-  QWidget *roiWidget = new QWidget(this);
+  QFrame *roiWidget = new QFrame(this);
+  roiWidget->setObjectName("roiWidget");
+  roiWidget->setStyleSheet("QFrame#roiWidget { background-color: #1e293b; "
+                           "border: 1px solid #334155; border-radius: 6px; }");
   QVBoxLayout *roiLayout = new QVBoxLayout(roiWidget);
-  roiLayout->setContentsMargins(0, 0, 0, 0);
-  roiLayout->setSpacing(4);
-  
+  roiLayout->setContentsMargins(12, 12, 12, 12);
+  roiLayout->setSpacing(8);
+
+  // --- ARROW ICON GENERATION ---
+  auto saveTintedIcon = [&](const QString &src, const QString &dst) {
+    QIcon icon = tintIcon(src, QColor("#94A3B8"));
+    if (!icon.isNull()) {
+      icon.pixmap(24, 24).save(dst, "PNG");
+    }
+  };
+  saveTintedIcon(PROJECT_SOURCE_DIR "/src/ui/icon/down_arrow.png",
+                 PROJECT_SOURCE_DIR "/src/ui/icon/down_arrow_gray.png");
+  saveTintedIcon(PROJECT_SOURCE_DIR "/src/ui/icon/up_arrow.png",
+                 PROJECT_SOURCE_DIR "/src/ui/icon/up_arrow_gray.png");
+
+  QString comboStyle =
+      QString(
+          "QComboBox { background-color: #1a1a2e; border: 1px solid #334155; "
+          "border-radius: 4px; padding: 4px 32px 4px 12px; color: #e2e8f0; }"
+          "QComboBox::drop-down { subcontrol-origin: padding; "
+          "subcontrol-position: top right; width: 24px; border: none; "
+          "background: transparent; }"
+          "QComboBox::down-arrow { image: url(%1); width: 10px; height: 10px; "
+          "border: none; background: transparent; }"
+          "QComboBox::down-arrow:on { image: url(%2); }")
+          .arg(QString::fromUtf8(PROJECT_SOURCE_DIR
+                                 "/src/ui/icon/down_arrow_gray.png"))
+          .arg(QString::fromUtf8(PROJECT_SOURCE_DIR
+                                 "/src/ui/icon/up_arrow_gray.png"));
+
   QLabel *roiTargetLabel = new QLabel(QString::fromUtf8("ROI 대상:"), this);
   roiTargetLabel->setStyleSheet("color: #ccc; font-size: 11px;");
+
   m_ui.roiTargetCombo = new QComboBox(roiWidget);
+  m_ui.roiTargetCombo->setStyleSheet(comboStyle);
   m_ui.roiTargetCombo->addItem(QStringLiteral("Ch1"));
   m_ui.roiTargetCombo->addItem(QStringLiteral("Ch2"));
   m_ui.roiTargetCombo->addItem(QStringLiteral("Ch3"));
@@ -172,8 +231,10 @@ void CctvDashboardView::setupUi() {
   QLabel *roiLabel = new QLabel("ROI:", this);
   roiLabel->setStyleSheet("color: #ccc; font-size: 11px;");
   m_ui.roiSelectorCombo = new QComboBox(roiWidget);
+  m_ui.roiSelectorCombo->setStyleSheet(comboStyle);
   m_ui.roiSelectorCombo->setMinimumContentsLength(12);
-  m_ui.roiSelectorCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+  m_ui.roiSelectorCombo->setSizeAdjustPolicy(
+      QComboBox::AdjustToMinimumContentsLengthWithIcon);
   m_ui.roiSelectorCombo->addItem(QStringLiteral("ROI 선택"), -1);
   roiLayout->addWidget(roiLabel);
   roiLayout->addWidget(m_ui.roiSelectorCombo);
@@ -185,42 +246,52 @@ void CctvDashboardView::setupUi() {
   roiLayout->addWidget(m_ui.btnApplyRoi);
   roiLayout->addWidget(m_ui.btnFinishRoi);
   roiLayout->addWidget(m_ui.btnDeleteRoi);
-  
+
   roiWidget->setVisible(false);
   channelPanelLayout->addWidget(roiWidget);
-  connect(btnOptionToggle, &QPushButton::toggled, roiWidget, &QWidget::setVisible);
+  connect(btnOptionToggle, &QPushButton::toggled, roiWidget,
+          &QWidget::setVisible);
 
   // --- FILTER WIDGET (Hidden) ---
-  QWidget *filterWidget = new QWidget(this);
+  QFrame *filterWidget = new QFrame(this);
+  filterWidget->setObjectName("filterWidget");
+  filterWidget->setStyleSheet(
+      "QFrame#filterWidget { background-color: #1e293b; border: 1px solid "
+      "#334155; border-radius: 6px; }");
   QVBoxLayout *filterLayout = new QVBoxLayout(filterWidget);
-  filterLayout->setContentsMargins(0, 0, 0, 0);
-  filterLayout->setSpacing(4);
-  
+  filterLayout->setContentsMargins(12, 12, 12, 12);
+  filterLayout->setSpacing(8);
+
   m_ui.chkVehicle = new QCheckBox(QString::fromUtf8("차량"), filterWidget);
   m_ui.chkVehicle->setChecked(true);
   m_ui.chkPlate = new QCheckBox(QString::fromUtf8("번호판"), filterWidget);
   m_ui.chkPlate->setChecked(true);
   filterLayout->addWidget(m_ui.chkVehicle);
   filterLayout->addWidget(m_ui.chkPlate);
-  
+
   filterWidget->setVisible(false);
   channelPanelLayout->addWidget(filterWidget);
-  connect(btnFilterToggle, &QPushButton::toggled, filterWidget, &QWidget::setVisible);
+  connect(btnFilterToggle, &QPushButton::toggled, filterWidget,
+          &QWidget::setVisible);
 
   // --- FPS LABEL (Hidden) ---
-  m_ui.lblAvgFps = new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
+  m_ui.lblAvgFps =
+      new QLabel(QString::fromUtf8("최근 1분 평균 FPS: 0.0"), this);
   m_ui.lblAvgFps->setStyleSheet("color: #94A3B8; font-size: 11px;");
   m_ui.lblAvgFps->setVisible(false);
   channelPanelLayout->addWidget(m_ui.lblAvgFps);
-  connect(m_ui.chkShowFps, &QCheckBox::toggled, m_ui.lblAvgFps, &QLabel::setVisible);
-
-  channelPanelLayout->addSpacing(16);
+  connect(m_ui.chkShowFps, &QCheckBox::toggled, m_ui.lblAvgFps,
+          &QLabel::setVisible);
 
   // --- CHANNELS ---
-  QLabel *channelTitle = new QLabel(QString::fromUtf8("CHANNELS"), this);
-  channelTitle->setObjectName("panelTitle");
-  channelPanelLayout->addWidget(channelTitle);
-  channelPanelLayout->addSpacing(4);
+  QGroupBox *channelsBox = new QGroupBox(QString::fromUtf8("CHANNELS"), this);
+  channelsBox->setObjectName("channelsBox");
+  channelsBox->setStyleSheet(groupBoxStyle);
+
+  QVBoxLayout *channelsBoxLayout = new QVBoxLayout(channelsBox);
+  channelsBoxLayout->setContentsMargins(8, 12, 8, 8);
+  channelsBoxLayout->setSpacing(8);
+  channelPanelLayout->addWidget(channelsBox);
 
   for (int i = 0; i < 4; ++i) {
     QFrame *card = new QFrame(this);
@@ -233,10 +304,10 @@ void CctvDashboardView::setupUi() {
                         "QFrame[selected=\"true\"] { border-color: #00e676; }");
 
     QHBoxLayout *cardLayout = new QHBoxLayout(card);
-    cardLayout->setContentsMargins(10, 8, 10, 8);
+    cardLayout->setContentsMargins(6, 6, 6, 6);
 
     QLabel *thumbnailLabel = new QLabel(card);
-    thumbnailLabel->setFixedSize(160, 90);
+    thumbnailLabel->setFixedSize(180, 101);
     thumbnailLabel->setStyleSheet("background: #000; border-radius: 4px;");
     thumbnailLabel->setAlignment(Qt::AlignCenter);
 
@@ -256,17 +327,111 @@ void CctvDashboardView::setupUi() {
     infoLayout->addStretch();
     infoLayout->addWidget(statusDot);
 
+    // Layout configuration with enlarged thumbnail and balanced spacing
+    cardLayout->addStretch();
     cardLayout->addWidget(thumbnailLabel);
     cardLayout->addSpacing(12);
-    cardLayout->addLayout(infoLayout, 1);
+    cardLayout->addLayout(infoLayout);
+    cardLayout->addStretch();
 
     m_ui.channelCards[i] = card;
     m_ui.channelNameLabels[i] = nameLabel;
     m_ui.channelStatusDots[i] = statusDot;
     m_ui.thumbnailLabels[i] = thumbnailLabel;
-    channelPanelLayout->addWidget(card);
+    channelsBoxLayout->addWidget(card);
   }
 
+  // --- PTZ CONTROL GROUP ---
+  QGroupBox *ptzBox = new QGroupBox(QString::fromUtf8("PTZ CONTROL"), this);
+  ptzBox->setObjectName("ptzBox");
+  ptzBox->setStyleSheet(groupBoxStyle);
+
+  QVBoxLayout *ptzMainLayout = new QVBoxLayout(ptzBox);
+  ptzMainLayout->setContentsMargins(12, 16, 12, 12);
+  ptzMainLayout->setSpacing(20);
+
+  // Directional Controls (D-Pad) - Circular Style
+  QFrame *remoteCircularFrame = new QFrame(ptzBox);
+  remoteCircularFrame->setFixedSize(160, 160);
+  remoteCircularFrame->setStyleSheet(
+      "QFrame { background: #1e293b; border: 2px solid #334155; border-radius: "
+      "80px; }");
+  // Clip all children to circle
+  remoteCircularFrame->setMask(QRegion(0, 0, 160, 160, QRegion::Ellipse));
+
+  QGridLayout *dpadLayout = new QGridLayout(remoteCircularFrame);
+  dpadLayout->setSpacing(0);
+  dpadLayout->setContentsMargins(0, 0, 0, 0);
+
+  auto createRemoteBtn = [&](const QString &iconPath, int rotation = 0) {
+    QPushButton *btn = new QPushButton(remoteCircularFrame);
+    btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    if (!iconPath.isEmpty()) {
+      btn->setIcon(tintIcon(iconPath, QColor("#94A3B8"), rotation));
+      btn->setIconSize(QSize(24, 24));
+    }
+    btn->setCursor(Qt::PointingHandCursor);
+    btn->setStyleSheet(
+        "QPushButton { background: transparent; border: none; } "
+        "QPushButton:hover { background: rgba(148, 163, 184, 0.12); } "
+        "QPushButton:pressed { background: rgba(16, 185, 129, 0.25); }");
+    return btn;
+  };
+
+  const QString arrowIcon = PROJECT_SOURCE_DIR "/src/ui/icon/up.png";
+  m_ui.btnPtzUp = createRemoteBtn(arrowIcon, 0);
+  m_ui.btnPtzDown = createRemoteBtn(arrowIcon, 180);
+  m_ui.btnPtzLeft = createRemoteBtn(arrowIcon, -90);
+  m_ui.btnPtzRight = createRemoteBtn(arrowIcon, 90);
+
+  m_ui.btnPtzReset =
+      createRemoteBtn(PROJECT_SOURCE_DIR "/src/ui/icon/reset.png");
+  m_ui.btnPtzReset->setFixedSize(40, 40);
+  m_ui.btnPtzReset->setIconSize(QSize(24, 24));
+  m_ui.btnPtzReset->setStyleSheet(
+      "QPushButton { background: #0f172a; border: 1px solid #334155; "
+      "border-radius: 20px; } "
+      "QPushButton:hover { background: #334155; } "
+      "QPushButton:pressed { background: #10b981; }");
+
+  dpadLayout->addWidget(m_ui.btnPtzUp, 0, 1, Qt::AlignCenter);
+
+  dpadLayout->addWidget(m_ui.btnPtzLeft, 1, 0, Qt::AlignCenter);
+  dpadLayout->addWidget(m_ui.btnPtzReset, 1, 1, Qt::AlignCenter);
+  dpadLayout->addWidget(m_ui.btnPtzRight, 1, 2, Qt::AlignCenter);
+
+  dpadLayout->addWidget(m_ui.btnPtzDown, 2, 1, Qt::AlignCenter);
+
+  QHBoxLayout *circleWrapper = new QHBoxLayout();
+  circleWrapper->addStretch();
+  circleWrapper->addWidget(remoteCircularFrame);
+  circleWrapper->addStretch();
+  ptzMainLayout->addLayout(circleWrapper);
+
+  // Zoom Controls - Using individual icons
+  QHBoxLayout *zoomLayout = new QHBoxLayout();
+  zoomLayout->setSpacing(20);
+
+  m_ui.btnZoomOut =
+      createRemoteBtn(PROJECT_SOURCE_DIR "/src/ui/icon/zoom_out.png");
+  m_ui.btnZoomIn =
+      createRemoteBtn(PROJECT_SOURCE_DIR "/src/ui/icon/zoon_in.png");
+  m_ui.btnZoomOut->setFixedSize(44, 44);
+  m_ui.btnZoomIn->setFixedSize(44, 44);
+  m_ui.btnZoomOut->setStyleSheet(m_ui.btnZoomOut->styleSheet() +
+                                 "QPushButton { background: #1e293b; border: "
+                                 "1px solid #334155; border-radius: 22px; }");
+  m_ui.btnZoomIn->setStyleSheet(m_ui.btnZoomIn->styleSheet() +
+                                "QPushButton { background: #1e293b; border: "
+                                "1px solid #334155; border-radius: 22px; }");
+
+  zoomLayout->addStretch();
+  zoomLayout->addWidget(m_ui.btnZoomOut);
+  zoomLayout->addWidget(m_ui.btnZoomIn);
+  zoomLayout->addStretch();
+  ptzMainLayout->addLayout(zoomLayout);
+
+  channelPanelLayout->addWidget(ptzBox);
   channelPanelLayout->addStretch();
   channelScrollArea->setWidget(channelPanel);
 
@@ -335,24 +500,26 @@ void CctvDashboardView::setupUi() {
   footerFrame->setObjectName("footerFrame");
   footerFrame->setFixedHeight(36);
   QHBoxLayout *footerLayout = new QHBoxLayout(footerFrame);
-  footerLayout->setContentsMargins(16, 4, 16, 4);
+  footerLayout->setContentsMargins(16, 0, 0, 0);
 
   m_ui.footerTimeLabel = new QLabel(this);
   m_ui.footerTimeLabel->setObjectName("footerTime");
   m_ui.footerTimeLabel->setText(
       QDateTime::currentDateTime().toString("yyyy/MM/dd  HH:mm:ss"));
 
-  m_ui.recordingDot = new QLabel(this);
-  m_ui.recordingDot->setObjectName("recordingDot");
-  m_ui.recordingDot->setFixedSize(10, 10);
-
-  m_ui.footerRecordingLabel = new QLabel(QString::fromUtf8("Recording"), this);
-  m_ui.footerRecordingLabel->setObjectName("recordingLabel");
+  m_ui.settingsButton = new QPushButton(this);
+  m_ui.settingsButton->setIcon(tintIcon(
+      PROJECT_SOURCE_DIR "/src/ui/icon/option.png", QColor("#94A3B8")));
+  m_ui.settingsButton->setIconSize(QSize(28, 28));
+  m_ui.settingsButton->setFixedSize(40, 40);
+  m_ui.settingsButton->setObjectName("btnWindowCtrl");
+  m_ui.settingsButton->setCursor(Qt::PointingHandCursor);
+  m_ui.settingsButton->setToolTip(QString::fromUtf8("로그 설정"));
+  m_ui.settingsButton->setStyleSheet(
+      "QPushButton::menu-indicator { image: none; width: 0px; }");
 
   footerLayout->addWidget(m_ui.footerTimeLabel);
   footerLayout->addStretch();
-  footerLayout->addWidget(m_ui.recordingDot);
-  footerLayout->addSpacing(6);
-  footerLayout->addWidget(m_ui.footerRecordingLabel);
+  footerLayout->addWidget(m_ui.settingsButton);
   cctvLayout->addWidget(footerFrame);
 }

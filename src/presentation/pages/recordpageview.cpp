@@ -3,8 +3,8 @@
 #include "presentation/widgets/videowidget.h"
 #include <QComboBox>
 #include <QGroupBox>
-#include <QHeaderView>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -12,6 +12,9 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
 
 RecordPageView::RecordPageView(QWidget *parent) : QWidget(parent) { setupUi(); }
 
@@ -32,14 +35,41 @@ void RecordPageView::setupUi() {
   m_ui.cmbManualCamera->addItem(QStringLiteral("Ch2"), 1);
   m_ui.cmbManualCamera->addItem(QStringLiteral("Ch3"), 2);
   m_ui.cmbManualCamera->addItem(QStringLiteral("Ch4"), 3);
-  m_ui.btnCaptureRecordTab =
-      new QPushButton(QString::fromUtf8("즉시 캡처"), this);
-  m_ui.btnRecordRecordTab =
-      new QPushButton(QString::fromUtf8("녹화 시작"), this);
-  m_ui.btnCaptureRecordTab->setMinimumHeight(32);
-  m_ui.btnRecordRecordTab->setMinimumHeight(32);
-  m_ui.cmbManualCamera->setMinimumHeight(32);
+  auto tintIcon = [](const QString &iconPath, const QColor &color) -> QIcon {
+    QPixmap pixmap(iconPath);
+    if (pixmap.isNull()) return QIcon();
+    QPixmap result(pixmap.size());
+    result.fill(Qt::transparent);
+    QPainter painter(&result);
+    painter.drawPixmap(0, 0, pixmap);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    painter.fillRect(result.rect(), color);
+    painter.end();
+    return QIcon(result);
+  };
+
+  QString btnStyle = "QPushButton { background: transparent; border: 1px solid transparent; border-radius: 4px; } "
+                     "QPushButton:hover { background: #334155; border: 1px solid transparent; } "
+                     "QPushButton:checked { background: #0f172a; border: 1px solid #10b981; }";
+
+  m_ui.btnCaptureRecordTab = new QPushButton(this);
+  m_ui.btnCaptureRecordTab->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/capture.png", QColor("#94A3B8")));
+  m_ui.btnCaptureRecordTab->setIconSize(QSize(24, 24));
+  m_ui.btnCaptureRecordTab->setFixedSize(36, 36);
+  m_ui.btnCaptureRecordTab->setCursor(Qt::PointingHandCursor);
+  m_ui.btnCaptureRecordTab->setToolTip(QString::fromUtf8("즉시 캡처"));
+  m_ui.btnCaptureRecordTab->setStyleSheet(btnStyle);
+  
+  m_ui.btnRecordRecordTab = new QPushButton(this);
+  m_ui.btnRecordRecordTab->setIcon(tintIcon(PROJECT_SOURCE_DIR "/src/ui/icon/rec.png", QColor("#94A3B8")));
+  m_ui.btnRecordRecordTab->setIconSize(QSize(24, 24));
+  m_ui.btnRecordRecordTab->setFixedSize(36, 36);
+  m_ui.btnRecordRecordTab->setCursor(Qt::PointingHandCursor);
   m_ui.btnRecordRecordTab->setCheckable(true);
+  m_ui.btnRecordRecordTab->setToolTip(QString::fromUtf8("녹화 시작"));
+  m_ui.btnRecordRecordTab->setStyleSheet(btnStyle);
+  
+  m_ui.cmbManualCamera->setMinimumHeight(36);
   manualLayout->addWidget(m_ui.cmbManualCamera);
   manualLayout->addWidget(m_ui.btnCaptureRecordTab);
   manualLayout->addWidget(m_ui.btnRecordRecordTab);
@@ -96,7 +126,8 @@ void RecordPageView::setupUi() {
       "color: #10b981; font-weight: bold; margin-left: 8px;");
   continuousLayout->addWidget(m_ui.lblContinuousStatus);
   continuousLayout->addSpacing(16);
-  m_ui.btnViewContinuous = new QPushButton(QString::fromUtf8("상시영상"), this);
+  m_ui.btnViewContinuous =
+      new QPushButton(QString::fromUtf8("▶ 상시영상"), this);
   m_ui.btnViewContinuous->setMinimumHeight(32);
   m_ui.btnViewContinuous->setStyleSheet(
       "background: #10b981; color: white; border-radius: 4px; font-weight: "

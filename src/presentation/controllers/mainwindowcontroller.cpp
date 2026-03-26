@@ -412,6 +412,18 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
   hardwareUiRefs.reidTable = m_ui.reidTable;
   hardwareUiRefs.zoneTable = m_ui.zoneTable;
 
+  hardwareUiRefs.btnPtzUp = m_ui.btnPtzUp;
+  hardwareUiRefs.btnPtzDown = m_ui.btnPtzDown;
+  hardwareUiRefs.btnPtzLeft = m_ui.btnPtzLeft;
+  hardwareUiRefs.btnPtzRight = m_ui.btnPtzRight;
+  hardwareUiRefs.btnPtzUpLeft = m_ui.btnPtzUpLeft;
+  hardwareUiRefs.btnPtzUpRight = m_ui.btnPtzUpRight;
+  hardwareUiRefs.btnPtzDownLeft = m_ui.btnPtzDownLeft;
+  hardwareUiRefs.btnPtzDownRight = m_ui.btnPtzDownRight;
+  hardwareUiRefs.btnPtzReset = m_ui.btnPtzReset;
+  hardwareUiRefs.btnZoomIn = m_ui.btnZoomIn;
+  hardwareUiRefs.btnZoomOut = m_ui.btnZoomOut;
+
   HardwareController::Context hardwareContext;
   hardwareContext.logMessage = [this](const QString &message) {
     onLogMessage(message);
