@@ -178,7 +178,7 @@ cmake --build build --config Release
     "port": 9000
   },
   "rpiControl": {
-    "host": "192.168.0.44",
+    "host": "172.20.24.122",
     "port": 12345,
     "autoConnect": true
   }
