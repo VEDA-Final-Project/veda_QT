@@ -1,7 +1,6 @@
 #ifndef RPITCPCLIENT_H
 #define RPITCPCLIENT_H
 
-#include "infrastructure/persistence/hardwarelogrepository.h"
 #include <QJsonObject>
 #include <QObject>
 
@@ -83,7 +82,6 @@ private:
   int m_barrierUpAngle = 90;
   int m_barrierDownAngle = 0;
 
-  HardwareLogRepository m_hwLogRepo;
 };
 
 #endif // RPITCPCLIENT_H
