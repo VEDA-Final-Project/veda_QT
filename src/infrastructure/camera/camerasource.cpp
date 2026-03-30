@@ -373,11 +373,6 @@ void CameraSource::onMetadataReceived(const QList<ObjectInfo> &objects,
   //                                     cfg.sourceHeight(), 5000);
   // }
 
-  if (!m_zoneStatusTimer.isValid() ||
-      m_zoneStatusTimer.elapsed() >= kZoneSyncIntervalMs) {
-    m_zoneStatusTimer.restart();
-    syncZoneOccupancyFromActiveVehicles();
-  }
 }
 
 void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
@@ -407,6 +402,12 @@ void CameraSource::onFrameCaptured(QSharedPointer<cv::Mat> framePtr,
     const auto &cfg = Config::instance();
     m_parkingService->processMetadata(readyMetadata, 0, cfg.effectiveWidth(),
                                       cfg.sourceHeight(), 5000);
+
+    if (!m_zoneStatusTimer.isValid() ||
+        m_zoneStatusTimer.elapsed() >= kZoneSyncIntervalMs) {
+      m_zoneStatusTimer.restart();
+      syncZoneOccupancyFromActiveVehicles();
+    }
   }
 }
 

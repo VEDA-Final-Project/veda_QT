@@ -68,6 +68,7 @@ private:
   RecordingWorkflowController *m_recordingWorkflowController = nullptr;
   MediaRepository *m_mediaRepo = nullptr;
   LogDeduplicator m_logDeduplicator;
+  bool m_shutdownStarted = false;
 };
 
 #endif // MAINWINDOWCONTROLLER_H

@@ -29,6 +29,32 @@ public:
    */
   static QSqlDatabase database();
 
+  /**
+   * @brief 현재 연결된 DB 파일 경로를 반환
+   * @return DB 파일 경로, 연결되지 않았으면 빈 문자열
+   */
+  static QString databasePath();
+
+  /**
+   * @brief 현재 DB를 지정된 파일로 백업
+   * @param backupPath 생성할 백업 파일 경로
+   * @param errorMessage 오류 메시지 출력용 포인터
+   * @return 성공 여부
+   */
+  static bool backupDatabase(const QString &backupPath,
+                             QString *errorMessage = nullptr);
+
+  /**
+   * @brief 타임스탬프가 포함된 백업 파일을 생성
+   * @param backupDirPath 백업 파일을 저장할 디렉터리
+   * @param createdBackupPath 실제 생성된 백업 파일 경로
+   * @param errorMessage 오류 메시지 출력용 포인터
+   * @return 성공 여부
+   */
+  static bool createTimestampedBackup(const QString &backupDirPath,
+                                      QString *createdBackupPath = nullptr,
+                                      QString *errorMessage = nullptr);
+
 private:
   DatabaseContext() = delete; // 인스턴스화 방지
 };

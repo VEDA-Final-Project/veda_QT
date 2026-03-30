@@ -159,12 +159,17 @@ void LoginPage::handleLogin() {
 void LoginPage::handleLoginStepFinished(bool ok, const QString &code,
                                         const QString &message) {
   if (ok) {
+    currentStep_ = LoginStep::OtpStep;
+    updateStepUi();
     setLoginUiBusy(false);
-    loginSucceeded_ = true;
-    showStatusMessage(message.isEmpty() ? QStringLiteral("개발 모드: OTP 생략")
-                                        : message,
-                      true);
-    emit loginSucceeded();
+    showProgressMessage(
+        message.isEmpty()
+            ? QStringLiteral("아이디와 비밀번호 확인 완료. OTP를 입력하세요.")
+            : message);
+    if (otpInput_) {
+      otpInput_->clear();
+      otpInput_->setFocus(Qt::OtherFocusReason);
+    }
     return;
   }
 
@@ -311,7 +316,7 @@ void LoginPage::updateStepUi() {
   }
   if (loginButton_) {
     loginButton_->setText(otpStep ? QStringLiteral("인증하고 시작")
-                                  : QStringLiteral("로그인"));
+                                  : QStringLiteral("다음"));
   }
 }
 

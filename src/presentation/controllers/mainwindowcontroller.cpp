@@ -26,7 +26,16 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFileInfo>
 #include <QJsonDocument>
+#include <QSet>
+
+namespace {
+bool hasValidZonePolygon(const QJsonObject &record) {
+  return record.value("zone_points").toArray().size() >= 3;
+}
+}
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
                                            QObject *parent)
@@ -249,10 +258,25 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
         continue;
       }
 
+      QSet<int> occupiedRoiIndices;
+      const QList<VehicleState> activeVehicles = source->activeVehicles();
+      for (const VehicleState &state : activeVehicles) {
+        if (state.occupiedRoiIndex >= 0) {
+          occupiedRoiIndices.insert(state.occupiedRoiIndex);
+        }
+      }
+
       const QVector<QJsonObject> &records = source->roiRecords();
       allRecords.reserve(allRecords.size() + records.size());
+      int enabledRoiIndex = 0;
       for (const QJsonObject &record : records) {
-        allRecords.append(record);
+        QJsonObject enrichedRecord = record;
+        if (hasValidZonePolygon(record)) {
+          enrichedRecord["live_occupied"] =
+              occupiedRoiIndices.contains(enabledRoiIndex);
+          ++enabledRoiIndex;
+        }
+        allRecords.append(enrichedRecord);
       }
     }
     return allRecords;
@@ -506,6 +530,11 @@ void MainWindowController::onSystemConfigChanged() {
 }
 
 void MainWindowController::shutdown() {
+  if (m_shutdownStarted) {
+    return;
+  }
+  m_shutdownStarted = true;
+
   QElapsedTimer timer;
   timer.start();
 
@@ -527,6 +556,35 @@ void MainWindowController::shutdown() {
   }
   if (m_cameraSessionController) {
     m_cameraSessionController->shutdown();
+  }
+  if (m_telegramController) {
+    m_telegramController->shutdown();
+  }
+
+  const QString dbPath = DatabaseContext::databasePath().trimmed();
+  if (dbPath.isEmpty()) {
+    const QString message =
+        QStringLiteral("[DB] Shutdown backup skipped: database path is empty");
+    qWarning().noquote() << message;
+    onLogMessage(message);
+  } else {
+    const QString backupDirPath =
+        QFileInfo(dbPath).dir().filePath(QStringLiteral("backups"));
+    QString createdBackupPath;
+    QString backupError;
+    if (DatabaseContext::createTimestampedBackup(backupDirPath,
+                                                 &createdBackupPath,
+                                                 &backupError)) {
+      onLogMessage(QStringLiteral("[DB] Shutdown backup created: %1")
+                       .arg(createdBackupPath));
+    } else {
+      const QString message =
+          QStringLiteral("[DB] Shutdown backup failed: %1")
+              .arg(backupError.isEmpty() ? QStringLiteral("Unknown error")
+                                         : backupError);
+      qWarning().noquote() << message;
+      onLogMessage(message);
+    }
   }
 
   const QString shutdownLog =

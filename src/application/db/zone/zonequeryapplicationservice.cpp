@@ -37,6 +37,17 @@ QString formatDisplayDateTime(const QString &rawIsoText) {
       .arg(hour12)
       .arg(dt.time().minute(), 2, 10, QLatin1Char('0'));
 }
+
+QString occupancyLabelForRecord(const QJsonObject &record) {
+  if (record.contains("live_occupied")) {
+    return record["live_occupied"].toBool()
+               ? QStringLiteral("주차중")
+               : QStringLiteral("빈자리");
+  }
+
+  return record["zone_enable"].toBool(true) ? QStringLiteral("빈자리")
+                                            : QStringLiteral("주차중");
+}
 } // namespace
 
 ZoneQueryApplicationService::ZoneQueryApplicationService(const Context &context,
@@ -54,8 +65,7 @@ QVector<ZoneRow> ZoneQueryApplicationService::getAllZones() const {
     rows.append(ZoneRow{
         record["camera_key"].toString(),
         record["zone_name"].toString(),
-        record["zone_enable"].toBool(true) ? QStringLiteral("빈자리")
-                                           : QStringLiteral("주차중"),
+        occupancyLabelForRecord(record),
         formatDisplayDateTime(record["created_at"].toString()),
     });
   }
