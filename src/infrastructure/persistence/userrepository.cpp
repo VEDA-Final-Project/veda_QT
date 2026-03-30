@@ -1,47 +1,188 @@
 #include "infrastructure/persistence/userrepository.h"
+
 #include "infrastructure/persistence/databasecontext.h"
+#include "infrastructure/persistence/vehiclerepository.h"
 #include <QDebug>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QVariant>
+
+namespace {
+QString normalizedPlateNumber(const QString &plateNumber) {
+  return plateNumber.trimmed();
+}
+
+bool execSql(QSqlDatabase &db, const QString &sql, QString *errorMessage) {
+  QSqlQuery query(db);
+  if (query.exec(sql)) {
+    return true;
+  }
+
+  if (errorMessage) {
+    *errorMessage = query.lastError().text();
+  }
+  return false;
+}
+
+QString plateForChatSubquery() {
+  return QStringLiteral(
+      "COALESCE("
+      "(SELECT vp.plate_number "
+      " FROM user_vehicles uv "
+      " JOIN vehicle_plates vp ON vp.vehicle_id = uv.vehicle_id "
+      " WHERE uv.chat_id = tu.chat_id AND vp.is_primary = 1 "
+      " ORDER BY datetime(uv.created_at) DESC, uv.id DESC LIMIT 1),"
+      "(SELECT vp.plate_number "
+      " FROM user_vehicles uv "
+      " JOIN vehicle_plates vp ON vp.vehicle_id = uv.vehicle_id "
+      " WHERE uv.chat_id = tu.chat_id "
+      " ORDER BY datetime(uv.created_at) DESC, uv.id DESC, vp.plate_id DESC "
+      " LIMIT 1),"
+      "''"
+      ")");
+}
+
+QJsonObject userFromQuery(const QSqlQuery &query) {
+  QJsonObject row;
+  row["chat_id"] = query.value("chat_id").toString();
+  row["plate_number"] = query.value("plate_number").toString();
+  row["name"] = query.value("name").toString();
+  row["phone"] = query.value("phone").toString();
+  row["payment_info"] = query.value("payment_info").toString();
+  row["created_at"] = query.value("created_at").toString();
+  return row;
+}
+
+bool upsertUserAndMapping(QSqlDatabase &db, const QString &chatId,
+                          const QString &plateNumber, const QString &name,
+                          const QString &phone, const QString &paymentInfo,
+                          QString *errorMessage) {
+  VehicleRepository vehicleRepo;
+  int vehicleId = -1;
+  const QString normalizedPlate = normalizedPlateNumber(plateNumber);
+  if (!normalizedPlate.isEmpty()) {
+    vehicleId = vehicleRepo.ensureVehicle(normalizedPlate, QString(), QString(),
+                                          QString(), errorMessage);
+    if (vehicleId < 0) {
+      return false;
+    }
+  }
+
+  if (!db.transaction()) {
+    if (errorMessage) {
+      *errorMessage = db.lastError().text();
+    }
+    return false;
+  }
+
+  auto rollback = [&db]() { db.rollback(); };
+
+  QSqlQuery upsertUser(db);
+  upsertUser.prepare(QStringLiteral(
+      "INSERT INTO telegram_users (chat_id, name, phone, payment_info, created_at) "
+      "VALUES (:chat_id, :name, :phone, :payment, datetime('now','localtime')) "
+      "ON CONFLICT(chat_id) DO UPDATE SET "
+      "  name = excluded.name, "
+      "  phone = excluded.phone, "
+      "  payment_info = excluded.payment_info"));
+  upsertUser.bindValue(":chat_id", chatId);
+  upsertUser.bindValue(":name", name);
+  upsertUser.bindValue(":phone", phone);
+  upsertUser.bindValue(":payment", paymentInfo);
+
+  if (!upsertUser.exec()) {
+    if (errorMessage) {
+      *errorMessage = upsertUser.lastError().text();
+    }
+    rollback();
+    return false;
+  }
+
+  QSqlQuery clearMappings(db);
+  clearMappings.prepare(
+      QStringLiteral("DELETE FROM user_vehicles WHERE chat_id = :chat_id"));
+  clearMappings.bindValue(":chat_id", chatId);
+  if (!clearMappings.exec()) {
+    if (errorMessage) {
+      *errorMessage = clearMappings.lastError().text();
+    }
+    rollback();
+    return false;
+  }
+
+  if (vehicleId > 0) {
+    QSqlQuery insertMapping(db);
+    insertMapping.prepare(QStringLiteral(
+        "INSERT INTO user_vehicles (chat_id, vehicle_id, created_at) "
+        "VALUES (:chat_id, :vehicle_id, datetime('now','localtime'))"));
+    insertMapping.bindValue(":chat_id", chatId);
+    insertMapping.bindValue(":vehicle_id", vehicleId);
+    if (!insertMapping.exec()) {
+      if (errorMessage) {
+        *errorMessage = insertMapping.lastError().text();
+      }
+      rollback();
+      return false;
+    }
+  }
+
+  if (!db.commit()) {
+    if (errorMessage) {
+      *errorMessage = db.lastError().text();
+    }
+    rollback();
+    return false;
+  }
+
+  return true;
+}
+} // namespace
 
 UserRepository::UserRepository() {}
 
 bool UserRepository::init(QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen()) {
-    if (errorMessage)
+    if (errorMessage) {
       *errorMessage = QStringLiteral("Database is not open");
+    }
     return false;
   }
 
-  QSqlQuery query(db);
-  const QString sql =
-      QStringLiteral("CREATE TABLE IF NOT EXISTS telegram_users ("
-                     "  chat_id TEXT PRIMARY KEY,"
-                     "  plate_number TEXT NOT NULL,"
-                     "  created_at TEXT DEFAULT (datetime('now','localtime'))"
-                     ")");
-
-  if (!query.exec(sql)) {
-    const QString err =
-        QStringLiteral("Failed to create telegram_users table: ") +
-        query.lastError().text();
-    qWarning() << err;
-    if (errorMessage)
-      *errorMessage = err;
+  if (!execSql(
+          db, QStringLiteral("CREATE TABLE IF NOT EXISTS telegram_users ("
+                             "  chat_id TEXT PRIMARY KEY,"
+                             "  name TEXT,"
+                             "  phone TEXT,"
+                             "  payment_info TEXT,"
+                             "  created_at TEXT NOT NULL DEFAULT "
+                             "(datetime('now','localtime'))"
+                             ")"),
+          errorMessage)) {
     return false;
   }
 
-  // 마이그레이션: 신규 컬럼 추가
-  const QStringList newColumns = {
-      "ALTER TABLE telegram_users ADD COLUMN name TEXT",
-      "ALTER TABLE telegram_users ADD COLUMN phone TEXT",
-      "ALTER TABLE telegram_users ADD COLUMN payment_info TEXT"};
+  if (!execSql(
+          db, QStringLiteral("CREATE TABLE IF NOT EXISTS user_vehicles ("
+                             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                             "  chat_id TEXT NOT NULL,"
+                             "  vehicle_id INTEGER NOT NULL,"
+                             "  created_at TEXT NOT NULL DEFAULT "
+                             "(datetime('now','localtime')),"
+                             "  FOREIGN KEY (chat_id) REFERENCES "
+                             "telegram_users(chat_id) ON DELETE CASCADE,"
+                             "  FOREIGN KEY (vehicle_id) REFERENCES "
+                             "vehicles(vehicle_id) ON DELETE CASCADE"
+                             ")"),
+          errorMessage)) {
+    return false;
+  }
 
-  for (const QString &alterSql : newColumns) {
-    QSqlQuery alterQuery(db);
-    alterQuery.exec(alterSql);
+  if (!execSql(db,
+               QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
+                              "idx_user_vehicles_chat_vehicle "
+                              "ON user_vehicles(chat_id, vehicle_id)"),
+               errorMessage)) {
+    return false;
   }
 
   return true;
@@ -52,28 +193,14 @@ bool UserRepository::registerUser(const QString &chatId,
                                   const QString &name, const QString &phone,
                                   const QString &paymentInfo,
                                   QString *errorMessage) {
-  QSqlDatabase db = DatabaseContext::database();
-  QSqlQuery query(db);
-  query.prepare(
-      QStringLiteral("INSERT OR REPLACE INTO telegram_users (chat_id, "
-                     "plate_number, name, phone, payment_info, created_at) "
-                     "VALUES (:chat_id, :plate, :name, :phone, :payment, "
-                     "datetime('now','localtime'))"));
-  query.bindValue(":chat_id", chatId);
-  query.bindValue(":plate", plateNumber);
-  query.bindValue(":name", name);
-  query.bindValue(":phone", phone);
-  query.bindValue(":payment", paymentInfo);
-
-  if (!query.exec()) {
-    const QString err =
-        QStringLiteral("Failed to register user: ") + query.lastError().text();
-    qWarning() << err;
-    if (errorMessage)
-      *errorMessage = err;
+  if (!init(errorMessage)) {
     return false;
   }
-  return true;
+
+  QSqlDatabase db = DatabaseContext::database();
+  return upsertUserAndMapping(db, chatId.trimmed(),
+                              plateNumber, name.trimmed(), phone.trimmed(),
+                              paymentInfo.trimmed(), errorMessage);
 }
 
 bool UserRepository::updateUser(const QString &chatId,
@@ -81,26 +208,8 @@ bool UserRepository::updateUser(const QString &chatId,
                                 const QString &phone,
                                 const QString &paymentInfo,
                                 QString *errorMessage) {
-  QSqlDatabase db = DatabaseContext::database();
-  QSqlQuery query(db);
-  query.prepare(
-      QStringLiteral("UPDATE telegram_users SET plate_number=:plate, "
-                     "name=:name, phone=:phone, payment_info=:payment "
-                     "WHERE chat_id=:chat_id"));
-  query.bindValue(":chat_id", chatId);
-  query.bindValue(":plate", plateNumber);
-  query.bindValue(":name", name);
-  query.bindValue(":phone", phone);
-  query.bindValue(":payment", paymentInfo);
-  if (!query.exec()) {
-    const QString err =
-        QStringLiteral("Failed to update user: ") + query.lastError().text();
-    qWarning() << err;
-    if (errorMessage)
-      *errorMessage = err;
-    return false;
-  }
-  return true;
+  return registerUser(chatId, plateNumber, name, phone, paymentInfo,
+                      errorMessage);
 }
 
 bool UserRepository::addUser(const QString &chatId, const QString &plateNumber,
@@ -114,80 +223,29 @@ bool UserRepository::addUser(const QString &chatId, const QString &plateNumber,
 QMap<QString, QString>
 UserRepository::getAllUsers(QString *errorMessage) const {
   QMap<QString, QString> users;
-  QSqlDatabase db = DatabaseContext::database();
-  if (!db.isOpen())
-    return users;
-
-  QSqlQuery query(db);
-  if (!query.exec(
-          QStringLiteral("SELECT chat_id, plate_number FROM telegram_users"))) {
-    if (errorMessage)
-      *errorMessage = query.lastError().text();
-    return users;
-  }
-
-  while (query.next()) {
-    users.insert(query.value(0).toString(), query.value(1).toString());
+  const QVector<QJsonObject> detailed =
+      getAllUsersFull(errorMessage);
+  for (const QJsonObject &row : detailed) {
+    users.insert(row["chat_id"].toString(), row["plate_number"].toString());
   }
   return users;
 }
 
-bool UserRepository::deleteUser(const QString &chatId, QString *errorMessage) {
-  QSqlDatabase db = DatabaseContext::database();
-  if (!db.isOpen())
-    return false;
-
-  QSqlQuery query(db);
-  query.prepare(
-      QStringLiteral("DELETE FROM telegram_users WHERE chat_id = :chatId"));
-  query.bindValue(":chatId", chatId);
-
-  if (!query.exec()) {
-    if (errorMessage)
-      *errorMessage = query.lastError().text();
-    return false;
-  }
-  return true;
-}
-
-QVector<QJsonObject>
-UserRepository::getAllUsersFull(QString *errorMessage) const {
-  QVector<QJsonObject> results;
-  QSqlDatabase db = DatabaseContext::database();
-  if (!db.isOpen())
-    return results;
-
-  QSqlQuery query(db);
-  if (!query.exec(QStringLiteral("SELECT chat_id, plate_number, name, phone, "
-                                 "payment_info, created_at FROM telegram_users "
-                                 "ORDER BY created_at DESC"))) {
-    if (errorMessage)
-      *errorMessage = query.lastError().text();
-    return results;
-  }
-
-  while (query.next()) {
-    QJsonObject row;
-    row["chat_id"] = query.value("chat_id").toString();
-    row["plate_number"] = query.value("plate_number").toString();
-    row["name"] = query.value("name").toString();
-    row["phone"] = query.value("phone").toString();
-    row["payment_info"] = query.value("payment_info").toString();
-    row["created_at"] = query.value("created_at").toString();
-    results.append(row);
-  }
-  return results;
-}
-
 QString UserRepository::findChatIdByPlate(const QString &plateNumber) const {
-  QSqlDatabase db = DatabaseContext::database();
-  if (!db.isOpen())
+  QString error;
+  if (!const_cast<UserRepository *>(this)->init(&error)) {
     return QString();
+  }
 
+  QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "SELECT chat_id FROM telegram_users WHERE plate_number = :plate"));
-  query.bindValue(":plate", plateNumber);
+      "SELECT uv.chat_id "
+      "FROM user_vehicles uv "
+      "JOIN vehicle_plates vp ON vp.vehicle_id = uv.vehicle_id "
+      "WHERE vp.plate_number = :plate "
+      "ORDER BY datetime(uv.created_at) DESC, uv.id DESC LIMIT 1"));
+  query.bindValue(":plate", normalizedPlateNumber(plateNumber));
 
   if (query.exec() && query.next()) {
     return query.value(0).toString();
@@ -196,17 +254,61 @@ QString UserRepository::findChatIdByPlate(const QString &plateNumber) const {
 }
 
 QString UserRepository::findPlateByChatId(const QString &chatId) const {
-  QSqlDatabase db = DatabaseContext::database();
-  if (!db.isOpen())
-    return QString();
-
-  QSqlQuery query(db);
-  query.prepare(QStringLiteral(
-      "SELECT plate_number FROM telegram_users WHERE chat_id = :chatId"));
-  query.bindValue(":chatId", chatId);
-
-  if (query.exec() && query.next()) {
-    return query.value(0).toString();
+  QString error;
+  const QVector<QJsonObject> detailed = getAllUsersFull(&error);
+  for (const QJsonObject &row : detailed) {
+    if (row["chat_id"].toString() == chatId.trimmed()) {
+      return row["plate_number"].toString();
+    }
   }
   return QString();
+}
+
+QVector<QJsonObject>
+UserRepository::getAllUsersFull(QString *errorMessage) const {
+  QVector<QJsonObject> results;
+  if (!const_cast<UserRepository *>(this)->init(errorMessage)) {
+    return results;
+  }
+
+  QSqlDatabase db = DatabaseContext::database();
+  QSqlQuery query(db);
+  const QString sql = QStringLiteral(
+      "SELECT tu.chat_id, %1 AS plate_number, "
+      "tu.name, tu.phone, tu.payment_info, tu.created_at "
+      "FROM telegram_users tu "
+      "ORDER BY datetime(tu.created_at) DESC, tu.chat_id ASC")
+                          .arg(plateForChatSubquery());
+
+  if (!query.exec(sql)) {
+    if (errorMessage) {
+      *errorMessage = query.lastError().text();
+    }
+    return results;
+  }
+
+  while (query.next()) {
+    results.append(userFromQuery(query));
+  }
+  return results;
+}
+
+bool UserRepository::deleteUser(const QString &chatId, QString *errorMessage) {
+  if (!init(errorMessage)) {
+    return false;
+  }
+
+  QSqlDatabase db = DatabaseContext::database();
+  QSqlQuery query(db);
+  query.prepare(
+      QStringLiteral("DELETE FROM telegram_users WHERE chat_id = :chatId"));
+  query.bindValue(":chatId", chatId.trimmed());
+
+  if (!query.exec()) {
+    if (errorMessage) {
+      *errorMessage = query.lastError().text();
+    }
+    return false;
+  }
+  return query.numRowsAffected() > 0;
 }

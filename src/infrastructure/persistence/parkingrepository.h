@@ -25,8 +25,8 @@ public:
    * @return 생성된 레코드의 ID (실패 시 -1)
    */
   int insertEntry(const QString &cameraKey, int objectId,
-                  const QString &plateNumber, const QString &zoneName,
-                  int roiIndex, const QString &reidId,
+                  const QString &plateNumber, const QString &zoneId,
+                  const QString &zoneName, const QString &reidId,
                   const QDateTime &entryTime,
                   QString *errorMessage = nullptr);
 

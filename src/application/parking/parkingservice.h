@@ -48,7 +48,8 @@ public:
    * @brief ROI 폴리곤 목록 갱신 (MainWindowController에서 호출)
    */
   void updateRoiPolygons(const QList<QPolygonF> &polygons,
-                         const QStringList &zoneNames = QStringList());
+                         const QStringList &zoneNames = QStringList(),
+                         const QStringList &zoneIds = QStringList());
 
   /**
    * @brief 새 메타데이터 프레임 처리 (입출차 판단의 진입점)
@@ -126,6 +127,7 @@ private:
   void handleDeparture(const VehicleState &vs);
   void sendTelegramEntryNotice(const QString &plateNumber);
   void syncActiveIdentity(const VehicleState &vs);
+  QString zoneIdForIndex(int roiIndex) const;
   QJsonObject findActiveLog(const VehicleState &vs,
                             QString *errorMessage = nullptr) const;
 
@@ -134,6 +136,7 @@ private:
   VehicleRepository m_vehicleRepo;
   QString m_cameraKey = QStringLiteral("camera");
   QStringList m_roiZoneNames;
+  QStringList m_roiZoneIds;
   TelegramBotAPI *m_telegram = nullptr;
 
   QHash<int, QString> m_ocrObjectReidSnapshot;
