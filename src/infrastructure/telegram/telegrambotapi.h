@@ -42,6 +42,10 @@ public:
   /// 시스템에서 사용자 삭제 시 메모리 맵 업데이트
   void removeUser(const QString &chatId);
 
+private:
+  /// 카카오페이 송금 링크 생성 (금액 포함)
+  QString generateKakaoPayLink(int amount) const;
+
 signals:
   /// 로그 메시지 전달용 시그널
   void logMessage(const QString &msg);

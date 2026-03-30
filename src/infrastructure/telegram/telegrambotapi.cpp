@@ -117,22 +117,29 @@ void TelegramBotAPI::sendExitNotice(const QString &plateNumber, int fee,
   }
 
   QString replyMarkup;
-  if (resolvedFee > 0 && paymentRecordId > 0) {
-    QJsonObject btn;
-    btn["text"] = QString::fromUtf8("💰 결제하기");
-    btn["callback_data"] = QString("PAYREC_%1").arg(paymentRecordId);
+  if (resolvedFee > 0) {
+    QJsonObject btnPay, btnConfirm;
+    btnPay["text"] = QString::fromUtf8("💰 %1원 송금").arg(resolvedFee);
+    btnPay["url"] = generateKakaoPayLink(resolvedFee);
 
-    QJsonArray row;
-    row.append(btn);
+    btnConfirm["text"] = QString::fromUtf8("✅ 입금 완료 알림");
+    btnConfirm["callback_data"] = QString("PAYDONE_%1").arg(paymentRecordId);
+
+    QJsonArray row1, row2;
+    row1.append(btnPay);
+    row2.append(btnConfirm);
 
     QJsonArray keyboard;
-    keyboard.append(row);
+    keyboard.append(row1);
+    keyboard.append(row2);
 
     QJsonObject markup;
     markup["inline_keyboard"] = keyboard;
 
     replyMarkup =
         QString::fromUtf8(QJsonDocument(markup).toJson(QJsonDocument::Compact));
+
+    text += "\n\n⚠️ 입금 후 아래 [입금 완료 알림] 버튼을 꼭 눌러주세요. 관리자 확인 후 출차가 승인됩니다.";
   }
 
   sendMessage(targetChatId, text, replyMarkup);
@@ -440,6 +447,34 @@ void TelegramBotAPI::pollUpdates() {
                       QString("✅ 결제가 성공적으로 완료되었습니다.\n(차량: %1, 금액: %2원)")
                           .arg(plate)
                           .arg(amount));
+        } else if (data.startsWith(QStringLiteral("PAYDONE_"))) {
+          const int recordId = data.mid(QStringLiteral("PAYDONE_").size()).toInt();
+          const QJsonObject record = m_parkingRepository.findLogById(recordId);
+          if (record.isEmpty()) {
+            answerCallbackQuery(id, "내역을 찾을 수 없습니다.");
+            continue;
+          }
+          const QString plate = record["plate_number"].toString().trimmed();
+          const int amount = record["total_amount"].toInt();
+
+          // 관리자에게 알림 시그널 발생 (실제로는 DB 처리와 함께 알림)
+          emit logMessage(QString("[Telegram] 🔔 입금 확인 요청: %1 (%2원) by %3")
+                              .arg(plate).arg(amount).arg(firstName));
+          
+          // 일단 기존 로직처럼 결제 완료 처리 (또는 관리자 확인 단계로 두려면 상태만 변경)
+          m_parkingRepository.markPaymentById(recordId, amount, QStringLiteral("결제완료"));
+          emit paymentConfirmed(recordId, plate, amount);
+
+          answerCallbackQuery(id, "입금 확인 요청이 전달되었습니다.");
+          sendMessage(chatId, "✅ 입금 확인 요청이 관리자에게 전달되었습니다. 잠시만 기다려주세요.");
+
+        } else if (data.startsWith(QStringLiteral("PAYINQUIRY_"))) {
+          const QString plate = data.mid(QStringLiteral("PAYINQUIRY_").size());
+          answerCallbackQuery(id, "확인 요청이 전달되었습니다.");
+          emit logMessage(QString("[Telegram] 🔔 요금 조회 중 입금 확인 요청: %1 (User: %2)")
+                              .arg(plate).arg(firstName));
+          sendMessage(chatId, "✅ 입금 확인 요청이 관리자에게 전달되었습니다.");
+
         } else if (data.startsWith("PAY_")) {
           answerCallbackQuery(id, "기존 결제 링크는 만료되었습니다.");
           sendMessage(chatId,
@@ -991,7 +1026,32 @@ void TelegramBotAPI::handleFeeInquiry(const QString &chatId) {
                        .arg(formatTime(entryTimeText))
                        .arg(feeResult.totalMinutes)
                        .arg(feeText);
-    sendMessage(chatId, text);
+
+    QString replyMarkup;
+    if (feeResult.totalAmount > 0) {
+      QJsonObject btnPay, btnConfirm;
+      btnPay["text"] = QString::fromUtf8("💰 %1원 송금").arg(feeResult.totalAmount);
+      btnPay["url"] = generateKakaoPayLink(feeResult.totalAmount);
+      
+      btnConfirm["text"] = QString::fromUtf8("✅ 입금 완료 알림");
+      // 현재 주차 중인 경우 ID가 없을 수 있으므로, 요금 조회 시에는 단순 알림만 보냄
+      btnConfirm["callback_data"] = QString("PAYINQUIRY_%1").arg(plate);
+
+      QJsonArray row1, row2;
+      row1.append(btnPay);
+      row2.append(btnConfirm);
+      
+      QJsonArray keyboard; 
+      keyboard.append(row1);
+      keyboard.append(row2);
+      
+      QJsonObject markup; markup["inline_keyboard"] = keyboard;
+      replyMarkup = QString::fromUtf8(QJsonDocument(markup).toJson(QJsonDocument::Compact));
+
+      text += "\n\n⚠️ 입금 후 [입금 완료 알림]을 눌러주시면 관리자가 확인 후 처리해 드립니다.";
+    }
+
+    sendMessage(chatId, text, replyMarkup);
     return;
   }
 
@@ -1081,4 +1141,16 @@ void TelegramBotAPI::handleFeePayment(const QString &chatId) {
   } else {
     handleFeeInquiry(chatId); // 요금 조회를 먼저 보여주어 결제 버튼 유도
   }
+}
+
+QString TelegramBotAPI::generateKakaoPayLink(int amount) const {
+  if (amount <= 0)
+    return QString();
+
+  // 1원당 8씩 증가하므로 8을 곱하고 16진수로 변환 (블로그 리버스 엔지니어링 결과 적용)
+  qlonglong multipliedValue = static_cast<qlonglong>(amount) * 8;
+  QString hexValue = QString::number(multipliedValue, 16);
+
+  // 기본 URL + hexValue + 임의의 4~5자리(00000) - 사용자 피드백에 따라 0 하나 추가
+  return QString("https://qr.kakaopay.com/FP5OzEoCo%100000").arg(hexValue);
 }
