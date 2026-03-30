@@ -29,6 +29,13 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QSet>
+
+namespace {
+bool hasValidZonePolygon(const QJsonObject &record) {
+  return record.value("zone_points").toArray().size() >= 3;
+}
+}
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
                                            QObject *parent)
@@ -251,10 +258,25 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
         continue;
       }
 
+      QSet<int> occupiedRoiIndices;
+      const QList<VehicleState> activeVehicles = source->activeVehicles();
+      for (const VehicleState &state : activeVehicles) {
+        if (state.occupiedRoiIndex >= 0) {
+          occupiedRoiIndices.insert(state.occupiedRoiIndex);
+        }
+      }
+
       const QVector<QJsonObject> &records = source->roiRecords();
       allRecords.reserve(allRecords.size() + records.size());
+      int enabledRoiIndex = 0;
       for (const QJsonObject &record : records) {
-        allRecords.append(record);
+        QJsonObject enrichedRecord = record;
+        if (hasValidZonePolygon(record)) {
+          enrichedRecord["live_occupied"] =
+              occupiedRoiIndices.contains(enabledRoiIndex);
+          ++enabledRoiIndex;
+        }
+        allRecords.append(enrichedRecord);
       }
     }
     return allRecords;
