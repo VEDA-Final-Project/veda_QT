@@ -42,6 +42,12 @@ void TelegramPanelController::connectSignals() {
           &TelegramPanelController::onAdminSummoned);
 }
 
+void TelegramPanelController::shutdown() {
+  if (m_api) {
+    m_api->shutdown();
+  }
+}
+
 TelegramBotAPI *TelegramPanelController::api() const { return m_api; }
 
 void TelegramPanelController::onSendEntry() {

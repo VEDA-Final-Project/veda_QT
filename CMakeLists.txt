@@ -167,8 +167,6 @@ qt_add_executable(${APP_TARGET}
     src/infrastructure/persistence/databasecontext.h
     src/infrastructure/persistence/userrepository.cpp
     src/infrastructure/persistence/userrepository.h
-    src/infrastructure/persistence/hardwarelogrepository.cpp
-    src/infrastructure/persistence/hardwarelogrepository.h
     src/infrastructure/persistence/vehiclerepository.cpp
     src/application/db/common/operationresult.h
     src/application/db/parking/parkinglogapplicationservice.cpp

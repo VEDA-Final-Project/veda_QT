@@ -184,7 +184,7 @@ LoginPageUiRefs buildLoginPageUi(QWidget *page) {
   ui.otpInput->setValidator(new QRegularExpressionValidator(
       QRegularExpression(QStringLiteral("\\d{0,6}")), ui.otpInput));
 
-  ui.loginButton = new QPushButton(QStringLiteral("인증하고 시작"), formArea);
+  ui.loginButton = new QPushButton(QStringLiteral("다음"), formArea);
   ui.loginButton->setObjectName(QStringLiteral("loginButton"));
   ui.loginButton->setMinimumHeight(38);
 

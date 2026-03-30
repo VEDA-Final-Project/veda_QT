@@ -39,7 +39,7 @@ RpiTcpClient::RpiTcpClient(QObject *parent) : QObject(parent) {
           &RpiTcpClient::onMockTelemetryTimeout);
 }
 
-bool RpiTcpClient::init() { return m_hwLogRepo.init(); }
+bool RpiTcpClient::init() { return true; }
 
 void RpiTcpClient::setServer(const QString &host, quint16 port) {
   m_host = host;
@@ -121,9 +121,6 @@ bool RpiTcpClient::sendLedSet(int value) {
     return false;
   }
 
-  // 하드웨어 로그 기록
-  m_hwLogRepo.addLog("RPI_ZONE", "LED", value == 1 ? "ON" : "OFF");
-
   QJsonObject payload;
   payload.insert("value", value);
   if (m_mockMode) {
@@ -144,9 +141,6 @@ bool RpiTcpClient::sendServoAngle(int angle) {
     emit logMessage("[RPI] Invalid servo angle, expected 0..180");
     return false;
   }
-
-  // 하드웨어 로그 기록
-  m_hwLogRepo.addLog("RPI_ZONE", "Servo", QString::number(angle));
 
   QJsonObject payload;
   payload.insert("value", angle);

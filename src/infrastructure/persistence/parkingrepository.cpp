@@ -81,10 +81,7 @@ bool ParkingRepository::ensureSchema(QString *errorMessage) {
                      "  entry_time TEXT NOT NULL,"
                      "  exit_time TEXT,"
                      "  pay_status TEXT DEFAULT '정산대기',"
-                     "  total_amount INTEGER DEFAULT 0,"
-                     "  bestshot_path TEXT,"
-                     "  ocr_confidence REAL DEFAULT 0.0,"
-                     "  created_at TEXT DEFAULT (datetime('now','localtime'))"
+                     "  total_amount INTEGER DEFAULT 0"
                      ")");
 
   if (!query.exec(sql)) {
@@ -127,12 +124,9 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
       "INSERT INTO parking_logs (camera_key, object_id, plate_number, "
-      "zone_name, roi_index, reid_id, entry_time, pay_status, total_amount, "
-      "ocr_confidence, bestshot_path) "
+      "zone_name, roi_index, reid_id, entry_time, pay_status, total_amount) "
       "VALUES (:camera_key, :object_id, :plate, :zone_name, :roi, :reid_id, "
-      ":entry, "
-      ":pay_status, :total_amount, :ocr_confidence, "
-      ":bestshot_path)"));
+      ":entry, :pay_status, :total_amount)"));
   query.bindValue(":camera_key", normalizedCameraKey(cameraKey));
   query.bindValue(":object_id", objectId);
   query.bindValue(":plate", normalizedPlateNumber(plateNumber));
@@ -142,8 +136,6 @@ int ParkingRepository::insertEntry(const QString &cameraKey, int objectId,
   query.bindValue(":entry", entryTime.toString(Qt::ISODate));
   query.bindValue(":pay_status", kPendingPayStatus);
   query.bindValue(":total_amount", 0);
-  query.bindValue(":ocr_confidence", 0.0);
-  query.bindValue(":bestshot_path", QStringLiteral(""));
 
   if (!query.exec()) {
     const QString err =

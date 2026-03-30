@@ -24,6 +24,10 @@ TelegramBotAPI::TelegramBotAPI(QObject *parent)
 
   // 시그널 연결 후 로그가 출력되도록 지연 실행
   QTimer::singleShot(0, this, [this]() {
+    if (m_shuttingDown) {
+      return;
+    }
+
     if (m_botToken.isEmpty()) {
       emit logMessage("[Telegram] ⚠️ TELEGRAM_BOT_TOKEN 환경변수가 설정되지 않았습니다. 환경변수를 설정해주세요.");
     } else {
@@ -51,6 +55,27 @@ TelegramBotAPI::TelegramBotAPI(QObject *parent)
     // 시그널 연결 후 폴링 시작
     startPolling();
   });
+}
+
+void TelegramBotAPI::shutdown() {
+  if (m_shuttingDown) {
+    return;
+  }
+  m_shuttingDown = true;
+
+  if (m_pollTimer) {
+    m_pollTimer->stop();
+    m_pollTimer->disconnect(this);
+  }
+
+  if (m_networkManager) {
+    const auto replies = m_networkManager->findChildren<QNetworkReply *>();
+    for (QNetworkReply *reply : replies) {
+      if (reply->isRunning()) {
+        reply->abort();
+      }
+    }
+  }
 }
 
 /* ============================================================
@@ -293,6 +318,10 @@ void TelegramBotAPI::handleReply(QNetworkReply *reply) {
  * ============================================================ */
 
 void TelegramBotAPI::startPolling() {
+  if (m_shuttingDown) {
+    return;
+  }
+
   // 롱 폴링을 위해 타이머는 연결 끊김 시 재시도용으로만 사용
   connect(m_pollTimer, &QTimer::timeout, this, &TelegramBotAPI::pollUpdates);
 
@@ -301,7 +330,7 @@ void TelegramBotAPI::startPolling() {
 }
 
 void TelegramBotAPI::pollUpdates() {
-  if (m_botToken.isEmpty()) {
+  if (m_botToken.isEmpty() || m_shuttingDown) {
     return;
   }
 
@@ -329,6 +358,11 @@ void TelegramBotAPI::pollUpdates() {
 
   connect(reply, &QNetworkReply::finished, this, [this, reply]() {
     QByteArray data = reply->readAll();
+
+    if (m_shuttingDown) {
+      reply->deleteLater();
+      return;
+    }
 
     if (reply->error() != QNetworkReply::NoError) {
       QNetworkReply::NetworkError err = reply->error();
