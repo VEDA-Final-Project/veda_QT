@@ -247,7 +247,7 @@ RoiService::toNormalizedPolygons(const QVector<QJsonObject> &records)
 int RoiService::nextAvailableSequence() const
 {
   const QRegularExpression zoneIdPattern(
-      QStringLiteral("^zone-%1-(\\d+)$")
+      QStringLiteral("^%1-(\\d+)$")
           .arg(QRegularExpression::escape(m_cameraKey)));
   QSet<int> usedSequences;
 

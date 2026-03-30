@@ -4,6 +4,12 @@
 #include <QSqlError>
 #include <QSqlQuery>
 
+namespace {
+QString normalizedPlateNumber(const QString &plateNumber) {
+  return plateNumber.trimmed();
+}
+}
+
 VehicleRepository::VehicleRepository() {}
 
 bool VehicleRepository::init(QString *errorMessage) {
@@ -38,6 +44,17 @@ bool VehicleRepository::upsertVehicle(const QString &plateNumber,
                                       const QString &carColor, bool isAssigned,
                                       const QString &reidId,
                                       QString *errorMessage) {
+  const QString normalizedPlate = normalizedPlateNumber(plateNumber);
+  if (normalizedPlate.isEmpty()) {
+    const QString err =
+        QStringLiteral("plate_number is required for vehicles upsert");
+    if (errorMessage) {
+      *errorMessage = err;
+    }
+    qWarning() << "[Vehicle] Upsert skipped:" << err << "reid_id:" << reidId;
+    return false;
+  }
+
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return false;
@@ -54,7 +71,7 @@ bool VehicleRepository::upsertVehicle(const QString &plateNumber,
       "reid_id = CASE WHEN excluded.reid_id != '' THEN excluded.reid_id ELSE vehicles.reid_id END, "
       "updated_at = excluded.updated_at"));
 
-  query.bindValue(":plate", plateNumber);
+  query.bindValue(":plate", normalizedPlate);
   query.bindValue(":type", carType);
   query.bindValue(":color", carColor);
   query.bindValue(":assigned", isAssigned ? 1 : 0);
@@ -71,6 +88,14 @@ bool VehicleRepository::upsertVehicle(const QString &plateNumber,
 
 QJsonObject VehicleRepository::findByPlate(const QString &plateNumber,
                                            QString *errorMessage) const {
+  const QString normalizedPlate = normalizedPlateNumber(plateNumber);
+  if (normalizedPlate.isEmpty()) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("plate_number is required");
+    }
+    return QJsonObject();
+  }
+
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return QJsonObject();
@@ -78,7 +103,7 @@ QJsonObject VehicleRepository::findByPlate(const QString &plateNumber,
   QSqlQuery query(db);
   query.prepare("SELECT plate_number, car_type, car_color, is_assigned FROM "
                 "vehicles WHERE plate_number = :plate");
-  query.bindValue(":plate", plateNumber);
+  query.bindValue(":plate", normalizedPlate);
 
   if (!query.exec() || !query.next()) {
     if (errorMessage)
@@ -124,6 +149,14 @@ VehicleRepository::getAllVehicles(QString *errorMessage) const {
 
 bool VehicleRepository::deleteVehicle(const QString &plateNumber,
                                       QString *errorMessage) {
+  const QString normalizedPlate = normalizedPlateNumber(plateNumber);
+  if (normalizedPlate.isEmpty()) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("plate_number is required");
+    }
+    return false;
+  }
+
   QSqlDatabase db = DatabaseContext::database();
   if (!db.isOpen())
     return false;
@@ -131,7 +164,7 @@ bool VehicleRepository::deleteVehicle(const QString &plateNumber,
   QSqlQuery query(db);
   query.prepare(
       QStringLiteral("DELETE FROM vehicles WHERE plate_number = :plate"));
-  query.bindValue(":plate", plateNumber);
+  query.bindValue(":plate", normalizedPlate);
 
   if (!query.exec()) {
     if (errorMessage)

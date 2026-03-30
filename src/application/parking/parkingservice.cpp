@@ -219,7 +219,7 @@ void ParkingService::processOcrResult(int objectId,
     }
   }
 
-  if (hasVehicle && (!normalizedPlate.isEmpty() || !reidId.isEmpty())) {
+  if (hasVehicle && !normalizedPlate.isEmpty()) {
     m_vehicleRepo.upsertVehicle(normalizedPlate, vs.type, "", false, reidId);
   }
 }
@@ -332,7 +332,7 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
     sendTelegramEntryNotice(vs.plateNumber);
 
     // Update Vehicle Master DB
-    if (!vs.plateNumber.isEmpty() || !vs.reidId.isEmpty()) {
+    if (!vs.plateNumber.isEmpty()) {
         m_vehicleRepo.upsertVehicle(vs.plateNumber, vs.type, "", false, vs.reidId);
     }
   }
