@@ -11,6 +11,8 @@ const QString DatabaseContext::ConnectionName =
     QStringLiteral("VEDA_DB_CONNECTION");
 
 namespace {
+constexpr int kTargetSchemaVersion = 2;
+
 QString quotedSqlString(QString value) {
   value.replace(QStringLiteral("'"), QStringLiteral("''"));
   return QStringLiteral("'%1'").arg(value);
@@ -56,6 +58,71 @@ bool replaceWithCopiedFile(const QString &sourcePath, const QString &targetPath,
   }
   return false;
 }
+
+bool execSchemaSql(QSqlDatabase &db, const QString &sql, QString *errorMessage) {
+  QSqlQuery query(db);
+  if (query.exec(sql)) {
+    return true;
+  }
+
+  if (errorMessage) {
+    *errorMessage = query.lastError().text();
+  }
+  return false;
+}
+
+bool resetSchemaIfNeeded(QSqlDatabase &db, QString *errorMessage) {
+  QSqlQuery versionQuery(db);
+  if (!versionQuery.exec(QStringLiteral("PRAGMA user_version")) ||
+      !versionQuery.next()) {
+    if (errorMessage) {
+      *errorMessage = versionQuery.lastError().text();
+    }
+    return false;
+  }
+
+  if (versionQuery.value(0).toInt() == kTargetSchemaVersion) {
+    return true;
+  }
+
+  if (!execSchemaSql(db, QStringLiteral("BEGIN IMMEDIATE TRANSACTION"),
+                     errorMessage)) {
+    return false;
+  }
+
+  const QStringList dropStatements = {
+      QStringLiteral("DROP TABLE IF EXISTS media_logs"),
+      QStringLiteral("DROP TABLE IF EXISTS parking_logs"),
+      QStringLiteral("DROP TABLE IF EXISTS user_vehicles"),
+      QStringLiteral("DROP TABLE IF EXISTS vehicle_plates"),
+      QStringLiteral("DROP TABLE IF EXISTS telegram_users"),
+      QStringLiteral("DROP TABLE IF EXISTS vehicles"),
+      QStringLiteral("DROP TABLE IF EXISTS roi")};
+
+  for (const QString &sql : dropStatements) {
+    if (!execSchemaSql(db, sql, errorMessage)) {
+      execSchemaSql(db, QStringLiteral("ROLLBACK"), nullptr);
+      return false;
+    }
+  }
+
+  if (!execSchemaSql(
+          db,
+          QStringLiteral("PRAGMA user_version = %1")
+              .arg(kTargetSchemaVersion),
+          errorMessage)) {
+    execSchemaSql(db, QStringLiteral("ROLLBACK"), nullptr);
+    return false;
+  }
+
+  if (!execSchemaSql(db, QStringLiteral("COMMIT"), errorMessage)) {
+    execSchemaSql(db, QStringLiteral("ROLLBACK"), nullptr);
+    return false;
+  }
+
+  qDebug() << "[DB] Reset schema to version" << kTargetSchemaVersion;
+  return true;
+}
 } // namespace
 
 bool DatabaseContext::init(const QString &dbPath, QString *errorMessage) {
@@ -82,6 +149,10 @@ bool DatabaseContext::init(const QString &dbPath, QString *errorMessage) {
   query.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
   query.exec(QStringLiteral("PRAGMA journal_mode = WAL"));
   query.exec(QStringLiteral("PRAGMA synchronous = NORMAL"));
+
+  if (!resetSchemaIfNeeded(db, errorMessage)) {
+    return false;
+  }
 
   qDebug() << "[DB] Initialized database at:" << dbPath;
   return true;

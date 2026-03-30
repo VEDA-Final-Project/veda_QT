@@ -81,10 +81,12 @@ QString ParkingService::cameraKey() const
 }
 
 void ParkingService::updateRoiPolygons(const QList<QPolygonF> &polygons,
-                                       const QStringList &zoneNames) 
+                                       const QStringList &zoneNames,
+                                       const QStringList &zoneIds) 
 {
   m_tracker.setRoiPolygons(polygons);
   m_roiZoneNames = zoneNames;
+  m_roiZoneIds = zoneIds;
 }
 
 void ParkingService::processMetadata(const QList<ObjectInfo> &objects,
@@ -300,6 +302,7 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
   syncActiveIdentity(vs);
 
   const QDateTime now = QDateTime::currentDateTime();
+  const QString zoneId = zoneIdForIndex(vs.occupiedRoiIndex);
   const QString zoneName = zoneNameForIndex(vs.occupiedRoiIndex);
   const QString vehicleLabel =
       !vs.plateNumber.isEmpty() ? vs.plateNumber
@@ -321,8 +324,8 @@ void ParkingService::handleNewEntry(const VehicleState &vs)
 
   QDateTime entryTime = vs.roiEntryMs > 0 ? QDateTime::fromMSecsSinceEpoch(vs.roiEntryMs) : now;
   int recordId = m_repository.insertEntry(m_cameraKey, vs.objectId,
-                                          vs.plateNumber, zoneName,
-                                          vs.occupiedRoiIndex, reidId, entryTime);
+                                          vs.plateNumber, zoneId, zoneName,
+                                          reidId, entryTime);
   if (recordId >= 0) {
     emit logMessage(QString("[Parking] Entry recorded: %1 at %2 (DB ID: %3)")
                         .arg(vehicleLabel, zoneName)
@@ -443,4 +446,11 @@ QString ParkingService::zoneNameForIndex(int roiIndex) const
 
   return roiIndex >= 0 ? QStringLiteral("ROI #%1").arg(roiIndex + 1)
                        : QStringLiteral("-");
+}
+
+QString ParkingService::zoneIdForIndex(int roiIndex) const {
+  if (roiIndex >= 0 && roiIndex < m_roiZoneIds.size()) {
+    return m_roiZoneIds.at(roiIndex).trimmed();
+  }
+  return QString();
 }

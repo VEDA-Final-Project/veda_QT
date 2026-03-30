@@ -285,7 +285,8 @@ void CameraSource::syncEnabledRoiPolygons() {
   }
 
   m_enabledZoneIds = enabledZoneIds;
-  m_parkingService->updateRoiPolygons(enabledPolygons, enabledZoneNames);
+  m_parkingService->updateRoiPolygons(enabledPolygons, enabledZoneNames,
+                                      enabledZoneIds.toList());
 }
 
 bool CameraSource::isRunning() const {

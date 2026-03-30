@@ -216,9 +216,7 @@ ParkingLogApplicationService::toRows(const QVector<QJsonObject> &logs) const {
         row["camera_key"].toString(),
         row["object_id"].toInt(),
         row["plate_number"].toString(),
-        zoneName.isEmpty()
-            ? QStringLiteral("ROI #%1").arg(row["roi_index"].toInt() + 1)
-            : zoneName,
+        zoneName.isEmpty() ? row["zone_id"].toString() : zoneName,
         formatParkingDateTime(row["entry_time"].toString()),
         formatParkingDateTime(row["exit_time"].toString()),
         row["pay_status"].toString(),
