@@ -36,6 +36,7 @@ public:
                                    QObject *parent = nullptr);
 
   void connectSignals();
+  void shutdown();
   TelegramBotAPI *api() const;
 
 private slots:

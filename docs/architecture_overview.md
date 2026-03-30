@@ -233,6 +233,51 @@ DB 페이지의 여러 하위 패널을 묶는 UI 조정자입니다.
 - 주차 로그, 사용자, 차량, 구역 테이블 갱신
 - `ParkingLogApplicationService`, `UserAdminApplicationService`, `ZoneQueryApplicationService` 연결
 
+## 3.1 제안 데이터 모델 기준 흐름
+
+현재 구현은 `plate_number`, `reid_id`, `zone_name` 같은 값으로 서비스 레벨에서 느슨하게 연결하는 구조입니다. `docs/database_erd.md`의 `Proposed ERD`는 이를 FK 중심 구조로 재정리했을 때의 방향을 설명합니다.
+
+핵심 변화는 다음과 같습니다.
+
+- `parking_logs`는 이력 테이블로 유지하되, 참조는 `vehicle_id`, `zone_id` 같은 안정적인 키로 연결합니다.
+- 번호판과 REID는 FK 기준이 아니라 차량 식별을 보조하는 조회 키로 사용합니다.
+- 화면/알림에 필요한 당시 값은 `snapshot_*` 컬럼으로 별도 보존합니다.
+- 사용자와 차량 연결은 `telegram_users -> user_vehicles -> vehicles` 흐름으로 분리합니다.
+
+### 제안 런타임 흐름
+
+```text
+카메라 메타데이터 수신
+  -> ROI 판정
+  -> ParkingService가 zone_id 또는 zone 후보 결정
+  -> parking_logs 생성
+     - vehicle_id: 아직 미확정이면 NULL 가능
+     - snapshot_camera_key / snapshot_zone_name 우선 저장
+  -> OCR / ReID 결과 도착
+  -> plate_number / reid_id로 vehicle 조회
+  -> 없으면 vehicles + vehicle_plates 생성
+  -> parking_logs.vehicle_id 연결
+  -> 출차 시 동일 parking_log를 찾아 exit_time / total_amount / pay_status 갱신
+```
+
+### 계층 책임 변화
+
+- `domain`
+  - 차량 추적과 요금 계산 규칙은 그대로 유지합니다.
+- `application`
+  - `ParkingService`는 "로그 생성"과 "차량 식별 연결"을 분리한 2단계 흐름의 중심이 됩니다.
+  - `UserAdminApplicationService`류는 차량번호 직접 연결 대신 `vehicle_id` 중심 조회를 점진적으로 사용하게 됩니다.
+- `infrastructure/persistence`
+  - `VehicleRepository`는 차량 마스터와 번호판 이력 저장을 담당합니다.
+  - `ParkingRepository`는 이력 저장과 FK 기반 조회를 담당합니다.
+  - `RoiRepository`는 `zone_id`를 중심으로 주차 로그와 연결되는 기준 테이블 역할을 합니다.
+
+### 기대 효과
+
+- OCR 전후나 번호판 변경 상황에서도 DB 관계가 덜 흔들립니다.
+- 과거 주차 로그는 스냅샷 값으로 보존되고, 현재 차량 마스터는 별도로 정리할 수 있습니다.
+- `telegram_users`, `vehicles`, `roi`, `parking_logs` 사이의 연결 기준이 문서와 코드에서 더 명확해집니다.
+
 ## 4. 카메라 런타임 구조
 
 현재 카메라 처리의 중심은 `CameraSource`입니다.

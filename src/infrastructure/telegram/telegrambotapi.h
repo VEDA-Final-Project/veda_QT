@@ -18,6 +18,7 @@ class TelegramBotAPI : public QObject {
 
 public:
   explicit TelegramBotAPI(QObject *parent = nullptr);
+  void shutdown();
 
   /// 봇 토큰이 유효한지 확인
   bool isTokenValid() const { return !m_botToken.isEmpty(); }
@@ -89,6 +90,7 @@ private:
   QString m_botToken;
   qint64 m_lastUpdateId = 0;
   QTimer *m_pollTimer;
+  bool m_shuttingDown = false;
 
   /// 차량번호 <-> ChatID 매핑
   QMap<QString, QString> m_plateToChat;

@@ -26,6 +26,8 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFileInfo>
 #include <QJsonDocument>
 
 MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
@@ -506,6 +508,11 @@ void MainWindowController::onSystemConfigChanged() {
 }
 
 void MainWindowController::shutdown() {
+  if (m_shutdownStarted) {
+    return;
+  }
+  m_shutdownStarted = true;
+
   QElapsedTimer timer;
   timer.start();
 
@@ -527,6 +534,35 @@ void MainWindowController::shutdown() {
   }
   if (m_cameraSessionController) {
     m_cameraSessionController->shutdown();
+  }
+  if (m_telegramController) {
+    m_telegramController->shutdown();
+  }
+
+  const QString dbPath = DatabaseContext::databasePath().trimmed();
+  if (dbPath.isEmpty()) {
+    const QString message =
+        QStringLiteral("[DB] Shutdown backup skipped: database path is empty");
+    qWarning().noquote() << message;
+    onLogMessage(message);
+  } else {
+    const QString backupDirPath =
+        QFileInfo(dbPath).dir().filePath(QStringLiteral("backups"));
+    QString createdBackupPath;
+    QString backupError;
+    if (DatabaseContext::createTimestampedBackup(backupDirPath,
+                                                 &createdBackupPath,
+                                                 &backupError)) {
+      onLogMessage(QStringLiteral("[DB] Shutdown backup created: %1")
+                       .arg(createdBackupPath));
+    } else {
+      const QString message =
+          QStringLiteral("[DB] Shutdown backup failed: %1")
+              .arg(backupError.isEmpty() ? QStringLiteral("Unknown error")
+                                         : backupError);
+      qWarning().noquote() << message;
+      onLogMessage(message);
+    }
   }
 
   const QString shutdownLog =
