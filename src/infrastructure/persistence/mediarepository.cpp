@@ -21,11 +21,14 @@ bool MediaRepository::init(QString *errorMessage) {
   const QString sql =
       QStringLiteral("CREATE TABLE IF NOT EXISTS media_logs ("
                      "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                     "  parking_log_id INTEGER,"
                      "  type TEXT NOT NULL,"
                      "  description TEXT,"
                      "  camera_id TEXT,"
                      "  file_path TEXT NOT NULL,"
-                     "  created_at TEXT DEFAULT (datetime('now','localtime'))"
+                     "  created_at TEXT DEFAULT (datetime('now','localtime')),"
+                     "  FOREIGN KEY (parking_log_id) REFERENCES "
+                     "parking_logs(id) ON DELETE CASCADE"
                      ")");
 
   if (!query.exec(sql)) {
@@ -44,13 +47,16 @@ bool MediaRepository::addMediaRecord(const QString &type,
                                      const QString &description,
                                      const QString &cameraId,
                                      const QString &filePath,
+                                     int parkingLogId,
                                      QString *errorMessage) {
   QSqlDatabase db = DatabaseContext::database();
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "INSERT INTO media_logs (type, description, camera_id, file_path, "
-      "created_at) "
-      "VALUES (:type, :desc, :cam, :path, :created_at)"));
+      "INSERT INTO media_logs (parking_log_id, type, description, camera_id, "
+      "file_path, created_at) "
+      "VALUES (:parking_log_id, :type, :desc, :cam, :path, :created_at)"));
+  query.bindValue(":parking_log_id",
+                  parkingLogId > 0 ? QVariant(parkingLogId) : QVariant());
   query.bindValue(":type", type);
   query.bindValue(":desc", description);
   query.bindValue(":cam", cameraId);
@@ -76,7 +82,8 @@ MediaRepository::getAllMediaRecords(QString *errorMessage) const {
   QSqlQuery query(db);
 
   if (!query.exec(QStringLiteral(
-          "SELECT id, type, description, camera_id, created_at, file_path "
+          "SELECT id, parking_log_id, type, description, camera_id, created_at, "
+          "file_path "
           "FROM media_logs ORDER BY created_at DESC"))) {
     if (errorMessage)
       *errorMessage = query.lastError().text();
@@ -86,6 +93,7 @@ MediaRepository::getAllMediaRecords(QString *errorMessage) const {
   while (query.next()) {
     QJsonObject row;
     row["id"] = query.value("id").toInt();
+    row["parking_log_id"] = query.value("parking_log_id").toInt();
     row["type"] = query.value("type").toString();
     row["description"] = query.value("description").toString();
     row["camera_id"] = query.value("camera_id").toString();
@@ -104,7 +112,8 @@ MediaRepository::getMediaRecordsByCamera(const QString &cameraId,
   QSqlQuery query(db);
 
   query.prepare(QStringLiteral(
-      "SELECT id, type, description, camera_id, created_at, file_path "
+      "SELECT id, parking_log_id, type, description, camera_id, created_at, "
+      "file_path "
       "FROM media_logs WHERE camera_id = :cam ORDER BY created_at DESC"));
   query.bindValue(":cam", cameraId);
 
@@ -117,6 +126,7 @@ MediaRepository::getMediaRecordsByCamera(const QString &cameraId,
   while (query.next()) {
     QJsonObject row;
     row["id"] = query.value("id").toInt();
+    row["parking_log_id"] = query.value("parking_log_id").toInt();
     row["type"] = query.value("type").toString();
     row["description"] = query.value("description").toString();
     row["camera_id"] = query.value("camera_id").toString();
@@ -134,7 +144,8 @@ QVector<QJsonObject> MediaRepository::getMediaRecordsByTypeAndCamera(
   QSqlQuery query(db);
 
   query.prepare(QStringLiteral(
-      "SELECT id, type, description, camera_id, created_at, file_path "
+      "SELECT id, parking_log_id, type, description, camera_id, created_at, "
+      "file_path "
       "FROM media_logs WHERE type = :type AND camera_id = :cam ORDER BY "
       "created_at ASC"));
   query.bindValue(":type", type);
@@ -149,6 +160,7 @@ QVector<QJsonObject> MediaRepository::getMediaRecordsByTypeAndCamera(
   while (query.next()) {
     QJsonObject row;
     row["id"] = query.value("id").toInt();
+    row["parking_log_id"] = query.value("parking_log_id").toInt();
     row["type"] = query.value("type").toString();
     row["description"] = query.value("description").toString();
     row["camera_id"] = query.value("camera_id").toString();

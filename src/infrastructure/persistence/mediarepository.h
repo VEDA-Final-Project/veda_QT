@@ -13,6 +13,7 @@ public:
   // 기록 추가
   bool addMediaRecord(const QString &type, const QString &description,
                       const QString &cameraId, const QString &filePath,
+                      int parkingLogId = -1,
                       QString *errorMessage = nullptr);
 
   // 모든 기록 조회
