@@ -510,8 +510,24 @@ void RecordPanelController::onPlayTimerTimeout() {
   }
 
   if (frame.empty()) {
-    // 영상 완전 끝 → 정지 상태로 복귀
-    onStopClicked();
+    // 영상 완전 끝 → 정지 상태로 복위 (파일을 닫지 않고 첫 프레임으로 이동하여 다시 재생 가능하게 함)
+    m_playTimer->stop();
+    m_isPaused = true;
+    if (m_playCap.isOpened()) {
+      m_playCap.set(cv::CAP_PROP_POS_FRAMES, 0);
+      // 첫 프레임 다시 보여주기
+      cv::Mat resetFrame;
+      m_playCap >> resetFrame;
+      if (!resetFrame.empty()) {
+          cv::Mat rgb;
+          cv::cvtColor(resetFrame, rgb, cv::COLOR_BGR2RGB);
+          QImage qimg(rgb.data, rgb.cols, rgb.rows, rgb.step, QImage::Format_RGB888);
+          m_ui.recordVideoWidget->updateFrame(qimg.copy());
+      }
+      m_playCap.set(cv::CAP_PROP_POS_FRAMES, 0);
+    }
+    updatePlayerControls(true); // 재생 버튼 다시 활성화
+    updateTimeLabel();
     return;
   }
 

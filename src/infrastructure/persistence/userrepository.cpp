@@ -264,6 +264,30 @@ QString UserRepository::findPlateByChatId(const QString &chatId) const {
   return QString();
 }
 
+QJsonObject UserRepository::findUserByChatId(const QString &chatId) const {
+  QString error;
+  if (!const_cast<UserRepository *>(this)->init(&error)) {
+    return QJsonObject();
+  }
+
+  QSqlDatabase db = DatabaseContext::database();
+  QSqlQuery query(db);
+  const QString sql = QStringLiteral(
+      "SELECT tu.chat_id, %1 AS plate_number, "
+      "tu.name, tu.phone, tu.payment_info, tu.created_at "
+      "FROM telegram_users tu "
+      "WHERE tu.chat_id = :chatId")
+                          .arg(plateForChatSubquery());
+
+  query.prepare(sql);
+  query.bindValue(":chatId", chatId.trimmed());
+
+  if (query.exec() && query.next()) {
+    return userFromQuery(query);
+  }
+  return QJsonObject();
+}
+
 QVector<QJsonObject>
 UserRepository::getAllUsersFull(QString *errorMessage) const {
   QVector<QJsonObject> results;

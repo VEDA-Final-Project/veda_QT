@@ -316,8 +316,10 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
               }
               if (m_recordingWorkflowController && m_recordPanelController) {
                 int defaultInterval = m_recordPanelController->getEventRecordInterval();
-                int preSec = defaultInterval / 2;
+                // 입차는 진입 과정을 충분히 담기 위해 전방 비율을 높임 (70%)
+                int preSec = (defaultInterval * 7) / 10;
                 int postSec = defaultInterval - preSec;
+                
                 QString displayPlate = plateNumber.trimmed();
                 if (displayPlate.isEmpty() || displayPlate == "미인식") {
                   displayPlate = "미인식(입차)";

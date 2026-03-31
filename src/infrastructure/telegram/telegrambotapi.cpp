@@ -935,9 +935,13 @@ void TelegramBotAPI::pollUpdates() {
         // 즉시 호출 (확인 단계 없음)
         sendMessage(chatId, "✅ *관리자가 호출되었습니다.*\n잠시만 "
                             "기다려주시면 조치해 드리겠습니다.");
-        emit logMessage(QString("[Telegram] 🚨 관리자 호출 요청! (User: %1)")
-                            .arg(firstName));
-        emit adminSummoned(chatId, firstName);
+        emit logMessage(QString("[Telegram] 🚨 관리자 호출 요청! (User: %1)").arg(firstName));
+        
+        QJsonObject userInfo = m_userRepository.findUserByChatId(chatId);
+        QString phone = userInfo["phone"].toString();
+        if (phone.isEmpty()) phone = "-";
+        
+        emit adminSummoned(chatId, firstName, phone);
         sendMainMenu(chatId);
       } else if (text == QString::fromUtf8("◀ 메뉴로 돌아가기")) {
         sendMainMenu(chatId);
@@ -1155,10 +1159,21 @@ void TelegramBotAPI::handleUsageHistory(const QString &chatId) {
 }
 
 void TelegramBotAPI::handleCallAdmin(const QString &chatId) {
-  QString name = m_registrationSessions.contains(chatId) ? m_registrationSessions[chatId].name : "사용자";
+  QString name = m_registrationSessions.contains(chatId) ? m_registrationSessions[chatId].name : "";
+  QString phone = m_registrationSessions.contains(chatId) ? m_registrationSessions[chatId].phone : "";
+  
+  if (name.isEmpty() || phone.isEmpty()) {
+    QJsonObject userInfo = m_userRepository.findUserByChatId(chatId);
+    if (name.isEmpty()) name = userInfo["name"].toString();
+    if (phone.isEmpty()) phone = userInfo["phone"].toString();
+  }
+
+  if (name.isEmpty()) name = "사용자";
+  if (phone.isEmpty()) phone = "-";
+
   sendMessage(chatId, "✅ *관리자가 호출되었습니다.*\n잠시만 기다려주시면 조치해 드리겠습니다.");
-  emit logMessage(QString("[Telegram] 🚨 LLM 관리자 호출 요청! (User: %1)").arg(name));
-  emit adminSummoned(chatId, name);
+  emit logMessage(QString("[Telegram] 🚨 LLM 관리자 호출 요청! (User: %1, Phone: %2)").arg(name, phone));
+  emit adminSummoned(chatId, name, phone);
 }
 
 void TelegramBotAPI::handleFeePayment(const QString &chatId) {

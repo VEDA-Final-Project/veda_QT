@@ -9,7 +9,7 @@
 
 
 namespace {
-constexpr qint64 kEntryPersistDelayMs = 5000;
+constexpr qint64 kEntryPersistDelayMs = 1000;
 
 QString normalizedReidId(const QString &reidId) {
   return reidId.trimmed();
@@ -290,7 +290,7 @@ QList<VehicleState> ParkingService::activeVehicles() const
 void ParkingService::handleNewEntry(const VehicleState &vs) 
 {
   const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-  if (vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) < kEntryPersistDelayMs) {
+  if (vs.roiEntryMs > 0 && (nowMs - vs.roiEntryMs) < kEntryPersistDelayMs && vs.plateNumber.isEmpty()) {
     return;
   }
 

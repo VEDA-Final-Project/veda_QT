@@ -45,7 +45,9 @@ private slots:
   void onTelegramLog(const QString &msg);
   void onUsersUpdated(int count);
   void onPaymentConfirmed(int recordId, const QString &plate, int amount);
-  void onAdminSummoned(const QString &chatId, const QString &name);
+  void onAdminSummoned(const QString &chatId, const QString &name,
+                       const QString &phone);
+
 
 private:
   void appendLog(const QString &message) const;

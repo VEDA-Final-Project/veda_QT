@@ -113,15 +113,16 @@ void TelegramPanelController::onPaymentConfirmed(int recordId,
 }
 
 void TelegramPanelController::onAdminSummoned(const QString &chatId,
-                                              const QString &name) {
-  appendLog(QString("[알림] 관리자 호출 수신 (User: %1, ChatID: %2)")
-                .arg(name, chatId));
+                                              const QString &name,
+                                              const QString &phone) {
+  appendLog(QString("[알림] 관리자 호출 수신 (User: %1, Phone: %2, ChatID: %3)")
+                .arg(name, phone, chatId));
 
   QMessageBox *box = new QMessageBox(nullptr);
   box->setWindowTitle("관리자 호출");
   box->setText(
-      QString("사용자가 관리자를 호출했습니다.\n\n이름: %1\nChat ID: %2")
-          .arg(name, chatId));
+      QString("사용자가 관리자를 호출했습니다.\n\n이름: %1\n전화번호: %2")
+          .arg(name, phone));
   box->setIcon(QMessageBox::Warning);
   box->setStandardButtons(QMessageBox::Ok);
   box->setAttribute(Qt::WA_DeleteOnClose);
