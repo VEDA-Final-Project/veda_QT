@@ -1,11 +1,13 @@
 #ifndef RPICONTROLCLIENT_H
 #define RPICONTROLCLIENT_H
 
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QtGlobal>
 
-class QTcpSocket;
+class QSslError;
+class QSslSocket;
 class QTimer;
 
 // RpiControlClient: RPi VmsController (TCP 서버) 에 연결해서
@@ -69,17 +71,26 @@ signals:
 
 private slots:
     void onConnected();
+    void onEncrypted();
     void onDisconnected();
     void onReadyRead();
     void onSocketError();
+    void onSslErrors(const QList<QSslError> &errors);
+    void onConnectTimeout();
     void onReconnectTimeout();
 
 private:
+    void closeForProtocolViolation(const QString &reason);
     void parsePacket(const QByteArray &line);
     void scheduleReconnect();
     void resetReconnect();
+    bool controlTlsEnabled() const;
+    QStringList configuredPinnedFingerprints() const;
+    bool shouldAllowPinnedCertificate() const;
+    static QString normalizeFingerprint(const QString &value);
 
-    QTcpSocket *m_socket         = nullptr;
+    QSslSocket *m_socket         = nullptr;
+    QTimer     *m_connectTimer   = nullptr;
     QTimer     *m_reconnectTimer = nullptr;
 
     QString    m_host;

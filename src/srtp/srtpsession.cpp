@@ -71,6 +71,19 @@ void SrtpSession::disconnectFromCamera() {
   }
 }
 
+void SrtpSession::setAllowedFingerprints(const QStringList &fingerprints) {
+  QStringList normalized;
+  for (QString fingerprint : fingerprints) {
+    fingerprint = normalizeFingerprint(fingerprint);
+    if (!fingerprint.isEmpty()) {
+      normalized.append(fingerprint);
+    }
+  }
+  normalized.removeDuplicates();
+  m_allowedFingerprints =
+      normalized.isEmpty() ? loadPinnedFingerprints() : normalized;
+}
+
 bool SrtpSession::isEncrypted() const {
   return m_sslSocket->isEncrypted();
 }
@@ -80,6 +93,13 @@ QString SrtpSession::errorString() const {
 }
 
 void SrtpSession::onEncrypted() {
+  if (!isPinnedCertificateAllowed()) {
+    qWarning() << "[SRTP][TLS] Certificate pinning check failed after handshake. peerSha256:"
+               << peerCertificateSha256();
+    emit error(QStringLiteral("TLS certificate pinning check failed."));
+    m_sslSocket->disconnectFromHost();
+    return;
+  }
   emit encrypted();
 }
 

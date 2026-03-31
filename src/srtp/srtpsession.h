@@ -19,6 +19,7 @@ public:
 
   void connectToCamera(const QString &ip, int port = 322);
   void disconnectFromCamera();
+  void setAllowedFingerprints(const QStringList &fingerprints);
 
   bool isEncrypted() const;
   QSslSocket* socket() const { return m_sslSocket; }

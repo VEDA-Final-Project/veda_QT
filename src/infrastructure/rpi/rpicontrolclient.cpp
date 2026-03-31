@@ -1,21 +1,39 @@
 #include "rpicontrolclient.h"
 
-#include <QTcpSocket>
+#include "config/config.h"
+
+#include <QCryptographicHash>
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QSslError>
+#include <QSslSocket>
 #include <QTimer>
 
+namespace {
+constexpr int kMaxProtocolParts = 3;
+}
+
 RpiControlClient::RpiControlClient(QObject *parent) : QObject(parent) {
-    m_socket         = new QTcpSocket(this);
+    m_socket         = new QSslSocket(this);
+    m_connectTimer   = new QTimer(this);
     m_reconnectTimer = new QTimer(this);
+    m_connectTimer->setSingleShot(true);
     m_reconnectTimer->setSingleShot(true);
 
-    connect(m_socket, &QTcpSocket::connected,
+    connect(m_socket, &QSslSocket::connected,
             this, &RpiControlClient::onConnected);
-    connect(m_socket, &QTcpSocket::disconnected,
+    connect(m_socket, &QSslSocket::encrypted,
+            this, &RpiControlClient::onEncrypted);
+    connect(m_socket, &QSslSocket::disconnected,
             this, &RpiControlClient::onDisconnected);
-    connect(m_socket, &QTcpSocket::readyRead,
+    connect(m_socket, &QSslSocket::readyRead,
             this, &RpiControlClient::onReadyRead);
-    connect(m_socket, &QTcpSocket::errorOccurred,
+    connect(m_socket, &QSslSocket::errorOccurred,
             this, &RpiControlClient::onSocketError);
+    connect(m_socket, &QSslSocket::sslErrors,
+            this, &RpiControlClient::onSslErrors);
+    connect(m_connectTimer, &QTimer::timeout,
+            this, &RpiControlClient::onConnectTimeout);
     connect(m_reconnectTimer, &QTimer::timeout,
             this, &RpiControlClient::onReconnectTimeout);
 }
@@ -38,11 +56,23 @@ void RpiControlClient::connectToServer() {
     }
     emit logMessage(
         QString("[RPi] %1:%2 연결 중...").arg(m_host).arg(m_port));
-    m_socket->connectToHost(m_host, m_port);
+    m_socket->abort();
+    m_connectTimer->start(Config::instance().rpiControlConnectTimeoutMs());
+    if (controlTlsEnabled()) {
+        QSslConfiguration cfg = m_socket->sslConfiguration();
+        cfg.setProtocol(QSsl::TlsV1_3OrLater);
+        cfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
+        m_socket->setSslConfiguration(cfg);
+        m_socket->setPeerVerifyName(m_host);
+        m_socket->connectToHostEncrypted(m_host, m_port);
+    } else {
+        m_socket->connectToHost(m_host, m_port);
+    }
 }
 
 void RpiControlClient::disconnectFromServer() {
     m_shouldReconnect = false;
+    m_connectTimer->stop();
     m_reconnectTimer->stop();
     m_socket->disconnectFromHost();
 }
@@ -56,24 +86,41 @@ quint16 RpiControlClient::port() const { return m_port; }
 
 void RpiControlClient::sendDbData(const QString &jsonData) {
     if (!isConnected()) return;
-    
-    // arg() 대신 데이터 결합(concatenation)을 사용하여 특수 문자(%1 등) 처리 안전성 확보
+
     QByteArray payload = QByteArray("$DB_SYNC,") + jsonData.toUtf8() + QByteArray("\n");
-    
+    const int maxBytes = Config::instance().rpiControlMaxDbSyncBytes();
+    if (payload.size() > maxBytes) {
+        emit logMessage(QString("[RPi] DB_SYNC payload too large: %1 bytes (limit %2)")
+                            .arg(payload.size())
+                            .arg(maxBytes));
+        return;
+    }
+
     m_socket->write(payload);
     m_socket->flush();
-    
-    // 로컬 로그에 전송 텍스트 표시
+
     emit logMessage(QString("[RPi] TX DB: %1").arg(QString::fromUtf8(payload).trimmed()));
 }
 
 void RpiControlClient::onConnected() {
+    if (controlTlsEnabled()) {
+        return;
+    }
+    m_connectTimer->stop();
     resetReconnect();
     emit connectedChanged(true);
     emit logMessage(QString("[RPi] 연결됨 (%1:%2)").arg(m_host).arg(m_port));
 }
 
+void RpiControlClient::onEncrypted() {
+    m_connectTimer->stop();
+    resetReconnect();
+    emit connectedChanged(true);
+    emit logMessage(QString("[RPi] TLS 연결됨 (%1:%2)").arg(m_host).arg(m_port));
+}
+
 void RpiControlClient::onDisconnected() {
+    m_connectTimer->stop();
     emit connectedChanged(false);
     emit logMessage("[RPi] 연결 끊김");
     if (m_shouldReconnect) {
@@ -83,24 +130,69 @@ void RpiControlClient::onDisconnected() {
 
 void RpiControlClient::onReadyRead() {
     m_readBuffer.append(m_socket->readAll());
+    const int maxInboundBytes = Config::instance().rpiControlMaxInboundBytes();
+    if (m_readBuffer.size() > maxInboundBytes) {
+        closeForProtocolViolation(
+            QString("Inbound buffer exceeded limit (%1 > %2)")
+                .arg(m_readBuffer.size())
+                .arg(maxInboundBytes));
+        return;
+    }
+
     while (true) {
         const int nl = m_readBuffer.indexOf('\n');
         if (nl < 0) break;
         const QByteArray line = m_readBuffer.left(nl).trimmed();
         m_readBuffer.remove(0, nl + 1);
         if (!line.isEmpty()) {
+            if (line.size() > maxInboundBytes) {
+                closeForProtocolViolation(
+                    QString("Inbound line exceeded limit (%1 > %2)")
+                        .arg(line.size())
+                        .arg(maxInboundBytes));
+                return;
+            }
             parsePacket(line);
         }
     }
 }
 
 void RpiControlClient::onSocketError() {
+    m_connectTimer->stop();
     emit logMessage(
         QString("[RPi] 소켓 오류: %1").arg(m_socket->errorString()));
 }
 
+void RpiControlClient::onSslErrors(const QList<QSslError> &errors) {
+    if (shouldAllowPinnedCertificate()) {
+        m_socket->ignoreSslErrors(errors);
+        return;
+    }
+
+    QStringList messages;
+    for (const QSslError &error : errors) {
+        messages.append(error.errorString());
+    }
+    emit logMessage(QString("[RPi] TLS 검증 실패: %1").arg(messages.join(" | ")));
+}
+
+void RpiControlClient::onConnectTimeout() {
+    if (m_socket->state() == QAbstractSocket::ConnectedState) {
+        return;
+    }
+    emit logMessage(QString("[RPi] 연결 시간 초과 (%1 ms)")
+                        .arg(Config::instance().rpiControlConnectTimeoutMs()));
+    m_socket->abort();
+}
+
 void RpiControlClient::onReconnectTimeout() {
     connectToServer();
+}
+
+void RpiControlClient::closeForProtocolViolation(const QString &reason) {
+    emit logMessage(QString("[RPi] 프로토콜 위반으로 연결 종료: %1").arg(reason));
+    m_readBuffer.clear();
+    m_socket->disconnectFromHost();
 }
 
 // 패킷 파싱: $<TYPE>[,<d1>[,<d2>]]\n
@@ -113,6 +205,10 @@ void RpiControlClient::parsePacket(const QByteArray &rawLine) {
 
     const QList<QByteArray> parts = line.split(',');
     if (parts.isEmpty()) return;
+    if (parts.size() > kMaxProtocolParts) {
+        emit logMessage(QString("[RPi] 잘못된 패킷 필드 수: %1").arg(parts.size()));
+        return;
+    }
 
     const QString type = QString::fromUtf8(parts[0]).toUpper().trimmed();
     const QString d1   = parts.size() > 1
@@ -159,14 +255,24 @@ void RpiControlClient::parsePacket(const QByteArray &rawLine) {
         // $CH,SEL
         if (d1 == QLatin1String("SEL")) {
             emit channelSelectRequested();
+        } else {
+            emit logMessage(QString("[RPi] 잘못된 CH 값: %1").arg(d1));
         }
 
     } else if (type == QLatin1String("REC")) {
         // $REC,1/0
+        if ((d1 != QLatin1String("1")) && (d1 != QLatin1String("0"))) {
+            emit logMessage(QString("[RPi] 잘못된 REC 값: %1").arg(d1));
+            return;
+        }
         emit recordingChanged(d1 == QLatin1String("1"));
 
     } else if (type == QLatin1String("CAP")) {
         // $CAP,NOW
+        if (d1 != QLatin1String("NOW")) {
+            emit logMessage(QString("[RPi] 잘못된 CAP 값: %1").arg(d1));
+            return;
+        }
         emit captureRequested();
 
     } else if (type == QLatin1String("BTN")) {
@@ -204,5 +310,45 @@ void RpiControlClient::scheduleReconnect() {
 
 void RpiControlClient::resetReconnect() {
     m_reconnectAttempt = 0;
+    m_connectTimer->stop();
     m_reconnectTimer->stop();
+}
+
+bool RpiControlClient::controlTlsEnabled() const {
+    return Config::instance().rpiControlTlsEnabled();
+}
+
+QStringList RpiControlClient::configuredPinnedFingerprints() const {
+    QStringList pins;
+    const QStringList configPins = Config::instance().rpiControlPinnedSha256();
+    for (const QString &entry : configPins) {
+        const QString value = normalizeFingerprint(entry);
+        if (!value.isEmpty() && !pins.contains(value)) {
+            pins.append(value);
+        }
+    }
+    return pins;
+}
+
+bool RpiControlClient::shouldAllowPinnedCertificate() const {
+    const QStringList pins = configuredPinnedFingerprints();
+    if (pins.isEmpty()) {
+        return false;
+    }
+
+    const QSslCertificate cert = m_socket->peerCertificate();
+    if (cert.isNull()) {
+        return false;
+    }
+
+    const QString peerFingerprint = QString::fromLatin1(
+        cert.digest(QCryptographicHash::Sha256).toHex()).toLower();
+    return pins.contains(peerFingerprint);
+}
+
+QString RpiControlClient::normalizeFingerprint(const QString &value) {
+    QString normalized = value.trimmed().toLower();
+    normalized.remove(QLatin1Char(':'));
+    normalized.remove(QLatin1Char(' '));
+    return normalized;
 }

@@ -134,6 +134,8 @@ qt_add_executable(${APP_TARGET}
     src/infrastructure/rpi/rpicontrolclient.h
     src/infrastructure/rpi/rpitcpclient.cpp
     src/infrastructure/rpi/rpitcpclient.h
+    src/infrastructure/security/dataprotection.cpp
+    src/infrastructure/security/dataprotection.h
     src/infrastructure/telegram/telegrambotapi.cpp
     src/infrastructure/telegram/telegrambotapi.h
     # Parking

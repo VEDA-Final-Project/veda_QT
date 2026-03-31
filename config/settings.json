@@ -63,5 +63,17 @@
     ],
     "connectTimeoutMs": 3000,
     "requestTimeoutMs": 5000
+  },
+  "control": {
+    "host": "172.20.24.76",
+    "port": 12345,
+    "autoConnect": true,
+    "tlsEnabled": true,
+    "connectTimeoutMs": 3000,
+    "maxInboundBytes": 4096,
+    "maxDbSyncBytes": 16384,
+    "pinnedSha256": [
+      "440a32d7fe67430b1794e9dd2c915d4c11ea42cde9cf15d15a3738062bc2f59f"
+    ]
   }
 }
