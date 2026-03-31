@@ -1,10 +1,12 @@
 #ifndef RPICONTROLCLIENT_H
 #define RPICONTROLCLIENT_H
 
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QtGlobal>
 
+class QSslError;
 class QSslSocket;
 class QTimer;
 
@@ -73,10 +75,12 @@ private slots:
     void onDisconnected();
     void onReadyRead();
     void onSocketError();
-    void onSslErrors();
+    void onSslErrors(const QList<QSslError> &errors);
+    void onConnectTimeout();
     void onReconnectTimeout();
 
 private:
+    void closeForProtocolViolation(const QString &reason);
     void parsePacket(const QByteArray &line);
     void scheduleReconnect();
     void resetReconnect();
@@ -86,6 +90,7 @@ private:
     static QString normalizeFingerprint(const QString &value);
 
     QSslSocket *m_socket         = nullptr;
+    QTimer     *m_connectTimer   = nullptr;
     QTimer     *m_reconnectTimer = nullptr;
 
     QString    m_host;

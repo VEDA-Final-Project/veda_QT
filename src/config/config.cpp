@@ -1,4 +1,5 @@
 #include "config.h"
+#include "infrastructure/security/dataprotection.h"
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
@@ -155,6 +156,7 @@ bool Config::load(const QString &path) {
   m_reid = root["reid"].toObject();
   m_sync = root["sync"].toObject();
   m_auth = root["auth"].toObject();
+  m_control = root["control"].toObject();
   m_loadedConfigPath = loadedPath;
 
   return true;
@@ -192,7 +194,8 @@ QString Config::cameraUsername(const QString &cameraKey) const {
  */
 QString Config::cameraPassword(const QString &cameraKey) const {
   const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
-  return (cameraObj.isEmpty() ? m_camera : cameraObj)["password"].toString("");
+  return DataProtection::instance().decryptString(
+      (cameraObj.isEmpty() ? m_camera : cameraObj)["password"].toString(""));
 }
 
 /**
@@ -382,7 +385,8 @@ QString Config::geminiApiKey() const {
             << "(len=" << key.size() << ")";
     return key;
   }
-  QString jsonKey = m_ocr["gemini"].toObject()["apiKey"].toString();
+  QString jsonKey = DataProtection::instance().decryptString(
+      m_ocr["gemini"].toObject()["apiKey"].toString());
   if (jsonKey.isEmpty()) {
     qWarning() << "[Config] Gemini API Key is missing! (ENV+JSON empty)";
   } else {
@@ -456,11 +460,61 @@ QStringList Config::authPinnedSha256() const {
 }
 
 QString Config::rpiControlHost() const {
-  return m_auth["rpiHost"].toString(QStringLiteral("172.20.24.76"));
+  return m_control["host"].toString(
+      m_auth["rpiHost"].toString(QStringLiteral("172.20.24.76")));
 }
 
 int Config::rpiControlPort() const {
-  return m_auth["rpiPort"].toInt(12345);
+  return m_control["port"].toInt(m_auth["rpiPort"].toInt(12345));
 }
 
-bool Config::rpiControlAutoConnect() const { return true; }
+bool Config::rpiControlAutoConnect() const {
+  return m_control["autoConnect"].toBool(true);
+}
+
+bool Config::rpiControlTlsEnabled() const {
+  return m_control["tlsEnabled"].toBool(authTlsEnabled());
+}
+
+QStringList Config::rpiControlPinnedSha256() const {
+  QStringList values;
+
+  const QJsonValue rawPins = m_control.value(QStringLiteral("pinnedSha256"));
+  if (rawPins.isArray()) {
+    const QJsonArray array = rawPins.toArray();
+    for (const QJsonValue &entry : array) {
+      QString value = entry.toString().trimmed().toLower();
+      value.remove(QLatin1Char(':'));
+      value.remove(QLatin1Char(' '));
+      if (!value.isEmpty()) {
+        values.append(value);
+      }
+    }
+  } else {
+    QString single = rawPins.toString().trimmed().toLower();
+    single.remove(QLatin1Char(':'));
+    single.remove(QLatin1Char(' '));
+    if (!single.isEmpty()) {
+      values.append(single);
+    }
+  }
+
+  if (values.isEmpty()) {
+    return authPinnedSha256();
+  }
+
+  values.removeDuplicates();
+  return values;
+}
+
+int Config::rpiControlConnectTimeoutMs() const {
+  return m_control["connectTimeoutMs"].toInt(3000);
+}
+
+int Config::rpiControlMaxInboundBytes() const {
+  return std::max(256, m_control["maxInboundBytes"].toInt(4096));
+}
+
+int Config::rpiControlMaxDbSyncBytes() const {
+  return std::max(256, m_control["maxDbSyncBytes"].toInt(16384));
+}

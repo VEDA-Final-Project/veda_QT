@@ -69,6 +69,11 @@ public:
   QString rpiControlHost() const;
   int rpiControlPort() const;
   bool rpiControlAutoConnect() const;
+  bool rpiControlTlsEnabled() const;
+  QStringList rpiControlPinnedSha256() const;
+  int rpiControlConnectTimeoutMs() const;
+  int rpiControlMaxInboundBytes() const;
+  int rpiControlMaxDbSyncBytes() const;
 
 private:
   explicit Config(QObject *parent = nullptr);
@@ -84,6 +89,7 @@ private:
   QJsonObject m_reid;
   QJsonObject m_sync;
   QJsonObject m_auth;
+  QJsonObject m_control;
   QString m_loadedConfigPath;
 };
 

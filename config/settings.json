@@ -59,10 +59,21 @@
     "port": 9000,
     "tlsEnabled": true,
     "pinnedSha256": [
-      "2dd8db661dad205a291ce0dd545a9db2329e01a479250f19338d96f06b0e29ea",
-      "440a32d7fe67430b1794e9dd2c915d4c11ea42cde9cf15d15a3738062bc2f59f"
+      "2dd8db661dad205a291ce0dd545a9db2329e01a479250f19338d96f06b0e29ea"
     ],
     "connectTimeoutMs": 3000,
     "requestTimeoutMs": 5000
+  },
+  "control": {
+    "host": "172.20.24.76",
+    "port": 12345,
+    "autoConnect": true,
+    "tlsEnabled": true,
+    "connectTimeoutMs": 3000,
+    "maxInboundBytes": 4096,
+    "maxDbSyncBytes": 16384,
+    "pinnedSha256": [
+      "440a32d7fe67430b1794e9dd2c915d4c11ea42cde9cf15d15a3738062bc2f59f"
+    ]
   }
 }

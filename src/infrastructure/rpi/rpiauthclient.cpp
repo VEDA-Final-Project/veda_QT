@@ -72,7 +72,9 @@ bool RpiAuthClient::beginLogin(const QString &host, quint16 port,
   if (authTlsEnabled()) {
     QSslConfiguration cfg = m_socket->sslConfiguration();
     cfg.setProtocol(QSsl::TlsV1_3OrLater);
+    cfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
     m_socket->setSslConfiguration(cfg);
+    m_socket->setPeerVerifyName(m_host);
     m_socket->connectToHostEncrypted(m_host, m_port);
   } else {
     m_socket->connectToHost(m_host, m_port);
@@ -160,7 +162,14 @@ void RpiAuthClient::onSslErrors(const QList<QSslError> &errors) {
 
   if (shouldAllowPinnedCertificate()) {
     m_socket->ignoreSslErrors(errors);
+    return;
   }
+
+  QStringList messages;
+  for (const QSslError &error : errors) {
+    messages.append(error.errorString());
+  }
+  qWarning() << "[Auth] TLS verification failed:" << messages.join(" | ");
 }
 
 void RpiAuthClient::onConnectTimeout() {
