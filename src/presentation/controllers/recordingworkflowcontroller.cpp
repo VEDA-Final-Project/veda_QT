@@ -387,16 +387,17 @@ void RecordingWorkflowController::onRecordManualToggled(bool checked) {
   appendLog(QString("[Recorder] [%1] 녹화 파일 저장 실행: %2").arg(camId, fileName));
 }
 
-void RecordingWorkflowController::onEventRecordRequested(const QString &description, int preSec, int postSec) {
-  const int idx = selectedManualCameraIndex();
-  VideoBufferManager *targetBuffer = bufferByIndex(idx);
+void RecordingWorkflowController::requestEventRecord(int channelIdx, const QString &description, int preSec, int postSec) {
+  if (channelIdx < 0 || channelIdx >= kChannelCount) return;
+  VideoBufferManager *targetBuffer = bufferByIndex(channelIdx);
   if (!targetBuffer) return;
 
   const uint64_t clickIdx = targetBuffer->getTotalFramesAdded();
-  appendLog(QString("[Recorder] 이벤트 감지 (I:%1): %2초 후 저장을 시작합니다...").arg(clickIdx).arg(postSec));
+  appendLog(QString("[Recorder] 이벤트 감지 (Ch %1, I:%2): %3초 후 저장을 시작합니다...")
+              .arg(channelIdx + 1).arg(clickIdx).arg(postSec));
 
-  const QString camId = QString("Ch %1").arg(idx + 1);
-  QTimer::singleShot(postSec * 1000, this, [this, description, preSec, postSec, idx, camId, targetBuffer, clickIdx]() {
+  const QString camId = QString("Ch %1").arg(channelIdx + 1);
+  QTimer::singleShot(postSec * 1000, this, [this, description, preSec, postSec, channelIdx, camId, targetBuffer, clickIdx]() {
     double actualFps = m_recordPanelController ? m_recordPanelController->getLiveFps() : 15.0;
     if (actualFps <= 0) actualFps = 15.0;
 
@@ -411,12 +412,12 @@ void RecordingWorkflowController::onEventRecordRequested(const QString &descript
     }
 
     if (framesToSave.empty()) {
-        appendLog(QString("[Recorder] 버퍼에 저장된 프레임이 없습니다."));
+        appendLog(QString("[Recorder] [Ch %1] 버퍼에 저장된 프레임이 없습니다.").arg(channelIdx + 1));
         return;
     }
 
     const QString fileName = QString("event_Ch%1_%2.mp4")
-                              .arg(idx + 1)
+                              .arg(channelIdx + 1)
                               .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
     const QString filePath = QDir(QCoreApplication::applicationDirPath())
                                  .filePath("records/events/" + fileName);
@@ -429,9 +430,14 @@ void RecordingWorkflowController::onEventRecordRequested(const QString &descript
                               Q_ARG(QString, description),
                               Q_ARG(QString, camId));
 
-    appendLog(QString("[Recorder] 이벤트 구간 저장 완료: %1 (%2초 전 ~ %3초 후, FPS: %4, 프레임수: %5)")
-                  .arg(fileName).arg(preSec).arg(postSec).arg(actualFps).arg(framesToSave.size()));
+    appendLog(QString("[Recorder] [Ch %1] 이벤트 구간 저장 완료: %2 (%3초 전 ~ %4초 후, FPS: %5, 프레임수: %6)")
+                  .arg(channelIdx + 1).arg(fileName).arg(preSec).arg(postSec).arg(actualFps).arg(framesToSave.size()));
   });
+}
+
+void RecordingWorkflowController::onEventRecordRequested(const QString &description, int preSec, int postSec) {
+  const int idx = selectedManualCameraIndex();
+  requestEventRecord(idx, description, preSec, postSec);
 }
 
 void RecordingWorkflowController::onMediaSaveFinished(

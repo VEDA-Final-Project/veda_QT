@@ -112,6 +112,13 @@ double RecordPanelController::getLiveFps() const {
   return m_liveFpsEstimate > 0 ? m_liveFpsEstimate : 15.0;
 }
 
+int RecordPanelController::getEventRecordInterval() const {
+  if (m_ui.recordIntervalSpin) {
+    return m_ui.recordIntervalSpin->value();
+  }
+  return 10;
+}
+
 // ──────────────────────────────────────────────────────────────
 // 미디어 로그 테이블 갱신
 // ──────────────────────────────────────────────────────────────
@@ -315,7 +322,7 @@ void RecordPanelController::onRowSelectionChanged() {
       m_hasMediaLoaded = false;
     }
     updatePlayerControls(false); // 이미지: 플레이어 비활성
-  } else if (type == "VIDEO") {
+  } else if (type == "VIDEO" || type == "EVENT") {
     m_playCap.open(filePath.toLocal8Bit().toStdString());
     if (m_playCap.isOpened()) {
       m_fps = m_playCap.get(cv::CAP_PROP_FPS);
