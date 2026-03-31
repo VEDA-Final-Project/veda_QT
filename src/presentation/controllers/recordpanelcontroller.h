@@ -65,6 +65,7 @@ public:
   void connectSignals();
   void refreshLogTable();
   double getLiveFps() const;
+  int getEventRecordInterval() const;
 
 public slots:
   void onRefreshClicked();

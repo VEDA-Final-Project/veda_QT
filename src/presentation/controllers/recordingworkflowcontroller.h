@@ -56,6 +56,7 @@ public:
   void connectSignals();
   void shutdown();
   void triggerManualCapture();
+  void requestEventRecord(int channelIdx, const QString &description, int preSec, int postSec);
   void setManualRecordingFromHardware(bool recording);
   bool isManualRecording() const;
   void updateRecordPreviewSourceSize();

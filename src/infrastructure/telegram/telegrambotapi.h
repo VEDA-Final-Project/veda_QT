@@ -61,7 +61,7 @@ signals:
   void paymentConfirmed(int recordId, const QString &plateNumber, int amount);
 
   /// 관리자 호출 시그널
-  void adminSummoned(const QString &chatId, const QString &name);
+  void adminSummoned(const QString &chatId, const QString &name, const QString &phone);
 
 private slots:
   /// Long Polling으로 업데이트 가져오기

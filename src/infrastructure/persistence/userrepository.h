@@ -61,6 +61,12 @@ public:
    * @return 차량번호 (없으면 빈 문자열)
    */
   QString findPlateByChatId(const QString &chatId) const;
+  
+  /**
+   * @brief Chat ID로 사용자 상세 정보 조회
+   */
+  QJsonObject findUserByChatId(const QString &chatId) const;
+
 
   /**
    * @brief 모든 사용자 상세 정보 조회

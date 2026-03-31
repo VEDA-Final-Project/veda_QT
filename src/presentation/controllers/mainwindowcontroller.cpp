@@ -309,19 +309,46 @@ MainWindowController::MainWindowController(const MainWindowUiRefs &uiRefs,
     connect(service, &ParkingService::vehicleDeparted, m_dbPanelController,
             &DbPanelController::onRefreshParkingLogs);
     connect(service, &ParkingService::vehicleEntered, this,
-            [this, service](int roiIndex, const QString &) {
+            [this, i, service](int roiIndex, const QString &plateNumber) {
               if (m_notificationController) {
                 m_notificationController->showVehicleEntered(
                     service->zoneNameForIndex(roiIndex));
               }
+              if (m_recordingWorkflowController && m_recordPanelController) {
+                int defaultInterval = m_recordPanelController->getEventRecordInterval();
+                // 입차는 진입 과정을 충분히 담기 위해 전방 비율을 높임 (70%)
+                int preSec = (defaultInterval * 7) / 10;
+                int postSec = defaultInterval - preSec;
+                
+                QString displayPlate = plateNumber.trimmed();
+                if (displayPlate.isEmpty() || displayPlate == "미인식") {
+                  displayPlate = "미인식(입차)";
+                } else {
+                  displayPlate = QString("입차: %1").arg(displayPlate);
+                }
+                m_recordingWorkflowController->requestEventRecord(i, displayPlate, preSec, postSec);
+              }
             });
     connect(service, &ParkingService::vehicleDeparted, this,
-            [this, service](int roiIndex, const QString &) {
+            [this, i, service](int roiIndex, const QString &plateNumber) {
               if (m_notificationController) {
                 m_notificationController->showVehicleDeparted(
                     service->zoneNameForIndex(roiIndex));
               }
+              if (m_recordingWorkflowController && m_recordPanelController) {
+                int defaultInterval = m_recordPanelController->getEventRecordInterval();
+                int preSec = defaultInterval / 2;
+                int postSec = defaultInterval - preSec;
+                QString displayPlate = plateNumber.trimmed();
+                if (displayPlate.isEmpty() || displayPlate == "미인식") {
+                  displayPlate = "미인식(출차)";
+                } else {
+                  displayPlate = QString("출차: %1").arg(displayPlate);
+                }
+                m_recordingWorkflowController->requestEventRecord(i, displayPlate, preSec, postSec);
+              }
             });
+
   }
   // 4. 녹화 조회 컨트롤러 초기화
   m_mediaRepo = new MediaRepository();
