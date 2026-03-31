@@ -204,6 +204,36 @@ bool Config::cameraSrtpEnabled(const QString &cameraKey) const {
   return val.toBool(false);
 }
 
+QStringList Config::cameraPinnedSha256(const QString &cameraKey) const {
+  const QJsonObject cameraObj = cameraObjectForKey(m_root, cameraKey);
+  const QJsonObject selectedCamera = cameraObj.isEmpty() ? m_camera : cameraObj;
+  const QJsonValue rawPins =
+      selectedCamera.value(QStringLiteral("pinnedSha256"));
+
+  QStringList values;
+  if (rawPins.isArray()) {
+    const QJsonArray array = rawPins.toArray();
+    for (const QJsonValue &entry : array) {
+      QString value = entry.toString().trimmed().toLower();
+      value.remove(QLatin1Char(':'));
+      value.remove(QLatin1Char(' '));
+      if (!value.isEmpty()) {
+        values.append(value);
+      }
+    }
+  } else {
+    QString value = rawPins.toString().trimmed().toLower();
+    value.remove(QLatin1Char(':'));
+    value.remove(QLatin1Char(' '));
+    if (!value.isEmpty()) {
+      values.append(value);
+    }
+  }
+
+  values.removeDuplicates();
+  return values;
+}
+
 QString Config::defaultCameraProfile() const {
   return profileValue(QJsonObject(), m_cameraDefaults, "profile",
                       kFallbackCameraProfile);

@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <QUdpSocket>
 #include <QThread>
@@ -35,7 +36,9 @@ public:
   explicit SrtpOrchestrator(QObject *parent = nullptr);
   virtual ~SrtpOrchestrator();
 
-  void setConnectionInfo(const QString &ip, const QString &user, const QString &password, const QString &profile);
+  void setConnectionInfo(const QString &ip, const QString &user,
+                         const QString &password, const QString &profile,
+                         const QStringList &allowedFingerprints = {});
   void setDisabledObjectTypes(const QSet<QString> &types);
   void start();
   void stop();
@@ -95,6 +98,7 @@ private:
   QUdpSocket *m_metaUdpSocket;
 
   QString m_ip, m_user, m_password, m_profile;
+  QStringList m_allowedFingerprints;
   QString m_sessionId;
   QString m_videoTrackUrl;
   QString m_metaTrackUrl;

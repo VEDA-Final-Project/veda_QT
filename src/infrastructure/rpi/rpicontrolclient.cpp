@@ -1,21 +1,31 @@
 #include "rpicontrolclient.h"
 
-#include <QTcpSocket>
+#include "config/config.h"
+
+#include <QCryptographicHash>
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QSslError>
+#include <QSslSocket>
 #include <QTimer>
 
 RpiControlClient::RpiControlClient(QObject *parent) : QObject(parent) {
-    m_socket         = new QTcpSocket(this);
+    m_socket         = new QSslSocket(this);
     m_reconnectTimer = new QTimer(this);
     m_reconnectTimer->setSingleShot(true);
 
-    connect(m_socket, &QTcpSocket::connected,
+    connect(m_socket, &QSslSocket::connected,
             this, &RpiControlClient::onConnected);
-    connect(m_socket, &QTcpSocket::disconnected,
+    connect(m_socket, &QSslSocket::encrypted,
+            this, &RpiControlClient::onEncrypted);
+    connect(m_socket, &QSslSocket::disconnected,
             this, &RpiControlClient::onDisconnected);
-    connect(m_socket, &QTcpSocket::readyRead,
+    connect(m_socket, &QSslSocket::readyRead,
             this, &RpiControlClient::onReadyRead);
-    connect(m_socket, &QTcpSocket::errorOccurred,
+    connect(m_socket, &QSslSocket::errorOccurred,
             this, &RpiControlClient::onSocketError);
+    connect(m_socket, &QSslSocket::sslErrors,
+            this, &RpiControlClient::onSslErrors);
     connect(m_reconnectTimer, &QTimer::timeout,
             this, &RpiControlClient::onReconnectTimeout);
 }
@@ -38,7 +48,14 @@ void RpiControlClient::connectToServer() {
     }
     emit logMessage(
         QString("[RPi] %1:%2 연결 중...").arg(m_host).arg(m_port));
-    m_socket->connectToHost(m_host, m_port);
+    if (controlTlsEnabled()) {
+        QSslConfiguration cfg = m_socket->sslConfiguration();
+        cfg.setProtocol(QSsl::TlsV1_3OrLater);
+        m_socket->setSslConfiguration(cfg);
+        m_socket->connectToHostEncrypted(m_host, m_port);
+    } else {
+        m_socket->connectToHost(m_host, m_port);
+    }
 }
 
 void RpiControlClient::disconnectFromServer() {
@@ -68,9 +85,18 @@ void RpiControlClient::sendDbData(const QString &jsonData) {
 }
 
 void RpiControlClient::onConnected() {
+    if (controlTlsEnabled()) {
+        return;
+    }
     resetReconnect();
     emit connectedChanged(true);
     emit logMessage(QString("[RPi] 연결됨 (%1:%2)").arg(m_host).arg(m_port));
+}
+
+void RpiControlClient::onEncrypted() {
+    resetReconnect();
+    emit connectedChanged(true);
+    emit logMessage(QString("[RPi] TLS 연결됨 (%1:%2)").arg(m_host).arg(m_port));
 }
 
 void RpiControlClient::onDisconnected() {
@@ -97,6 +123,13 @@ void RpiControlClient::onReadyRead() {
 void RpiControlClient::onSocketError() {
     emit logMessage(
         QString("[RPi] 소켓 오류: %1").arg(m_socket->errorString()));
+}
+
+void RpiControlClient::onSslErrors() {
+    if (shouldAllowPinnedCertificate()) {
+        m_socket->ignoreSslErrors();
+        return;
+    }
 }
 
 void RpiControlClient::onReconnectTimeout() {
@@ -205,4 +238,43 @@ void RpiControlClient::scheduleReconnect() {
 void RpiControlClient::resetReconnect() {
     m_reconnectAttempt = 0;
     m_reconnectTimer->stop();
+}
+
+bool RpiControlClient::controlTlsEnabled() const {
+    return Config::instance().authTlsEnabled();
+}
+
+QStringList RpiControlClient::configuredPinnedFingerprints() const {
+    QStringList pins;
+    const QStringList configPins = Config::instance().authPinnedSha256();
+    for (const QString &entry : configPins) {
+        const QString value = normalizeFingerprint(entry);
+        if (!value.isEmpty() && !pins.contains(value)) {
+            pins.append(value);
+        }
+    }
+    return pins;
+}
+
+bool RpiControlClient::shouldAllowPinnedCertificate() const {
+    const QStringList pins = configuredPinnedFingerprints();
+    if (pins.isEmpty()) {
+        return false;
+    }
+
+    const QSslCertificate cert = m_socket->peerCertificate();
+    if (cert.isNull()) {
+        return false;
+    }
+
+    const QString peerFingerprint = QString::fromLatin1(
+        cert.digest(QCryptographicHash::Sha256).toHex()).toLower();
+    return pins.contains(peerFingerprint);
+}
+
+QString RpiControlClient::normalizeFingerprint(const QString &value) {
+    QString normalized = value.trimmed().toLower();
+    normalized.remove(QLatin1Char(':'));
+    normalized.remove(QLatin1Char(' '));
+    return normalized;
 }

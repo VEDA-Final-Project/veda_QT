@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSslCertificate>
+#include <QSslConfiguration>
 #include <QSslError>
 #include <QSslSocket>
 #include <QTimer>
@@ -69,6 +70,9 @@ bool RpiAuthClient::beginLogin(const QString &host, quint16 port,
 
   m_socket->abort();
   if (authTlsEnabled()) {
+    QSslConfiguration cfg = m_socket->sslConfiguration();
+    cfg.setProtocol(QSsl::TlsV1_3OrLater);
+    m_socket->setSslConfiguration(cfg);
     m_socket->connectToHostEncrypted(m_host, m_port);
   } else {
     m_socket->connectToHost(m_host, m_port);

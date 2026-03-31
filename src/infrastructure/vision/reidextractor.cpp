@@ -82,6 +82,45 @@ struct ReidSession::Impl {
   mutable std::mutex mutex;
 };
 
+namespace {
+bool compileModelForDevice(SharedReidRuntime::Impl &runtime,
+                           const std::string &targetDevice,
+                           QString *errorMessage) {
+  try {
+    auto model = runtime.core->read_model(runtime.modelPath.toStdString());
+
+    ov::AnyMap config;
+    config[ov::hint::performance_mode.name()] =
+        ov::hint::PerformanceMode::LATENCY;
+    if (targetDevice == "GPU") {
+      config[ov::hint::inference_precision.name()] = ov::element::f16;
+    } else {
+      config[ov::inference_num_threads.name()] = 2;
+    }
+
+    runtime.compiledModel =
+        runtime.core->compile_model(model, targetDevice, config);
+    runtime.ready = true;
+    runtime.deviceName = QString::fromStdString(targetDevice);
+    if (errorMessage) {
+      errorMessage->clear();
+    }
+    return true;
+  } catch (const std::exception &e) {
+    if (errorMessage) {
+      *errorMessage = QString::fromUtf8(e.what());
+    }
+  } catch (...) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("Unknown compile error");
+    }
+  }
+
+  runtime.ready = false;
+  return false;
+}
+} // namespace
+
 SharedReidRuntime::SharedReidRuntime() : pimpl(std::make_shared<Impl>()) {}
 
 SharedReidRuntime::~SharedReidRuntime() = default;
@@ -125,24 +164,31 @@ bool SharedReidRuntime::loadOnce(const QString &modelPath) {
       }
     }
 
-    auto model = pimpl->core->read_model(normalizedModelPath.toStdString());
-
-    ov::AnyMap config;
-    config[ov::hint::performance_mode.name()] =
-        ov::hint::PerformanceMode::LATENCY;
-    if (targetDevice == "GPU") {
-      config[ov::hint::inference_precision.name()] = ov::element::f16;
-    } else {
-      config[ov::inference_num_threads.name()] = 2;
+    pimpl->modelPath = normalizedModelPath;
+    QString compileError;
+    if (compileModelForDevice(*pimpl, targetDevice, &compileError)) {
+      pimpl->lastError.clear();
+      return true;
     }
 
-    pimpl->compiledModel =
-        pimpl->core->compile_model(model, targetDevice, config);
-    pimpl->ready = true;
-    pimpl->modelPath = normalizedModelPath;
-    pimpl->deviceName = QString::fromStdString(targetDevice);
-    pimpl->lastError.clear();
-    return true;
+    if (targetDevice == "GPU") {
+      QString cpuError;
+      if (compileModelForDevice(*pimpl, "CPU", &cpuError)) {
+        pimpl->lastError = QStringLiteral(
+            "GPU compile failed, fell back to CPU: %1")
+                               .arg(compileError);
+        return true;
+      }
+      pimpl->lastError = QStringLiteral(
+          "GPU compile failed (%1), CPU fallback failed (%2)")
+                             .arg(compileError, cpuError);
+      return false;
+    }
+
+    pimpl->lastError =
+        QStringLiteral("Compile error on %1: %2")
+            .arg(QString::fromStdString(targetDevice), compileError);
+    return false;
 
   } catch (const std::exception &e) {
     pimpl->lastError =
@@ -180,7 +226,39 @@ std::shared_ptr<ReidSession> SharedReidRuntime::createSession() const {
     ov::InferRequest inferRequest = pimpl->compiledModel.create_infer_request();
     return std::shared_ptr<ReidSession>(
         new ReidSession(std::make_unique<ReidSession::Impl>(pimpl, std::move(inferRequest))));
+  } catch (const std::exception &e) {
+    if (pimpl->deviceName.compare(QStringLiteral("GPU"), Qt::CaseInsensitive) ==
+        0) {
+      QString cpuError;
+      if (compileModelForDevice(*pimpl, "CPU", &cpuError)) {
+        pimpl->lastError = QStringLiteral(
+            "GPU session creation failed, fell back to CPU: %1")
+                               .arg(QString::fromUtf8(e.what()));
+        try {
+          ov::InferRequest inferRequest =
+              pimpl->compiledModel.create_infer_request();
+          return std::shared_ptr<ReidSession>(new ReidSession(
+              std::make_unique<ReidSession::Impl>(pimpl, std::move(inferRequest))));
+        } catch (const std::exception &retryError) {
+          pimpl->lastError = QStringLiteral(
+              "CPU fallback session creation failed: %1")
+                                 .arg(QString::fromUtf8(retryError.what()));
+        } catch (...) {
+          pimpl->lastError =
+              QStringLiteral("CPU fallback session creation failed.");
+        }
+      } else {
+        pimpl->lastError = QStringLiteral(
+            "GPU session creation failed (%1), CPU fallback failed (%2)")
+                               .arg(QString::fromUtf8(e.what()), cpuError);
+      }
+    } else {
+      pimpl->lastError = QStringLiteral("Session creation failed: %1")
+                             .arg(QString::fromUtf8(e.what()));
+    }
+    return nullptr;
   } catch (...) {
+    pimpl->lastError = QStringLiteral("Session creation failed.");
     return nullptr;
   }
 }
